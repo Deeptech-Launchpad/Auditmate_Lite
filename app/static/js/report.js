@@ -89,10 +89,11 @@
   /* ------------------------------------------------- in-place editing ---- */
   /*
    * The report itself is the editor. Narrative sections are contenteditable
-   * and save when focus leaves them; statements and note tables are not
-   * editable at all, because they are derived from the approved trial
-   * balance and typing over them would put a figure in the report that no
-   * trial balance supports.
+   * and save when focus leaves them. Statement labels and figures are
+   * editable too, but they route to their own endpoints - see the second
+   * block at the foot of this file - so a changed figure is stored as a
+   * recorded override with the calculation kept underneath, rather than
+   * being typed over the page with nothing behind it.
    *
    * Substituted fields ({{ customer.legal_name }} and friends) render as
    * uneditable ".ph" chips showing the real value. On save each chip is
@@ -438,10 +439,12 @@
     try { on = localStorage.getItem('auditmate.showSources') !== '0'; }
     catch (e) { /* private window: fall back to on */ }
 
+    const legend = document.getElementById('src-legend');
     const paint = function () {
       report.classList.toggle('show-sources', on);
       toggle.setAttribute('aria-pressed', on ? 'true' : 'false');
       toggle.classList.toggle('on', on);
+      if (legend) legend.classList.toggle('on', on);
     };
     toggle.addEventListener('click', () => {
       on = !on;

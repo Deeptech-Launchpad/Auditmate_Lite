@@ -120,6 +120,13 @@
                                 margin-bottom: 12px;
                                 box-shadow: 0 1px 3px rgba(0,0,0,.15); }
         </style>
+        <div class="src-legend" id="src-legend">
+          <span><i class="sw sw-tb"></i>from the trial balance</span>
+          <span><i class="sw sw-calc"></i>calculated from other lines</span>
+          <span><i class="sw sw-over"></i>changed by an auditor</span>
+          <span class="legend-tip">Click any figure to edit it &middot;
+            click &#9432; to see the accounts behind it</span>
+        </div>
         <div class="rpt-mini is-editing" id="live-report">
           <div class="rpt-doc">
             {% with editable = true %}
