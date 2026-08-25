@@ -38,6 +38,9 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
 
+    # Set to 1 when running behind nginx so X-Forwarded-* headers are read.
+    TRUST_PROXY = _as_bool(os.getenv("TRUST_PROXY"), False)
+
     # --- File storage ---
     STORAGE_ROOT = Path(os.getenv("STORAGE_ROOT", str(BASE_DIR / "storage"))).resolve()
 

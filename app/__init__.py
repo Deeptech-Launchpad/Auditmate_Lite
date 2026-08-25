@@ -41,6 +41,16 @@ def create_app(config_object=Config):
     app = Flask(__name__)
     app.config.from_object(config_object)
 
+    if app.config.get("TRUST_PROXY"):
+        # Behind nginx. Without this Flask sees every request as coming from
+        # 127.0.0.1 over http, so url_for(_external=True) - which builds the
+        # review links emailed to customers - would hand them an http:// URL
+        # even when the site is served over https.
+        # Only enable behind a proxy that sets these headers itself;
+        # otherwise a client could forge them.
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
