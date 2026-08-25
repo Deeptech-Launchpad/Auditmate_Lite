@@ -1,0 +1,501 @@
+# Annual report structure.
+#
+# Modelled on the client-supplied template: a Singapore FRS annual report for
+# an audit-exempt private company (Companies Act s205C). 24 pages.
+#
+# NOTE: this template contains NO Independent Auditor's Report, because the
+# subject company is exempt from statutory audit. An optional auditor's report
+# section is included below, disabled by default - enable it for engagements
+# that are NOT audit-exempt.
+#
+# type:
+#   template   - boilerplate with {{ bindings }}, auditor can edit
+#   free_text  - blank section for auditor commentary
+#   statement  - renders a generated financial statement
+#
+# Bindings: customer.name, customer.legal_name, customer.uen,
+#           customer.address, customer.director, customer.secretary,
+#           fy.year_label, fy.end_date, fy.start_date, today
+
+# ----------------------------------------------------------- page 1 -------
+- key: cover_page
+  title: Cover Page and Corporate Information
+  type: template
+  default_enabled: true
+  content: |
+    <div class="cover">
+      <h1>ANNUAL REPORT {{ fy.year_label }}</h1>
+      <p class="cover-sub">Financial Statements and Other Financial Information</p>
+      <h2 class="cover-co">{{ customer.legal_name }}</h2>
+      <p class="cover-uen">(Registration No: {{ customer.uen }})</p>
+      <p class="cover-date">{{ fy.end_date }}</p>
+    </div>
+
+    <h3 class="ruled">CORPORATE INFORMATION</h3>
+
+    <p><strong>THE BOARD OF DIRECTORS</strong></p>
+    <p>{{ customer.director }}</p>
+
+    <p><strong>COMPANY SECRETARY</strong></p>
+    <p>{{ customer.secretary }}</p>
+
+    <p><strong>REGISTERED OFFICE</strong></p>
+    <p>{{ customer.address }}</p>
+
+    <p><strong>CONTENTS</strong></p>
+    <p><em>Contents page is generated automatically from the sections you
+    enable below.</em></p>
+
+# --------------------------------------------------------- pages 2-3 ------
+- key: directors_statement
+  title: Directors' Statement
+  type: template
+  default_enabled: true
+  content: |
+    <p>The directors present their statement to the members together with the
+    financial statements of {{ customer.legal_name }} (the &ldquo;Company&rdquo;)
+    for the financial period ended {{ fy.end_date }}.</p>
+
+    <h4>1. Opinion of the directors</h4>
+    <p>In the opinion of the directors,</p>
+    <p>a) the financial statements of the Company are drawn up to give a true
+    and fair view of the financial position of the Company as of
+    {{ fy.end_date }} and the financial performance, changes in equity and cash
+    flows of the Company for the year then ended; and</p>
+    <p>b) at the date of this statement, there are reasonable grounds to believe
+    that the Company will be able to pay its debts as and when they fall due.</p>
+
+    <h4>2. Directors</h4>
+    <p>The directors of the Company in office at the date of this statement is:</p>
+    <p>{{ customer.director }}</p>
+
+    <h4>3. Arrangements to enable directors to acquire shares or debenture</h4>
+    <p>Neither at the end of nor at any time during the financial year was the
+    Company a party to any arrangement whose objects are, or one of whose
+    objects is, to enable the directors of the Company to acquire benefits by
+    means of the acquisition of shares in, or debentures of the Company or any
+    other body corporate.</p>
+
+    <h4>4. Directors' interest in shares or debentures</h4>
+    <p>According to the register of directors' shareholdings kept by the Company
+    under section 164 of the Singapore Companies Act, Chapter 50 (the
+    &ldquo;Act&rdquo;), the directors of the Company who held office at the end
+    of the financial year has no interest in the shares or debentures of the
+    Company and its related corporations except as stated below:</p>
+    <p><em>[Enter the shareholdings table for this engagement.]</em></p>
+
+    <h4>5. Share options</h4>
+    <p>There was no share options granted during the financial year to subscribe
+    for unissued shares of the Company.</p>
+    <p>There were no unissued shares of the Company under option at the end of
+    the financial year.</p>
+
+    <h4>6. Independent Auditor</h4>
+    <p>The company is exempted from statutory audit requirements under the
+    provisions of Section 205C of the Companies Act (the Act). The directors
+    therefore do not recommend appointment or re-appointment of auditor or
+    auditors until the receipt of written requirement made under section (6) of
+    Section 205B of the Act.</p>
+
+    <p class="sig-block">On Behalf of The Board of Directors:</p>
+    <p class="sig-line">_______________________<br>
+    {{ customer.director }}<br>Director</p>
+    <p>Singapore &nbsp;&nbsp; {{ today }}</p>
+
+# Only for engagements that are NOT audit-exempt. Off by default, because the
+# supplied template is for an exempt company.
+- key: independent_auditors_report
+  title: Independent Auditor's Report
+  type: template
+  default_enabled: false
+  content: |
+    <h4>Report on the Audit of the Financial Statements</h4>
+    <h4>Opinion</h4>
+    <p>We have audited the financial statements of {{ customer.legal_name }}
+    (the &ldquo;Company&rdquo;), which comprise the statement of financial
+    position as at {{ fy.end_date }}, and the statement of comprehensive income,
+    statement of changes in equity and statement of cash flows for the year then
+    ended, and notes to the financial statements, including a summary of
+    significant accounting policies.</p>
+    <p>In our opinion, the accompanying financial statements are properly drawn
+    up in accordance with the provisions of the Companies Act 1967 (the
+    &ldquo;Act&rdquo;) and Singapore Financial Reporting Standards
+    (&ldquo;FRSs&rdquo;) so as to give a true and fair view of the financial
+    position of the Company as at {{ fy.end_date }} and of the financial
+    performance, changes in equity and cash flows of the Company for the year
+    ended on that date.</p>
+    <h4>Basis for Opinion</h4>
+    <p>We conducted our audit in accordance with Singapore Standards on Auditing
+    (&ldquo;SSAs&rdquo;). We are independent of the Company in accordance with
+    the ACRA Code of Professional Conduct and Ethics for Public Accountants and
+    Accounting Entities.</p>
+
+# ----------------------------------------------------------- page 4 -------
+- key: statement_comprehensive_income
+  title: Statement of Comprehensive Income
+  type: statement
+  default_enabled: true
+  statement_type: profit_and_loss
+
+# ----------------------------------------------------------- page 5 -------
+- key: statement_financial_position
+  title: Statement of Financial Position
+  type: statement
+  default_enabled: true
+  statement_type: balance_sheet
+
+# ----------------------------------------------------------- page 6 -------
+- key: statement_changes_equity
+  title: Statement of Changes in Equity
+  type: statement
+  default_enabled: true
+  statement_type: changes_in_equity
+
+# ----------------------------------------------------------- page 7 -------
+- key: statement_cash_flows
+  title: Statement of Cash Flows
+  type: statement
+  default_enabled: true
+  statement_type: cash_flow
+
+# --------------------------------------------------------- pages 8-24 -----
+- key: note_01_corporate_information
+  title: "1. Corporate information"
+  type: template
+  default_enabled: true
+  content: |
+    <p>The Company is a private limited company incorporated and domiciled in
+    the Republic of Singapore under the Companies Act.</p>
+    <p>The registered office is located at {{ customer.address }}.</p>
+    <p>The principal activities of the Company are those of
+    <em>[describe principal activities]</em>. There have been no significant
+    changes in these activities during the period.</p>
+    <p>The financial statements were approved and authorised for issue by the
+    board of directors on the same date as per directors' statement.</p>
+
+- key: note_02_accounting_policies
+  title: "2. Significant accounting policies"
+  type: template
+  default_enabled: true
+  content: |
+    <h4>2.1 Basis of preparation</h4>
+    <p>The financial statements have been prepared in accordance with Singapore
+    Financial Reporting Standards (&ldquo;FRS&rdquo;). The financial statements
+    have been prepared under the historical cost convention, except as disclosed
+    in the accounting policies below.</p>
+    <p>The preparation of financial statements in conformity with FRS requires
+    management to make judgements, estimates and assumptions that affect the
+    application of accounting policies and the reported amounts of assets,
+    liabilities, income, and expenses. Actual results may differ from these
+    estimates.</p>
+
+    <h4>2.2 Adoption of New and Revised Standards</h4>
+    <p>In the current financial year, the Company has adopted all the new or
+    revised FRS and Interpretations to FRS (&ldquo;INT FRS&rdquo;) that are
+    relevant to its operations and effective for the current financial year. The
+    adoption of these standards did not have any material effect on the financial
+    performance or position of the Company.</p>
+
+    <h4>2.3 Revenue recognition</h4>
+    <p>Revenue is measured based on the consideration to which the Company
+    expects to be entitled in exchange for transferring promised goods or
+    services to a customer, excluding amounts collected on behalf of third
+    parties.</p>
+    <p>Revenue is recognised when the Company satisfies a performance obligation
+    by transferring a promised good or service to the customer, which is when the
+    customer obtains control of the good or service.</p>
+
+    <h4>2.4 Taxes</h4>
+    <p><em>Current income tax.</em> Current income tax assets and liabilities for
+    the current and prior periods are measured at the amount expected to be
+    recovered from or paid to the taxation authority, using tax rates enacted or
+    substantively enacted at the reporting date.</p>
+    <p><em>Deferred tax.</em> Deferred tax is provided using the liability method
+    on temporary differences at the reporting date between the tax bases of
+    assets and liabilities and their carrying amounts for financial reporting
+    purposes.</p>
+
+    <h4>2.5 Foreign currency transactions and balances</h4>
+    <p>Transactions in foreign currencies are measured in the functional currency
+    of the Company and are recorded on initial recognition at exchange rates
+    approximating those ruling at the transaction dates.</p>
+
+    <h4>2.6 Impairment of non-financial assets</h4>
+    <p>The Company assesses at each reporting date whether there is an indication
+    that an asset may be impaired. Where the carrying amount of an asset exceeds
+    its recoverable amount, the asset is considered impaired and is written down
+    to its recoverable amount. Impairment losses are recognised in profit or
+    loss.</p>
+
+    <h4>2.7 Financial instruments</h4>
+    <p><em>Financial assets.</em> Financial assets are recognised when, and only
+    when, the entity becomes party to the contractual provisions of the
+    instruments. The Company only has debt instruments at amortised cost.</p>
+    <p><em>Financial liabilities.</em> All financial liabilities are recognised
+    initially at fair value and subsequently measured at amortised cost using the
+    effective interest method.</p>
+
+    <h4>2.8 Impairment of financial assets</h4>
+    <p>The Company recognises an allowance for expected credit losses (ECLs) for
+    all debt instruments not held at FVPL. For trade receivables, the Company
+    applies a simplified approach, recognising a loss allowance based on lifetime
+    ECLs at each reporting date. The Company considers a financial asset in
+    default when contractual payments are 60 days past due.</p>
+
+    <h4>2.9 Fair value estimation of financial assets and liabilities</h4>
+    <p>The fair values of current financial assets and liabilities carried at
+    amortised cost approximate their carrying amounts.</p>
+
+    <h4>2.10 Provisions</h4>
+    <p>Provisions are recognised when the Company has a present obligation as a
+    result of a past event, it is probable that an outflow of economic resources
+    will be required to settle the obligation, and the amount can be estimated
+    reliably.</p>
+
+    <h4>2.11 Cash and cash equivalents</h4>
+    <p>Cash and cash equivalents comprise cash at banks and on hand which are
+    subject to an insignificant risk of changes in value.</p>
+
+    <h4>2.12 Share capital</h4>
+    <p>Proceeds from issuance of ordinary shares are recognised as share capital
+    in equity. Incremental costs directly attributable to the issuance of
+    ordinary shares are deducted against share capital.</p>
+
+    <h4>2.13 Key Management Personnel</h4>
+    <p>Key management personnel are those persons having authority and
+    responsibility for planning, directing and controlling the activities of the
+    company. The directors are considered as key management personnel.</p>
+
+    <h4>2.14 Related parties</h4>
+    <p>A related party is a person or entity related to the company as defined in
+    FRS 24, including persons with control, joint control or significant
+    influence over the company, members of key management personnel, and
+    entities within the same group.</p>
+
+- key: note_03_critical_estimates
+  title: "3. Critical accounting estimates, assumptions, and judgments"
+  type: template
+  default_enabled: true
+  content: |
+    <p>Estimates, assumptions, and judgements are continually evaluated and are
+    based on historical experience and other factors, including expectations of
+    future events that are believed to be reasonable under the circumstances.</p>
+    <p><em>Income tax.</em> The company recognises liabilities for expected tax
+    issues based on estimates of whether additional tax will be due. When the
+    final tax outcome differs from the amounts initially recognised, such
+    differences will impact the income tax and deferred tax provisions in the
+    period in which such determination is made.</p>
+
+- key: note_04_revenue
+  title: "4. Revenue"
+  type: free_text
+  default_enabled: true
+  note_table:
+    - source: accounts
+      keys: [revenue]
+      total: ""
+  content: |
+    <p><em>Breakdown of revenue for this engagement.</em></p>
+
+- key: note_05_profit_before_tax
+  title: "5. Profit before tax"
+  type: free_text
+  default_enabled: true
+  note_table:
+    # The template presents this note as the two cost blocks and their sum;
+    # the account-by-account breakdown behind them is the Detailed Profit
+    # and Loss Statement at the back of the report.
+    - source: lines
+      statement: profit_and_loss
+      keys: [cost_of_sales, operating_expenses]
+      total: ""
+  content: |
+    <p>The following items have been included in arriving at profit before
+    income tax:</p>
+    <p><em>Enter the cost and expense breakdown.</em></p>
+
+- key: note_06_income_tax
+  title: "6. Income tax expense"
+  type: free_text
+  default_enabled: true
+  note_table:
+    - source: lines
+      statement: profit_and_loss
+      keys: [tax_expense]
+      heading: "Income tax expense recognised in profit and loss"
+    - source: tax_reconciliation
+  content: |
+    <p>Income tax expense recognised in profit and loss, and a reconciliation
+    between tax expense and accounting profit at the applicable corporate tax
+    rate of 17%.</p>
+
+- key: note_07_trade_receivables
+  title: "7. Trade receivables"
+  type: free_text
+  default_enabled: true
+  note_table:
+    - source: accounts
+      keys: [trade_receivables]
+      total: ""
+  content: |
+    <p>These are carried at cost, net of impairments, which is the fair value of
+    the consideration to be received in the future.</p>
+
+- key: note_08_deposits_other_receivables
+  title: "8. Deposits & Other receivables"
+  type: free_text
+  default_enabled: true
+  note_table:
+    - source: accounts
+      keys: [prepayments]
+      total: ""
+  content: |
+    <p>These are deposits paid for staff accommodation, office and utility
+    deposits, and loans to employees, carried at cost net of impairments.</p>
+
+- key: note_09_cash
+  title: "9. Cash and cash equivalents"
+  type: free_text
+  default_enabled: true
+  note_table:
+    - source: accounts
+      keys: [cash_and_equivalents]
+      total: ""
+    - source: currency
+  content: |
+    <p>Cash and cash equivalents comprise cash in bank, denominated in the
+    currencies set out below.</p>
+
+- key: note_10_share_capital
+  title: "10. Share capital"
+  type: free_text
+  default_enabled: true
+  note_table:
+    - source: accounts
+      keys: [share_capital]
+      total: ""
+  content: |
+    <p>The holders of ordinary shares are entitled to receive dividends as
+    declared from time to time and are entitled to one vote per share at meetings
+    of the company. All shares rank equally with regard to the company's residual
+    assets.</p>
+
+- key: note_11_other_payables
+  title: "11. Other payables"
+  type: free_text
+  default_enabled: true
+  note_table:
+    - source: accounts
+      keys: [trade_payables, accruals]
+      total: ""
+  content: |
+    <p><em>Breakdown of other payables for this engagement.</em></p>
+
+- key: note_12_new_standards
+  title: "12. New standards and interpretations not adopted"
+  type: template
+  default_enabled: true
+  content: |
+    <p>A few new standards, amendments to standards and interpretations are
+    effective for annual periods beginning after the reporting date and have not
+    been applied in preparing these financial statements. The management
+    anticipates that the adoption of these new standards, amendments and
+    interpretations in future periods will not have a material impact on the
+    financial statements of the Company in the period of their initial
+    adoption.</p>
+
+- key: note_13_financial_risk
+  title: "13. Financial risk management"
+  type: template
+  default_enabled: true
+  content: |
+    <p>The Company's activities expose it to a variety of financial risks from
+    its operations. The key financial risks include credit risk, liquidity risk
+    and market risk. The directors review and agree policies and procedures for
+    the management of these risks, which are executed by the management team.</p>
+
+    <h4>(a) Credit risk</h4>
+    <p>Credit risk refers to the risk that the counterparty will default on its
+    contractual obligations resulting in a loss to the Company. The Company's
+    exposure to credit risk arises primarily from trade and other receivables.
+    The Company has adopted a policy of only dealing with creditworthy
+    counterparties and performs ongoing credit evaluation of its counterparties'
+    financial condition.</p>
+    <p>A significant increase in credit risk is presumed if a debtor is more than
+    30 days past due in making contractual payment. The Company categorises a
+    receivable for potential write-off when a debtor fails to make contractual
+    payments more than 120 days past due.</p>
+
+    <h4>(b) Liquidity risk</h4>
+    <p>Liquidity risk refers to the risk that the Company will encounter
+    difficulties in meeting its short-term obligations due to shortage of funds.
+    It is managed by matching the payment and receipt cycles. The directors are
+    satisfied that funds are available to finance the operations of the
+    Company.</p>
+
+- key: note_14_fair_value
+  title: "14. Fair value"
+  type: template
+  default_enabled: true
+  content: |
+    <p>The fair value of a financial instrument is the amount at which the
+    instrument could be exchanged or settled between knowledgeable and willing
+    parties in an arm's length transaction.</p>
+    <p><em>Cash and cash equivalents, other receivables, and other payables.</em>
+    The carrying amounts of these balances approximate their fair values due to
+    the short-term nature of these balances.</p>
+    <p><em>Trade receivables.</em> The carrying amounts approximate their fair
+    values as they are subject to normal trade credit terms.</p>
+
+- key: note_15_financial_instruments_by_category
+  title: "15. Financial instruments by category"
+  type: free_text
+  default_enabled: true
+  note_table:
+    - source: lines
+      statement: balance_sheet
+      keys: [trade_receivables, prepayments, cash_and_equivalents]
+      heading: "Financial assets, at amortised cost"
+      total: ""
+    - source: lines
+      statement: balance_sheet
+      keys: [trade_payables, accruals, short_term_borrowings, long_term_borrowings]
+      heading: "Financial liabilities, at amortised cost"
+      total: ""
+  content: |
+    <p>At the reporting date, the aggregate carrying amounts of financial assets
+    at amortised cost and financial liabilities at amortised cost were as
+    follows:</p>
+
+- key: note_16_capital_risk
+  title: "16. Capital risk management"
+  type: template
+  default_enabled: true
+  content: |
+    <p>The Company's objectives when managing capital are to safeguard the
+    Company's ability to continue as a going concern and to maintain an optimal
+    capital structure to maximise shareholder value.</p>
+    <p>There were no changes in the Company's approach to capital management
+    during the year. The Company is not subject to externally imposed capital
+    requirements.</p>
+
+- key: note_17_comparative_information
+  title: "17. Comparative information"
+  type: template
+  default_enabled: true
+  content: |
+    <p>The current financial period comprises 12 months from {{ fy.start_date }}
+    to {{ fy.end_date }}.</p>
+    <p>The comparative figures presented in the financial statements are entirely
+    comparable as they cover a period for the preceding financial year.</p>
+
+# ----------------------------------------------------------- page 24 ------
+# Supplementary. The template marks this as NOT part of the statutory
+# financial statements, so it renders with that footnote.
+- key: detailed_profit_and_loss
+  title: Detailed Profit and Loss Statement
+  type: statement
+  default_enabled: true
+  statement_type: profit_and_loss
+  detailed: true
+  footnote: This statement does not form part of the statutory financial statements.

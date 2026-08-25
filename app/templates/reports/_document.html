@@ -1,0 +1,259 @@
+{#
+  The annual report body.
+
+  Shared by the builder's live preview, the on-screen preview and the PDF
+  export, so all three are the same document rather than three drifting
+  approximations of it.
+
+  Laid out to match the client-supplied Singapore FRS annual report: every
+  page after the cover carries the running header (legal name, registration
+  number, statement title), statements carry a Notes column and two
+  comparative columns headed with the reporting dates and S$, nil shows as
+  "--", and every primary statement closes with the annexed-notes footnote.
+#}
+
+{% macro page_header(title, subtitle, section_id=None) %}
+  <div class="rpt-head">
+    <div class="rpt-co">{{ customer.legal_name or customer.name }}</div>
+    <div class="rpt-uen">(Registration No: {{ customer.uen or '—' }})</div>
+    <div class="rpt-sect">
+      {%- if section_id -%}
+        <span contenteditable="true" data-section-id="{{ section_id }}"
+              data-field="title" data-placeholder="Section title">{{ title }}</span>
+      {%- else -%}
+        {{ title }}
+      {%- endif -%}
+      {% if subtitle %} {{ subtitle }}{% endif %}
+    </div>
+  </div>
+{% endmacro %}
+
+{% macro amount_cell(value) %}
+  <td class="num">{{ value|stmt }}</td>
+{% endmacro %}
+
+
+{% set fy_end = fy.end_date.strftime('%d.%m.%Y') if fy.end_date else '' %}
+{% set fy_prev_end = fy.previous_year.end_date.strftime('%d.%m.%Y')
+                     if fy.previous_year and fy.previous_year.end_date else '' %}
+{% set ccy = customer.books_currency or 'SGD' %}
+{% set ccy_sym = 'S$' if ccy == 'SGD' else ccy %}
+
+{% for payload in payloads %}
+  {% set section = payload.section %}
+  {% set is_cover = section.section_key == 'cover_page' %}
+
+  <div class="rpt-page{% if not loop.first %} page-break{% endif %}"
+       id="sec-{{ section.section_key }}">
+
+    {# ---------------------------------------------------------- cover -- #}
+    {% if is_cover %}
+      <div class="cover">
+        <h1>ANNUAL REPORT {{ fy.year_label }}</h1>
+        <p class="cover-sub">Financial Statements and Other Financial Information</p>
+        <h2 class="cover-co">{{ (customer.legal_name or customer.name)|upper }}</h2>
+        <p class="cover-uen">(Registration No: {{ customer.uen or '—' }})</p>
+        <p class="cover-date">{{ fy.end_date|datefmt('%d %B %Y') }}</p>
+      </div>
+
+      <h3 class="ruled">CORPORATE INFORMATION</h3>
+
+      <div class="corp-grid">
+        <div class="corp-label">THE BOARD OF DIRECTORS</div>
+        <div class="corp-value">
+          {% if customer.directors %}
+            {{ customer.directors|replace('\n', '<br>')|safe }}
+          {% else %}<span class="missing-binding">[not provided]</span>{% endif %}
+        </div>
+
+        <div class="corp-label">COMPANY SECRETARY</div>
+        <div class="corp-value">
+          {% if customer.company_secretary %}{{ customer.company_secretary }}
+          {% else %}<span class="missing-binding">[not provided]</span>{% endif %}
+        </div>
+
+        <div class="corp-label">REGISTERED OFFICE</div>
+        <div class="corp-value">
+          {% for part in [customer.address_line1, customer.address_line2,
+                          ('Singapore ' ~ customer.postal_code) if customer.postal_code else None] %}
+            {% if part %}{{ part }}<br>{% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="corp-label" style="margin-top:18px">CONTENTS</div>
+      {#
+        Page numbers come from WeasyPrint's target-counter, so the contents
+        page cites where each section actually lands. Nothing is printed on
+        screen, where there is no pagination to cite.
+      #}
+      {#
+        The seventeen notes are one contents entry spanning a page range, the
+        way the client's template lists them - not seventeen separate lines.
+      #}
+      {% set note_keys = [] %}
+      {% for other in payloads %}
+        {% if other.section.section_key.startswith('note_') %}
+          {% set _ = note_keys.append(other.section.section_key) %}
+        {% endif %}
+      {% endfor %}
+      <table class="contents">
+        {% set ns_toc = namespace(notes_done=false) %}
+        {% for other in payloads %}
+          {% set key = other.section.section_key %}
+          {% if key != 'cover_page' %}
+            {% if not key.startswith('note_') %}
+              <tr>
+                <td class="c-title">{{ other.section.title }}</td>
+                <td class="c-dots"><span class="leader"></span></td>
+                <td class="c-page"><a href="#sec-{{ key }}"></a></td>
+              </tr>
+            {% elif not ns_toc.notes_done %}
+              {% set ns_toc.notes_done = true %}
+              <tr>
+                <td class="c-title">Notes to the Financial Statements</td>
+                <td class="c-dots"><span class="leader"></span></td>
+                <td class="c-page">
+                  <a href="#sec-{{ note_keys|first }}"></a>{% if note_keys|length > 1 %}
+                  &ndash; <a href="#sec-{{ note_keys|last }}"></a>{% endif %}
+                </td>
+              </tr>
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      </table>
+
+    {# ----------------------------------------------------- statements -- #}
+    {% elif section.section_type == 'statement' %}
+      {% set statement = payload.statement %}
+      {% set as_of = statement and statement.statement_type == 'balance_sheet' %}
+      {{ page_header(section.title,
+                     ('as of ' if as_of else 'for the Year Ended ')
+                     ~ (fy.end_date|datefmt('%d %B %Y'))) }}
+
+      {% if statement %}
+        {% set detailed = payload.detailed %}
+        {% set show_notes = not detailed %}
+        {% set headings = GROUP_HEADINGS.get(
+             statement.statement_type ~ ('_detailed' if detailed else '')) or {} %}
+        <table class="fin">
+          <thead>
+            <tr class="hdr-dates">
+              <th class="lbl"></th>
+              {% if show_notes %}<th class="notes"></th>{% endif %}
+              <th class="num">{{ fy_end }}</th>
+              <th class="num">{{ fy_prev_end or '—' }}</th>
+            </tr>
+            <tr class="hdr-ccy">
+              <th class="lbl"></th>
+              {% if show_notes %}<th class="notes">Notes</th>{% endif %}
+              <th class="num">{{ ccy_sym }}</th>
+              <th class="num">{{ ccy_sym }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set ns = namespace(group=None) %}
+            {% for line in statement.lines %}
+              {# Two reasons a line stays off the face:
+                 - it is a breakdown of a subtotal shown above it (only the
+                   Detailed Profit and Loss Statement expands those); or
+                 - it is an optional line this company has no balance on.
+                 An optional line that DOES carry a balance always prints,
+                 otherwise the face would not add up to its own subtotals. #}
+              {% set nil_optional = line.line_key in OPTIONAL_LINES
+                   and not line.effective_amount and not line.amount_previous %}
+              {% if (detailed or not line.is_detail) and not nil_optional %}
+                {% if line.group_key != ns.group %}
+                  {% set ns.group = line.group_key %}
+                  {% set heading = headings.get(line.group_key) %}
+                  {% if heading %}
+                    {% for part in heading.split('|') %}
+                      <tr class="group-head {{ 'major' if loop.first and heading.split('|')|length > 1 else 'minor' }}">
+                        <td colspan="{{ 4 if show_notes else 3 }}">{{ part }}</td>
+                      </tr>
+                    {% endfor %}
+                  {% endif %}
+                {% endif %}
+                <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}{% if line.is_detail %} detail{% endif %}">
+                  <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ line.label }}</td>
+                  {% if show_notes %}<td class="notes">{{ line.note_ref or '' }}</td>{% endif %}
+                  {{ amount_cell(line.effective_amount) }}
+                  {{ amount_cell(line.amount_previous) }}
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+
+        {% if payload.footnote %}
+          <p class="rpt-foot">{{ payload.footnote }}</p>
+        {% else %}
+          <p class="rpt-foot">The annexed notes form an integral part of and
+          should be read in conjunction with these financial statements.</p>
+        {% endif %}
+      {% else %}
+        <p class="rpt-missing">This statement has not been generated yet —
+        approve the trial balance first.</p>
+      {% endif %}
+
+    {# ---------------------------------------------- notes / narrative -- #}
+    {% else %}
+      {% set is_note = section.section_key.startswith('note_') %}
+      {{ page_header(
+           'Notes to the Financial Statements' if is_note else section.title,
+           ('- ' ~ (fy.end_date|datefmt('%d %B %Y'))) if is_note else '',
+           section_id=section.id if (editable and not is_note) else None) }}
+
+      {#
+        In the builder these are live editing surfaces: click the text and
+        type. Only the narrative is editable - statements and note tables are
+        derived from the trial balance and must not be typed over. Substituted
+        fields render as uneditable chips so editing the text around them
+        cannot destroy the placeholder underneath.
+      #}
+      {% if is_note %}
+        <h3 class="note-title"{% if editable %} contenteditable="true"
+            data-section-id="{{ section.id }}" data-field="title"
+            data-placeholder="Section title"{% endif %}>{{ section.title }}</h3>
+      {% endif %}
+
+      <div class="rpt-body"{% if editable %} contenteditable="true"
+           data-section-id="{{ section.id }}" data-field="content_html"
+           data-placeholder="Click to write this section…"{% endif %}>{{ payload.html|safe }}</div>
+
+      {% for table in payload.tables %}
+        {% if table.heading %}<p class="tbl-head">{{ table.heading }}</p>{% endif %}
+        <table class="fin note-table">
+          <thead>
+            <tr class="hdr-dates">
+              <th class="lbl"></th>
+              <th class="num">{{ fy_end }}</th>
+              <th class="num">{{ fy_prev_end or '—' }}</th>
+            </tr>
+            <tr class="hdr-ccy">
+              <th class="lbl"></th>
+              <th class="num">{{ ccy_sym }}</th>
+              <th class="num">{{ ccy_sym }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in table.rows %}
+              <tr class="{% if row.bold %}subtotal{% endif %}{% if row.rule %} ruled-above{% endif %}">
+                <td class="lbl">{{ row.label }}</td>
+                {% if row.current is none %}
+                  <td class="num"></td><td class="num"></td>
+                {% else %}
+                  {{ amount_cell(row.current) }}
+                  {{ amount_cell(row.previous) }}
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endfor %}
+    {% endif %}
+
+  </div>
+{% else %}
+  <p class="rpt-missing">No sections are enabled for this report.</p>
+{% endfor %}

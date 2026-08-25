@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ statement.type_label }} · {{ customer.name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <style>
+    body { background: #eef0f3; padding: 30px 20px; }
+    .sheet {
+      max-width: 820px; margin: 0 auto; background: #fff; padding: 50px 56px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.09); border-radius: 4px;
+    }
+    .sheet-head { text-align: center; margin-bottom: 34px; }
+    .sheet-head h1 { font-size: 19px; margin-bottom: 5px; }
+    .sheet-head .co { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+    .sheet-head .meta { font-size: 12.5px; color: var(--text-muted); }
+    .print-bar {
+      max-width: 820px; margin: 0 auto 16px; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .sheet { box-shadow: none; padding: 0; max-width: none; }
+      .print-bar { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="print-bar">
+  <a href="{{ url_for('statements.detail', statement_id=statement.id) }}" class="btn btn-sm">
+    ← Back to editing
+  </a>
+  <button class="btn btn-sm btn-primary" onclick="window.print()">⎙ Print / Save as PDF</button>
+</div>
+
+<div class="sheet">
+  <div class="sheet-head">
+    <div class="co">{{ customer.legal_name or customer.name }}</div>
+    {% if customer.uen %}<div class="meta">UEN: {{ customer.uen }}</div>{% endif %}
+    <h1 style="margin-top:16px">{{ statement.type_label }}</h1>
+    <div class="meta">
+      {% if statement.statement_type == 'balance_sheet' %}
+        As at {{ fy.end_date|datefmt('%d %B %Y') }}
+      {% else %}
+        For the financial year ended {{ fy.end_date|datefmt('%d %B %Y') }}
+      {% endif %}
+    </div>
+  </div>
+
+  <table class="fin">
+    <thead>
+      <tr>
+        <th>&nbsp;</th>
+        <th style="width:140px">{{ fy.year_label }}<br>
+          <span style="font-weight:400;text-transform:none">{{ customer.books_currency }}</span></th>
+        <th style="width:140px">
+          {{ fy.previous_year.year_label if fy.previous_year else '—' }}<br>
+          <span style="font-weight:400;text-transform:none">{{ customer.books_currency }}</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set ns = namespace(group=None) %}
+      {% for line in statement.lines %}
+        {% if line.group_key != ns.group %}
+          {% set ns.group = line.group_key %}
+          {% if line.group_key and statement.statement_type != 'trial_balance' %}
+          <tr class="group-head">
+            <td colspan="3">{{ line.group_key|replace('_', ' ') }}</td>
+          </tr>
+          {% endif %}
+        {% endif %}
+        <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}">
+          <td class="{% if line.indent %}indent-{{ line.indent }}{% endif %}">{{ line.label }}</td>
+          <td class="num">{{ line.effective_amount|money }}</td>
+          <td class="num">{{ line.amount_previous|money }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p style="margin-top:34px;font-size:11.5px;color:var(--text-muted);
+            border-top:1px solid var(--border);padding-top:12px">
+    The accompanying notes form an integral part of these financial statements.
+    Prepared under Singapore Financial Reporting Standards.
+  </p>
+</div>
+
+</body>
+</html>

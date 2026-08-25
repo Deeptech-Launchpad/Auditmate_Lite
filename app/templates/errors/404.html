@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page not found · Auditmate Lite</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body style="display:grid;place-items:center;min-height:100vh;background:var(--bg)">
+  <div class="card" style="max-width:460px;width:100%;margin:20px">
+    <div class="card-body">
+      <div class="empty">
+        <div class="icon" style="font-size:44px;font-weight:700;opacity:.25">404</div>
+        <h3>Page not found</h3>
+        <p>That page does not exist, or you do not have access to it.</p>
+        <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary">Back to dashboard</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

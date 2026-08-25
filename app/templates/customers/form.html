@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if customer else 'New' }} Customer · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.index') }}">Customers</a>
+  <span class="sep">/</span>
+  <span class="current">{{ customer.name if customer else 'New customer' }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ 'Edit customer' if customer else 'New customer' }}</h1>
+    <p class="subtitle">
+      {% if customer %}Update client details{% else %}Client intake — Singapore entity details{% endif %}
+    </p>
+  </div>
+</div>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card">
+    <div class="card-body">
+
+      <div class="fieldset-title">Entity details</div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="name">Customer name *</label>
+          <input id="name" name="name" required
+                 value="{{ customer.name if customer else form.get('name', '') }}">
+        </div>
+        <div class="field">
+          <label for="legal_name">Registered legal name</label>
+          <input id="legal_name" name="legal_name"
+                 value="{{ customer.legal_name or '' if customer else '' }}">
+          <span class="help">If different from the trading name</span>
+        </div>
+        <div class="field">
+          <label for="entity_type">Entity type</label>
+          <select id="entity_type" name="entity_type">
+            {% for key, label in ENTITY_TYPES %}
+              <option value="{{ key }}"
+                {% if customer and customer.entity_type == key %}selected{% endif %}
+                {% if not customer and key == 'private_limited' %}selected{% endif %}>
+                {{ label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="uen">UEN</label>
+          <input id="uen" name="uen" placeholder="e.g. 201812345K"
+                 value="{{ customer.uen or '' if customer else '' }}">
+          <span class="help">Unique Entity Number (ACRA)</span>
+        </div>
+        <div class="field">
+          <label for="gst_reg_no">GST registration no.</label>
+          <input id="gst_reg_no" name="gst_reg_no"
+                 value="{{ customer.gst_reg_no or '' if customer else '' }}">
+          <span class="help">Leave blank if not GST-registered</span>
+        </div>
+        <div class="field">
+          <label for="incorporation_date">Incorporation date</label>
+          <input type="date" id="incorporation_date" name="incorporation_date"
+                 value="{{ customer.incorporation_date.isoformat() if customer and customer.incorporation_date else '' }}">
+        </div>
+      </div>
+
+      <div class="fieldset-title">Contact</div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="contact_person">Contact person</label>
+          <input id="contact_person" name="contact_person"
+                 value="{{ customer.contact_person or '' if customer else '' }}">
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email"
+                 value="{{ customer.email or '' if customer else '' }}">
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input id="phone" name="phone" placeholder="+65 …"
+                 value="{{ customer.phone or '' if customer else '' }}">
+        </div>
+      </div>
+
+      <div class="fieldset-title">Officers</div>
+      <p class="muted small" style="margin:-4px 0 12px">
+        These appear on the annual report cover page and in the directors'
+        statement.
+      </p>
+      <div class="form-grid">
+        <div class="field">
+          <label for="directors">Board of directors</label>
+          <textarea id="directors" name="directors" rows="3"
+                    placeholder="One per line, e.g.&#10;Ms Anto Jeba Stelwin Foncia Machado"
+                    >{{ customer.directors or '' if customer else '' }}</textarea>
+          <span class="help">One name per line</span>
+        </div>
+        <div class="field">
+          <label for="company_secretary">Company secretary</label>
+          <input id="company_secretary" name="company_secretary"
+                 value="{{ customer.company_secretary or '' if customer else '' }}">
+        </div>
+      </div>
+
+      <div class="fieldset-title">Registered address</div>
+      <div class="form-grid">
+        <div class="field full">
+          <label for="address_line1">Address line 1</label>
+          <input id="address_line1" name="address_line1"
+                 value="{{ customer.address_line1 or '' if customer else '' }}">
+        </div>
+        <div class="field">
+          <label for="address_line2">Address line 2 / Unit</label>
+          <input id="address_line2" name="address_line2" placeholder="#12-34"
+                 value="{{ customer.address_line2 or '' if customer else '' }}">
+        </div>
+        <div class="field">
+          <label for="postal_code">Postal code</label>
+          <input id="postal_code" name="postal_code"
+                 value="{{ customer.postal_code or '' if customer else '' }}">
+        </div>
+        <div class="field">
+          <label for="country">Country</label>
+          <input id="country" name="country"
+                 value="{{ customer.country if customer else 'Singapore' }}">
+        </div>
+      </div>
+
+      <div class="fieldset-title">Accounting</div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="financial_year_end_month">Financial year end</label>
+          <select id="financial_year_end_month" name="financial_year_end_month">
+            {% set months = [(1,'31 January'),(2,'28/29 February'),(3,'31 March'),
+                             (4,'30 April'),(5,'31 May'),(6,'30 June'),(7,'31 July'),
+                             (8,'31 August'),(9,'30 September'),(10,'31 October'),
+                             (11,'30 November'),(12,'31 December')] %}
+            {% for num, label in months %}
+              <option value="{{ num }}"
+                {% if customer and customer.financial_year_end_month == num %}selected{% endif %}
+                {% if not customer and num == 12 %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <span class="help">Singapore companies choose their own FYE</span>
+        </div>
+        <div class="field">
+          <label for="books_currency">Reporting currency</label>
+          <select id="books_currency" name="books_currency">
+            {% for code in ['SGD', 'USD', 'MYR', 'EUR', 'GBP'] %}
+              <option value="{{ code }}"
+                {% if customer and customer.books_currency == code %}selected{% endif %}
+                {% if not customer and code == 'SGD' %}selected{% endif %}>{{ code }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {% if not customer %}
+        <div class="field">
+          <label for="year_label">First financial year</label>
+          <input id="year_label" name="year_label" value="{{ default_label }}"
+                 placeholder="FY2025">
+          <span class="help">Creates the first engagement workspace</span>
+        </div>
+        {% endif %}
+
+        <div class="field full">
+          <label for="notes">Notes</label>
+          <textarea id="notes" name="notes">{{ customer.notes or '' if customer else '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <a href="{{ url_for('customers.detail', customer_id=customer.id) if customer else url_for('customers.index') }}"
+           class="btn">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+          {{ 'Save changes' if customer else 'Create customer' }}
+        </button>
+      </div>
+
+    </div>
+  </div>
+</form>
+{% endblock %}

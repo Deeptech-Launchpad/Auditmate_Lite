@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trial Balance for review · {{ customer.name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <style>
+    /* Standalone page: no sidebar, no app navigation, nothing but the
+       customer's own trial balance. */
+    body { background: #eef0f3; }
+    .review-wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 80px; }
+    .review-head {
+      background: #16233a; color: #fff; border-radius: 10px 10px 0 0;
+      padding: 26px 30px;
+    }
+    .review-head h1 { font-size: 20px; margin-bottom: 5px; }
+    .review-head .co { font-size: 15px; color: #c3ccdb; }
+    .review-head .meta { font-size: 12.5px; color: #8b98ad; margin-top: 10px; }
+    .review-body {
+      background: #fff; border-radius: 0 0 10px 10px; padding: 0;
+      box-shadow: 0 2px 14px rgba(0,0,0,.08);
+    }
+    .review-intro { padding: 22px 30px; border-bottom: 1px solid var(--border); }
+    .review-intro ol { margin: 12px 0 0; padding-left: 20px; font-size: 13.5px; }
+    .review-intro li { margin-bottom: 6px; }
+    .tb-scroll { max-height: 62vh; overflow: auto; }
+    .sticky-foot {
+      position: sticky; bottom: 0; background: #fff;
+      border-top: 2px solid var(--border-strong); padding: 16px 30px;
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 16px; flex-wrap: wrap; border-radius: 0 0 10px 10px;
+    }
+    .changed { background: #fff9e6 !important; }
+    table.grid td input.cell { font-size: 13.5px; }
+    .brandline {
+      text-align: center; color: var(--text-faint); font-size: 12px;
+      margin-top: 18px;
+    }
+  </style>
+</head>
+<body>
+<div class="review-wrap">
+
+  <div class="review-head">
+    <h1>Trial Balance for your review</h1>
+    <div class="co">{{ customer.legal_name or customer.name }}</div>
+    <div class="meta">
+      {% if customer.uen %}UEN {{ customer.uen }} · {% endif %}
+      Financial year {{ fy.year_label }}
+      {% if fy.end_date %} · year ended {{ fy.end_date|datefmt('%d %B %Y') }}{% endif %}
+      {% if link.expires_at %} · link valid until {{ link.expires_at|datefmt('%d %b %Y') }}{% endif %}
+    </div>
+  </div>
+
+  <div class="review-body">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div style="padding:16px 30px 0">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}"><span>{{ message }}</span></div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% if already_submitted %}
+    <div style="padding:22px 30px 0">
+      <div class="notice ok">
+        <span>✓</span>
+        <div>
+          You already submitted this trial balance on
+          {{ link.submitted_at|datefmt('%d %b %Y at %H:%M') }}.
+          You can submit again if you need to correct something — we will see
+          the latest version.
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="review-intro">
+      <strong>What we need from you</strong>
+      <ol>
+        <li>Check each account balance below against your records.</li>
+        <li>If a figure is wrong, type the correct amount over it.</li>
+        <li>Add a comment on any line you have changed, so we understand why.</li>
+        <li>Press <strong>Submit to auditor</strong> at the bottom.</li>
+      </ol>
+      <p class="muted small" style="margin:12px 0 0">
+        Amounts are in {{ customer.books_currency }}. Leave anything you agree
+        with untouched — we only look at what you change.
+      </p>
+    </div>
+
+    <form method="post" action="{{ url_for('review.submit', token=token) }}"
+          id="review-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="tb-scroll">
+        <table class="grid" id="review-grid">
+          <thead>
+            <tr>
+              <th style="width:80px">Code</th>
+              <th>Account</th>
+              <th style="width:130px" class="right">Debit</th>
+              <th style="width:130px" class="right">Credit</th>
+              <th style="width:260px">Your comment</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for account in accounts %}
+            <tr data-row>
+              <td class="muted small mono" style="padding:8px 10px">
+                {{ account.account_code or '—' }}
+              </td>
+              <td style="padding:8px 10px">
+                {{ account.account_name }}
+                {% if account.is_adjustment %}
+                  <span class="pill pill-purple" style="font-size:10px">adjustment</span>
+                {% endif %}
+              </td>
+              <td>
+                <input class="cell num amount"
+                       name="account_{{ account.id }}_debit"
+                       data-original="{{ '%.2f'|format(account.debit or 0) }}"
+                       value="{{ '%.2f'|format(account.debit) if account.debit else '' }}"
+                       inputmode="decimal">
+              </td>
+              <td>
+                <input class="cell num amount"
+                       name="account_{{ account.id }}_credit"
+                       data-original="{{ '%.2f'|format(account.credit or 0) }}"
+                       value="{{ '%.2f'|format(account.credit) if account.credit else '' }}"
+                       inputmode="decimal">
+              </td>
+              <td>
+                <input class="cell" name="account_{{ account.id }}_comment"
+                       placeholder="optional">
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="padding:20px 30px 0">
+        <div class="field">
+          <label for="message">Anything else you want to tell us?</label>
+          <textarea id="message" name="message" rows="3"
+                    placeholder="Optional — any general note about these figures."></textarea>
+        </div>
+      </div>
+
+      <div class="sticky-foot">
+        <div class="totals">
+          <div class="t-item">
+            <div class="t-label">Total debit</div>
+            <div class="t-value" id="r-debit">{{ totals.debit|money }}</div>
+          </div>
+          <div class="t-item">
+            <div class="t-label">Total credit</div>
+            <div class="t-value" id="r-credit">{{ totals.credit|money }}</div>
+          </div>
+          <div class="t-item">
+            <div class="t-label">Difference</div>
+            <div class="t-value" id="r-diff">{{ totals.difference|money }}</div>
+          </div>
+          <div class="t-item">
+            <div class="t-label">You changed</div>
+            <div class="t-value" id="r-changed">0</div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg">
+          Submit to auditor →
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <p class="brandline">
+    Sent securely by AltiusNXT Audit · please do not forward this link
+  </p>
+</div>
+
+<script>
+/* Live totals and a count of what the customer has changed, so they can see
+   the effect of their edits before submitting. */
+(function () {
+  const grid = document.getElementById('review-grid');
+  if (!grid) return;
+
+  function parse(v) {
+    if (!v || !v.trim()) return 0;
+    const n = parseFloat(v.replace(/[, ]/g, '').replace(/^\((.*)\)$/, '-$1'));
+    return isNaN(n) ? 0 : n;
+  }
+  function money(n) {
+    if (!n) return '—';
+    const a = Math.abs(n).toLocaleString('en-SG',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return n < 0 ? '(' + a + ')' : a;
+  }
+
+  function recalc() {
+    let debit = 0, credit = 0, changed = 0;
+
+    grid.querySelectorAll('tr[data-row]').forEach(row => {
+      let rowChanged = false;
+      row.querySelectorAll('input.amount').forEach(input => {
+        const value = parse(input.value);
+        if (input.name.endsWith('_debit')) debit += value;
+        else credit += value;
+
+        if (Math.abs(value - parseFloat(input.dataset.original || 0)) > 0.005) {
+          rowChanged = true;
+        }
+      });
+      row.classList.toggle('changed', rowChanged);
+      if (rowChanged) changed += 1;
+    });
+
+    document.getElementById('r-debit').textContent = money(debit);
+    document.getElementById('r-credit').textContent = money(credit);
+
+    const diff = debit - credit;
+    const diffEl = document.getElementById('r-diff');
+    diffEl.textContent = money(diff);
+    diffEl.style.color = Math.abs(diff) < 0.01 ? 'var(--green)' : 'var(--red)';
+
+    const changedEl = document.getElementById('r-changed');
+    changedEl.textContent = changed;
+    changedEl.style.color = changed ? 'var(--amber)' : 'var(--text)';
+  }
+
+  grid.addEventListener('input', recalc);
+  grid.addEventListener('blur', event => {
+    const input = event.target;
+    if (input.classList && input.classList.contains('amount')) {
+      const n = parse(input.value);
+      input.value = n ? n.toLocaleString('en-SG',
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+      recalc();
+    }
+  }, true);
+
+  document.getElementById('review-form').addEventListener('submit', event => {
+    const changed = parseInt(document.getElementById('r-changed').textContent, 10);
+    if (changed === 0 &&
+        !confirm('You have not changed any figures. Submit as correct?')) {
+      event.preventDefault();
+    }
+  });
+
+  recalc();
+})();
+</script>
+</body>
+</html>

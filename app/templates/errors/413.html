@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>File too large · Auditmate Lite</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body style="display:grid;place-items:center;min-height:100vh;background:var(--bg)">
+  <div class="card" style="max-width:460px;width:100%;margin:20px">
+    <div class="card-body">
+      <div class="empty">
+        <div class="icon" style="font-size:44px;font-weight:700;opacity:.25">413</div>
+        <h3>File too large</h3>
+        <p>The upload exceeded the size limit. Files must be 25 MB or smaller.</p>
+        <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary">Back to dashboard</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

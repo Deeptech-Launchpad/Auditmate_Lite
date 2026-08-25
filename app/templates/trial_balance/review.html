@@ -1,0 +1,497 @@
+{% extends "base.html" %}
+{% block title %}Customer Review · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <span class="current">Customer Review</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Customer Review</h1>
+    <p class="subtitle">
+      {{ customer.name }} · {{ fy.year_label }} ·
+      {{ versions|length }} round{{ '' if versions|length == 1 else 's' }}
+      {% if fy.pending_tb_changes %}
+        · <span class="pill pill-amber">{{ fy.pending_tb_changes }} awaiting your decision</span>
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn">
+      ← Trial Balance
+    </a>
+  </div>
+</div>
+
+{#
+  What to do next.
+
+  This screen is a waiting room - the auditor arrives, decides some changes,
+  and then has nowhere obvious to go. The round closes and the page looks
+  exactly as it did before, with the onward step (approve the trial balance,
+  which is what generates the statements) two pages away and unmentioned.
+  So the state of the round is stated here, with the next action attached.
+#}
+{% set open_round = versions
+     | selectattr('status', 'equalto', 'customer_submitted') | list | first %}
+{% if fy.pending_tb_changes %}
+  <div class="notice warn">
+    <span>&#9888;</span>
+    <div>
+      <strong>{{ fy.pending_tb_changes }} change(s) awaiting your decision.</strong>
+      Accept or reject each one below. Accepting writes the figure straight
+      onto the trial balance; rejecting leaves it as it was.
+    </div>
+  </div>
+{% elif fy.tb_is_approved %}
+  <div class="notice ok">
+    <span>&#10003;</span>
+    <div>
+      <strong>Trial balance approved and statements generated.</strong>
+      Nothing here is waiting on you.
+      {% if open_round %}
+        You can close round {{ open_round.version_no }} below to tidy the
+        history &mdash; it will not disturb the approval.
+      {% endif %}
+      The next step is the audit report.
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <a href="{{ url_for('statements.index', fy_id=fy.id) }}" class="btn btn-sm">
+          4. Statements
+        </a>
+        <a href="{{ url_for('reports.builder', fy_id=fy.id) }}" class="btn btn-sm btn-primary">
+          5. Audit Report &rarr;
+        </a>
+      </div>
+    </div>
+  </div>
+{% elif open_round %}
+  <div class="notice ok">
+    <span>&#10003;</span>
+    <div>
+      <strong>Every change in this round is decided.</strong>
+      Close the round below, then approve the trial balance &mdash; that is
+      what generates the six financial statements.
+    </div>
+  </div>
+{% elif fy.tb_accounts %}
+  <div class="notice">
+    <span>&#8594;</span>
+    <div>
+      <strong>Nothing is waiting on you here.</strong>
+      {% if link and not link.submitted_at and not link.revoked_at %}
+        The customer has the link and has not submitted yet &mdash; you can
+        wait, or approve the trial balance as it stands.
+      {% else %}
+        Review is complete for now.
+      {% endif %}
+      Approving the trial balance is what generates the six financial
+      statements and unlocks the audit report.
+      <div style="margin-top:10px">
+        <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}"
+           class="btn btn-sm btn-primary">
+          Go to the trial balance to approve &rarr;
+        </a>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{#
+  The link is shown once whether or not the email went out, because the raw
+  token is never stored. That made a successful send look like a fallback,
+  so the panel now leads with what actually happened to the email.
+#}
+{% set once_url = session.pop('review_link_once', None) %}
+{% set once_code = session.pop('review_passcode_once', None) %}
+{% set once_send = session.pop('review_send_once', None) %}
+{% if once_url %}
+{% set sent_ok = once_send and once_send.sent %}
+<div class="card" style="border-color:var(--{{ 'green' if sent_ok else 'amber' }})">
+  <div class="card-head" style="background:var(--{{ 'green' if sent_ok else 'amber' }}-light)">
+    <h2>
+      {% if sent_ok %}
+        &#10003; Email sent to {{ once_send.to }}
+      {% else %}
+        &#9888; Not emailed — send this link yourself
+      {% endif %}
+    </h2>
+    <span class="hint">The link is shown once. It is not stored anywhere.</span>
+  </div>
+  <div class="card-body">
+    {% if sent_ok %}
+      <p class="small" style="margin-top:0">
+        Delivered to your mail server for
+        <strong>{{ once_send.to }}</strong>. Ask them to check spam if it does
+        not arrive — the message comes from your Gmail account, not from the
+        customer's usual contact.
+        The same link is below in case you would rather send it another way.
+      </p>
+    {% else %}
+      <p class="small" style="margin-top:0">
+        <strong>No email was sent.</strong>
+        {{ once_send.error if once_send and once_send.error else '' }}
+        Copy the link below and send it to {{ once_send.to if once_send else 'the customer' }}
+        yourself.
+      </p>
+    {% endif %}
+    <p class="small muted">
+      This is the URL the customer opens. There is no login — the address
+      itself is the key, so treat it like a password.
+    </p>
+    <input class="mono" readonly value="{{ once_url }}" onclick="this.select()"
+           style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:6px;font-size:12.5px">
+    {% if once_code %}
+      <div class="notice" style="margin-top:12px">
+        <span>🔑</span>
+        <div>
+          Access code <strong style="font-size:17px;letter-spacing:3px">{{ once_code }}</strong>
+          — give this to the customer by phone or another channel, not in the
+          same email.
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:18px;align-items:start">
+
+  <div>
+    <!-- ------------------------------------------- changes to decide --- -->
+    {#
+      Show every customer submission, including one with no changes at all.
+      A client replying "these figures are correct" is the most common - and
+      most important - outcome: it is them agreeing the trial balance. An
+      earlier version of this page only rendered versions that carried
+      changes, so a clean confirmation looked identical to no reply at all.
+    #}
+    {% set customer_versions = versions|selectattr('source', 'equalto', 'customer')|list %}
+    {% if customer_versions %}
+      {% for version in customer_versions %}
+        {% if not version.changes %}
+        <div class="card" style="border-color:var(--green)">
+          <div class="card-head" style="background:var(--green-light)">
+            <h2>✓ Customer confirmed the trial balance</h2>
+            <span class="hint">Round {{ version.version_no }} · no changes proposed</span>
+          </div>
+          <div class="card-body">
+            <p style="margin-top:0">
+              <strong>{{ customer.name }}</strong> reviewed the trial balance on
+              {{ version.submitted_at|datefmt('%d %B %Y at %H:%M') }} and
+              submitted it back <strong>without changing any figure</strong> —
+              they agree it is correct.
+            </p>
+
+            {% if version.customer_message %}
+            <div style="padding:12px 14px;background:var(--purple-light);border-radius:6px;margin:12px 0">
+              <strong class="small">Their message:</strong>
+              <p class="small" style="margin:5px 0 0;white-space:pre-wrap">{{ version.customer_message }}</p>
+            </div>
+            {% endif %}
+
+            <div class="notice" style="margin:14px 0">
+              <span>→</span>
+              <div>
+                <strong>Next step:</strong> approve the trial balance. That
+                locks these figures and generates the financial statements,
+                which in turn unlocks the audit report.
+              </div>
+            </div>
+
+            <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}"
+               class="btn btn-success">
+              ✓ Go to the trial balance and approve
+            </a>
+          </div>
+        </div>
+        {% else %}
+        <div class="card">
+          <div class="card-head">
+            <h2>Round {{ version.version_no }} — customer's changes</h2>
+            <span class="hint">
+              {% set s = version.change_summary %}
+              {{ s.pending }} pending · {{ s.accepted }} accepted · {{ s.rejected }} rejected
+            </span>
+          </div>
+
+          {% if version.customer_message %}
+          <div style="padding:14px 18px;background:var(--purple-light);border-bottom:1px solid var(--border)">
+            <strong class="small">Customer's message:</strong>
+            <p class="small" style="margin:5px 0 0;white-space:pre-wrap">{{ version.customer_message }}</p>
+          </div>
+          {% endif %}
+
+          <div class="card-body tight">
+            <div class="table-wrap">
+              <table class="data" data-version-id="{{ version.id }}">
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th class="num">They say</th>
+                    <th class="num">We had</th>
+                    <th class="num">Change</th>
+                    <th style="width:210px">Decision</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for change in version.changes %}
+                  {# A "comment" row is a query on a figure the customer did
+                     NOT change. It carries no amounts, so it is labelled and
+                     decided as a query rather than as a proposed edit. #}
+                  {% set is_query = change.field == 'comment' %}
+                  <tr data-change-id="{{ change.id }}"
+                      class="change-row status-{{ change.status }}{{ ' is-query' if is_query }}">
+                    <td>
+                      <div class="stack">
+                        <span class="strong">{{ change.account_name }}</span>
+                        <span class="muted small">
+                          {% if is_query %}
+                            <span class="pill pill-purple" style="font-size:10px">
+                              query — figure unchanged
+                            </span>
+                          {% else %}
+                            {{ change.field }}
+                          {% endif %}
+                          {% if change.account_code %} · {{ change.account_code }}{% endif %}
+                        </span>
+                        {% if change.customer_comment %}
+                          <span class="small" style="margin-top:4px;padding:6px 9px;background:var(--purple-light);border-radius:5px;color:#4d2b7d">
+                            “{{ change.customer_comment }}”
+                          </span>
+                        {% endif %}
+                      </div>
+                    </td>
+                    <td class="num strong">
+                      {% if change.field == 'comment' %}—
+                      {% else %}{{ change.value_after|money }}{% endif %}
+                    </td>
+                    <td class="num muted">
+                      {% if change.field == 'comment' %}—
+                      {% else %}{{ change.value_before|money }}{% endif %}
+                    </td>
+                    <td class="num {{ 'diff-up' if change.delta > 0 else 'diff-down' }}">
+                      {% if change.field == 'comment' %}—
+                      {% else %}{{ '+' if change.delta > 0 }}{{ change.delta|money }}{% endif %}
+                    </td>
+                    <td class="nowrap">
+                      {% if change.status == 'pending' %}
+                        {% if is_query %}
+                          {# There is nothing to accept - the auditor is
+                             acknowledging a question, not a figure. #}
+                          <button class="btn btn-sm btn-success" data-decide="accepted">✓ Noted</button>
+                        {% else %}
+                          <button class="btn btn-sm btn-success" data-decide="accepted">✓ Accept</button>
+                          <button class="btn btn-sm btn-danger" data-decide="rejected">✕ Reject</button>
+                        {% endif %}
+                      {% elif change.status == 'accepted' %}
+                        <span class="pill pill-green">✓ {{ 'Noted' if is_query else 'Accepted' }}</span>
+                        <button class="btn btn-sm" data-decide="pending">undo</button>
+                      {% else %}
+                        <span class="pill pill-red">✕ Rejected</span>
+                        <button class="btn btn-sm" data-decide="pending">undo</button>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {% if version.pending_changes %}
+          <div class="toolbar" style="border-top:1px solid var(--border);border-bottom:0;justify-content:space-between">
+            <span class="muted small">
+              {{ version.pending_changes|length }} change(s) still to decide
+            </span>
+            <span style="display:flex;gap:8px">
+              <form method="post" action="{{ url_for('trial_balance.decide_all', version_id=version.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="decision" value="accepted">
+                <button class="btn btn-sm">Accept all remaining</button>
+              </form>
+              <form method="post" action="{{ url_for('trial_balance.decide_all', version_id=version.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="decision" value="rejected">
+                <button class="btn btn-sm">Reject all remaining</button>
+              </form>
+            </span>
+          </div>
+          {% elif version.status != 'applied' and version.source == 'customer' %}
+          <div class="toolbar" style="border-top:1px solid var(--border);border-bottom:0">
+            <form method="post" action="{{ url_for('trial_balance.finish_review', version_id=version.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-primary btn-sm">
+                ✓ Close this round and return to the trial balance
+              </button>
+            </form>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      {% endfor %}
+
+    {% else %}
+    <div class="card">
+      <div class="card-body">
+        <div class="empty">
+          <div class="icon">✉</div>
+          {% if not link %}
+            <h3>Not sent yet</h3>
+            <p>Send the trial balance to {{ customer.name }} using the panel on
+               the right. They get a link, edit it in their browser, and submit
+               it back — no login needed.</p>
+          {% elif link.access_count %}
+            <h3>Opened, but not submitted yet</h3>
+            <p>
+              {{ customer.name }} opened the link
+              {{ link.access_count }} time(s), most recently
+              {{ link.last_accessed_at|datefmt('%d %b %Y at %H:%M') }}.
+              They have not pressed Submit yet, so nothing has come back.
+            </p>
+          {% else %}
+            <h3>Sent, waiting for the customer</h3>
+            <p>The link was sent but has not been opened yet. Whatever they
+               submit will appear here — whether they confirm the figures as
+               correct or propose changes.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- --------------------------------------------- round history --- -->
+    {% if versions %}
+    <div class="card">
+      <div class="card-head"><h2>History</h2></div>
+      <div class="card-body">
+        {% for version in versions %}
+        <div class="version-row {% if version.source == 'customer' %}from-customer{% endif %}">
+          <div class="version-badge">v{{ version.version_no }}</div>
+          <div class="stack" style="flex:1;min-width:0">
+            <span class="strong">
+              {% if version.source == 'customer' %}Customer submitted
+              {% else %}Sent to customer{% endif %}
+            </span>
+            <span class="muted small">
+              {% if version.sent_at %}sent {{ version.sent_at|datefmt('%d %b %Y, %H:%M') }}{% endif %}
+              {% if version.submitted_at %}submitted {{ version.submitted_at|datefmt('%d %b %Y, %H:%M') }}
+                {% if version.submitted_from_ip %} from {{ version.submitted_from_ip }}{% endif %}
+              {% endif %}
+              {% if version.changes %} · {{ version.changes|length }} change(s){% endif %}
+            </span>
+          </div>
+          <span class="pill pill-grey">{{ version.status_label }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    <!-- ------------------------------------------------- send link --- -->
+    <div class="card">
+      <div class="card-head">
+        <h2>Send for review</h2>
+      </div>
+      <div class="card-body">
+        {% if link %}
+          <div class="notice {{ 'ok' if link.submitted_at else '' }}" style="margin-bottom:14px">
+            <span>{{ '✓' if link.submitted_at else '⏳' }}</span>
+            <div>
+              <strong>{{ link.state_label }}</strong><br>
+              <span class="small">
+                {% if link.access_count %}
+                  Opened {{ link.access_count }} time(s), last
+                  {{ link.last_accessed_at|datefmt('%d %b %H:%M') }}
+                  {% if link.last_accessed_ip %} from {{ link.last_accessed_ip }}{% endif %}.
+                {% else %}
+                  Not opened yet.
+                {% endif %}
+                {% if link.expires_at %}<br>Expires {{ link.expires_at|datefmt('%d %b %Y') }}.{% endif %}
+              </span>
+            </div>
+          </div>
+          <form method="post" action="{{ url_for('trial_balance.revoke_link', fy_id=fy.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-danger" style="width:100%">Revoke this link</button>
+          </form>
+          <div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>
+        {% endif %}
+
+        <p class="small muted" style="margin-top:0">
+          The customer gets an email with a link. No login, no account — they
+          click it and edit the trial balance in their browser.
+        </p>
+
+        <form method="post" action="{{ url_for('trial_balance.send_review', fy_id=fy.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field">
+            <label for="expires_days">Link valid for</label>
+            <select id="expires_days" name="expires_days">
+              <option value="7">7 days</option>
+              <option value="14">14 days</option>
+              <option value="30" selected>30 days</option>
+              <option value="60">60 days</option>
+            </select>
+          </div>
+          <label class="checkbox-row" style="margin-top:12px">
+            <input type="checkbox" name="use_passcode" value="1">
+            <span>Also require a short access code
+              <span class="muted small">(give it to them separately)</span></span>
+          </label>
+          <button type="submit" class="btn btn-primary" style="width:100%;margin-top:12px"
+                  {% if not totals.accounts %}disabled{% endif %}>
+            ✉ {{ 'Send again' if link else 'Send trial balance for review' }}
+          </button>
+        </form>
+
+        {% if not email_ready %}
+        <p class="small" style="color:var(--amber);margin-top:12px">
+          Email isn't configured — the link will be shown here for you to copy
+          and send yourself.
+        </p>
+        {% endif %}
+        {% if not customer.email %}
+        <p class="small" style="color:var(--red);margin-top:10px">
+          No email address on this customer —
+          <a href="{{ url_for('customers.edit', customer_id=customer.id) }}">add one</a>.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Trial balance now</h2></div>
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;padding:6px 0">
+          <span class="muted small">Debits</span>
+          <span class="strong">{{ totals.debit|money }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0">
+          <span class="muted small">Credits</span>
+          <span class="strong">{{ totals.credit|money }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);margin-top:6px">
+          <span class="muted small">Difference</span>
+          <span class="strong" id="tb-live-diff"
+                style="color:{{ 'var(--green)' if totals.balanced else 'var(--red)' }}">
+            {{ totals.difference|money }}
+          </span>
+        </div>
+        <p class="muted small" style="margin:12px 0 0">
+          Accepting a change updates these figures immediately.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tb_review.js') }}"></script>
+{% endblock %}

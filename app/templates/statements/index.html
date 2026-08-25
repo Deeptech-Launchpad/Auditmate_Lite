@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Statements · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <span class="current">Statements</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Financial Statements</h1>
+    <p class="subtitle">
+      {{ customer.name }} · {{ fy.year_label }} · Singapore SFRS presentation
+    </p>
+  </div>
+  <div class="page-actions">
+    {#
+      No "generate" button here on purpose. Statements are produced by
+      APPROVING the trial balance, so there is exactly one way to create
+      them and they can never disagree with the figures the customer
+      agreed. To refresh them, amend and re-approve the trial balance.
+    #}
+    <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn">
+      ← Trial Balance
+    </a>
+    {% if fy.tb_is_approved %}
+      <a href="{{ url_for('reports.builder', fy_id=fy.id) }}" class="btn btn-primary">
+        Audit Report →
+      </a>
+    {% endif %}
+  </div>
+</div>
+
+{% if not fy.tb_accounts %}
+<div class="notice warn">
+  <span>⚠</span>
+  <div>
+    <strong>No trial balance yet.</strong>
+    The statements are generated from the standard trial balance, so that has
+    to be built first.
+    <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">Go to the trial balance →</a>
+  </div>
+</div>
+{% elif not fy.tb_is_approved %}
+<div class="notice warn">
+  <span>⚠</span>
+  <div>
+    <strong>The trial balance is not approved yet.</strong>
+    {% if existing %}
+      These statements were generated from an earlier approval and the trial
+      balance has since been reopened, so they may be out of date.
+    {% else %}
+      Approving the trial balance is what generates the statements.
+    {% endif %}
+    Approving it also unlocks the audit report.
+  </div>
+</div>
+{% else %}
+<div class="notice ok">
+  <span>✓</span>
+  <div>
+    Generated from the trial balance approved
+    {% if fy.tb_approved_by_name %}by {{ fy.tb_approved_by_name }} {% endif %}
+    on {{ fy.tb_approved_at|datefmt('%d %b %Y, %H:%M') }}.
+    Statements are built in dependency order — profit or loss, then the
+    financial position (which picks up the year's profit), then changes in
+    equity and cash flows.
+  </div>
+</div>
+{% endif %}
+
+<div class="statement-grid">
+  {% for key, label in statement_types %}
+    {% set statement = existing.get(key) %}
+    {% if statement %}
+      <a class="statement-card" href="{{ url_for('statements.detail', statement_id=statement.id) }}">
+        <div class="st-name">{{ label }}</div>
+        <div class="st-meta">
+          {{ statement.lines|length }} lines ·
+          {% if statement.status == 'draft' %}
+            <span class="pill pill-grey">Draft</span>
+          {% elif statement.status == 'shared' %}
+            <span class="pill pill-amber">Shared</span>
+          {% else %}
+            <span class="pill pill-green">Approved</span>
+          {% endif %}
+          <br>
+          <span class="muted small">Generated {{ statement.generated_at|datefmt('%d %b, %H:%M') }}</span>
+        </div>
+      </a>
+    {% else %}
+      <div class="statement-card" style="opacity:.55">
+        <div class="st-name">{{ label }}</div>
+        <div class="st-meta">Not generated yet</div>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-top:20px">
+  <div class="card-head">
+    <h2>Next step</h2>
+  </div>
+  <div class="card-body">
+    {% if fy.tb_is_approved %}
+      <p class="small muted" style="margin-top:0">
+        These figures are final for this round. Build the audit report from
+        them, or reopen the trial balance if something needs changing.
+      </p>
+      <a href="{{ url_for('reports.builder', fy_id=fy.id) }}" class="btn btn-primary">
+        Build the audit report →
+      </a>
+      <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn">
+        Amend the trial balance
+      </a>
+    {% else %}
+      <p class="small muted" style="margin-top:0">
+        Approve the trial balance to generate these statements and unlock the
+        audit report. Corrections belong on the trial balance — they flow
+        through to every statement automatically.
+      </p>
+      <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn btn-primary">
+        Go to the trial balance →
+      </a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

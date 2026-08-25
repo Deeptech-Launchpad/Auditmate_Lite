@@ -1,0 +1,178 @@
+# Financial statement line structure.
+#
+# Matched to the client's supplied template (Singapore FRS, audit-exempt
+# annual report format). Edit here to change any statement layout - no code
+# change needed.
+#
+# Each line has:
+#   key      - stable identifier used by mapping rules (never translate this)
+#   label    - what the auditor and customer see
+#   group    - section it sits under
+#   indent   - display indentation level
+#   subtotal - true if this line sums other lines
+#   total    - true if this is a statement-level total
+#   formula  - named calculation in services/compute.py
+#   detail   - true = breakdown line. Feeds its group subtotal and appears in
+#              the Detailed Profit and Loss Statement, but NOT on the face of
+#              the statutory statement (which shows only the subtotal).
+#   optional - true = show on the face only when the line carries a balance.
+#              For lines many companies simply do not have (inventories,
+#              deferred tax, borrowings) - printing a page of "--" rows is
+#              not how a Singapore FRS statement is presented.
+#   note     - note number shown in the "Notes" column
+
+trial_balance:
+  title: Trial Balance
+  columns: [debit, credit]
+  lines: []          # built dynamically from the client's own chart of accounts
+
+profit_and_loss:
+  title: Statement of Comprehensive Income
+  columns: [current, previous]
+  lines:
+    - {key: revenue,               label: "Revenue", group: revenue, note: 4}
+
+    # --- Cost of sales: detail lines feed the subtotal shown on the face ---
+    - {key: purchases,             label: "Purchases", group: cost_of_sales, detail: true}
+    - {key: design_implementation, label: "Design & implementation", group: cost_of_sales, detail: true}
+    - {key: service_charges,       label: "Service charges for project", group: cost_of_sales, detail: true}
+    - {key: cost_of_sales,         label: "Cost of sales", group: cost_of_sales, subtotal: true, formula: sum_group_cost_of_sales, note: 5}
+
+    - {key: gross_profit,          label: "Gross profit", group: gross, subtotal: true, formula: gross_profit}
+
+    # --- Operating expenses: detail lines feed the subtotal on the face ----
+    - {key: accounting_charges,    label: "Accounting charges", group: operating_expenses, detail: true}
+    - {key: bank_charges,          label: "Bank charges / Interest income", group: operating_expenses, detail: true}
+    - {key: website_expenses,      label: "Website development expenses", group: operating_expenses, detail: true}
+    - {key: iras_rebate,           label: "IRAS rebate", group: operating_expenses, detail: true}
+    - {key: consulting_fee,        label: "Consulting fee", group: operating_expenses, detail: true}
+    - {key: depreciation,          label: "Depreciation", group: operating_expenses, detail: true}
+    - {key: directors_remuneration, label: "Director's fee", group: operating_expenses, detail: true}
+    - {key: staff_salaries,        label: "Staff salaries", group: operating_expenses, detail: true}
+    - {key: staff_bonus,           label: "Staff bonus", group: operating_expenses, detail: true}
+    - {key: cpf,                   label: "CPF", group: operating_expenses, detail: true}
+    - {key: commission_employee,   label: "Commission to employee", group: operating_expenses, detail: true}
+    - {key: manpower_supply,       label: "Manpower supply cost", group: operating_expenses, detail: true}
+    - {key: mom_application_fee,   label: "MOM application fee", group: operating_expenses, detail: true}
+    - {key: office_rent,           label: "Office rent", group: operating_expenses, detail: true}
+    - {key: entertainment,         label: "Entertainment expenses", group: operating_expenses, detail: true}
+    - {key: petty_cash_expenses,   label: "Petty cash expenses", group: operating_expenses, detail: true}
+    - {key: secretarial_fee,       label: "Secretarial fee", group: operating_expenses, detail: true}
+    - {key: interest_expense,      label: "Interest expenses", group: operating_expenses, detail: true}
+    - {key: gst_payables_expense,  label: "GST payables", group: operating_expenses, detail: true}
+    - {key: training_expenses,     label: "Training expenses", group: operating_expenses, detail: true}
+    - {key: staff_house_rental,    label: "Staff house rental", group: operating_expenses, detail: true}
+    - {key: other_expenses,        label: "Other expenses", group: operating_expenses, detail: true}
+    # Income items sit in the expense block as credits, mirroring the way the
+    # client template shows "IRAS rebate" among operating expenses.
+    - {key: other_income,          label: "Other income", group: operating_expenses, detail: true}
+    - {key: interest_income,       label: "Interest income", group: operating_expenses, detail: true}
+    - {key: operating_expenses,    label: "Operating expenses", group: operating_expenses, subtotal: true, formula: sum_group_operating_expenses, note: 5}
+
+    - {key: profit_before_tax,     label: "Profit before tax", group: result, subtotal: true, formula: profit_before_tax}
+    - {key: tax_expense,           label: "Income tax expense", group: result, formula: null, note: 6}
+    - {key: profit_for_year,       label: "Profit for the period, net of tax", group: result, subtotal: true, formula: profit_for_year}
+    - {key: other_comprehensive_income, label: "Other comprehensive income for the year", group: result}
+    - {key: total_comprehensive_income, label: "Total comprehensive income for the period", group: result, total: true, formula: total_comprehensive_income}
+
+balance_sheet:
+  title: Statement of Financial Position
+  columns: [current, previous]
+  lines:
+    - {key: ppe,                   label: "Fixed Assets", group: non_current_assets, indent: 1}
+    - {key: intangible_assets,     label: "Intangible assets", group: non_current_assets, indent: 1, optional: true}
+    - {key: investments,           label: "Investments", group: non_current_assets, indent: 1, optional: true}
+    - {key: total_non_current_assets, label: "Total non-current assets", group: non_current_assets, subtotal: true, formula: sum_group_non_current_assets}
+
+    - {key: inventories,           label: "Inventories", group: current_assets, indent: 1, optional: true}
+    - {key: trade_receivables,     label: "Trade receivables", group: current_assets, indent: 1, note: 7}
+    - {key: prepayments,           label: "Deposits & Other Receivables", group: current_assets, indent: 1, note: 8}
+    - {key: cash_and_equivalents,  label: "Cash and cash equivalents", group: current_assets, indent: 1, note: 9}
+    - {key: total_current_assets,  label: "Total current assets", group: current_assets, subtotal: true, formula: sum_group_current_assets}
+    - {key: total_assets,          label: "Total assets", group: assets_total, total: true, formula: total_assets}
+
+    - {key: share_capital,         label: "Share capital", group: equity, indent: 1, note: 10}
+    - {key: working_capital,       label: "Working Capital", group: equity, indent: 1}
+    - {key: retained_earnings,     label: "Accumulated profit/ (loss)", group: equity, indent: 1, formula: retained_earnings}
+    - {key: total_equity,          label: "Total capital and reserves", group: equity, subtotal: true, formula: sum_group_equity}
+
+    - {key: long_term_borrowings,  label: "Long-term borrowings", group: non_current_liabilities, indent: 1, optional: true}
+    - {key: deferred_tax,          label: "Deferred tax liabilities", group: non_current_liabilities, indent: 1, optional: true}
+    - {key: total_non_current_liabilities, label: "Total non-current liabilities", group: non_current_liabilities, subtotal: true, formula: sum_group_non_current_liabilities, optional: true}
+
+    - {key: trade_payables,        label: "Other Payables", group: current_liabilities, indent: 1, note: 11}
+    - {key: accruals,              label: "Accruals", group: current_liabilities, indent: 1, optional: true}
+    - {key: short_term_borrowings, label: "Short-term borrowings", group: current_liabilities, indent: 1, optional: true}
+    - {key: tax_payable,           label: "Provision for income tax", group: current_liabilities, indent: 1, note: 6}
+    - {key: total_current_liabilities, label: "Total current liabilities", group: current_liabilities, subtotal: true, formula: sum_group_current_liabilities}
+    - {key: total_equity_and_liabilities, label: "Total equity and liabilities", group: liabilities_total, total: true, formula: total_equity_and_liabilities}
+
+# Statement of Changes in Equity.
+# Rendered as a matrix: rows are movements, columns are Share Capital /
+# Accumulated Profit / Total. Flattened into lines so it fits the same model;
+# the preview template lays it back out as a grid.
+changes_in_equity:
+  title: Statement of Changes in Equity
+  columns: [current, previous]
+  matrix: true
+  lines:
+    - {key: soce_open_share,    label: "Share capital at beginning", group: opening, formula: soce_open_share}
+    - {key: soce_open_accum,    label: "Accumulated profit at beginning", group: opening, formula: soce_open_accum}
+    - {key: soce_open_total,    label: "Balance at beginning of year", group: opening, subtotal: true, formula: soce_open_total}
+
+    - {key: soce_issue_share,   label: "Shares issued during the year", group: movement, formula: soce_issue_share}
+    - {key: soce_income_accum,  label: "Total comprehensive income for the period", group: movement, formula: soce_income_accum}
+    - {key: soce_move_total,    label: "Total movement for the year", group: movement, subtotal: true, formula: soce_move_total}
+
+    - {key: soce_close_share,   label: "Share capital at end", group: closing, formula: soce_close_share}
+    - {key: soce_close_accum,   label: "Accumulated profit at end", group: closing, formula: soce_close_accum}
+    - {key: soce_close_total,   label: "Balance at end of year", group: closing, total: true, formula: soce_close_total}
+
+cash_flow:
+  title: Statement of Cash Flows
+  columns: [current, previous]
+  lines:
+    - {key: cf_profit_before_tax, label: "Profit before taxation and changes in working capital", group: operating, indent: 1, formula: cf_profit_before_tax}
+    - {key: cf_receivables,       label: "Trade and other receivables", group: operating, indent: 1, formula: cf_receivables}
+    - {key: cf_payables,          label: "Other payables", group: operating, indent: 1, formula: cf_payables}
+    - {key: cf_operations,        label: "Cash (used in)/generated from operations", group: operating, subtotal: true, formula: sum_group_operating}
+    - {key: cf_tax_paid,          label: "Income tax paid", group: operating_after, indent: 1}
+    - {key: cf_expenses_paid,     label: "Expenses paid", group: operating_after, indent: 1}
+    - {key: cf_operating_total,   label: "Net cash flow (used in)/generated from operating activities", group: operating_after, subtotal: true, formula: cf_operating_total}
+
+    - {key: cf_purchase_ppe,      label: "Purchase of fixed assets", group: investing, indent: 1}
+    - {key: cf_investing_other,   label: "Other investing activities", group: investing, indent: 1, optional: true}
+    - {key: cf_investing_total,   label: "Net cash flow used in investing activities", group: investing, subtotal: true, formula: sum_group_investing}
+
+    - {key: cf_share_capital,     label: "Share Capital", group: financing, indent: 1, formula: cf_share_capital}
+    - {key: cf_borrowings,        label: "Proceeds from / (repayment of) borrowings", group: financing, indent: 1, optional: true}
+    - {key: cf_dividends,         label: "Dividends paid", group: financing, indent: 1, optional: true}
+    - {key: cf_financing_total,   label: "Net cash flow from financing activities", group: financing, subtotal: true, formula: sum_group_financing}
+
+    - {key: cf_unexplained,       label: "Movement not yet analysed", group: summary, indent: 1, formula: cf_unexplained}
+    - {key: cf_net_change,        label: "Net increase/(decrease) in cash and cash equivalent", group: summary, subtotal: true, formula: cf_net_change}
+    - {key: cf_opening_cash,      label: "Cash and cash equivalents at beginning of period", group: summary, formula: cf_opening_cash}
+    - {key: cf_closing_cash,      label: "Cash and cash equivalents at end of period", group: summary, total: true, formula: cf_closing_cash, note: 9}
+
+accounts_receivable:
+  title: Accounts Receivable
+  columns: [current, previous]
+  lines:
+    - {key: ar_current,           label: "Current (not yet due)", group: ageing, indent: 1}
+    - {key: ar_1_30,              label: "1 - 30 days overdue", group: ageing, indent: 1}
+    - {key: ar_31_60,             label: "31 - 60 days overdue", group: ageing, indent: 1}
+    - {key: ar_61_90,             label: "61 - 90 days overdue", group: ageing, indent: 1}
+    - {key: ar_over_90,           label: "Over 90 days overdue", group: ageing, indent: 1}
+    - {key: ar_provision,         label: "Less: allowance for doubtful debts", group: ageing, indent: 1}
+    - {key: ar_total,             label: "Total trade receivables", group: ageing, total: true, formula: sum_group_ageing}
+
+accounts_payable:
+  title: Accounts Payable
+  columns: [current, previous]
+  lines:
+    - {key: ap_current,           label: "Current (not yet due)", group: ageing, indent: 1}
+    - {key: ap_1_30,              label: "1 - 30 days overdue", group: ageing, indent: 1}
+    - {key: ap_31_60,             label: "31 - 60 days overdue", group: ageing, indent: 1}
+    - {key: ap_61_90,             label: "61 - 90 days overdue", group: ageing, indent: 1}
+    - {key: ap_over_90,           label: "Over 90 days overdue", group: ageing, indent: 1}
+    - {key: ap_total,             label: "Total trade payables", group: ageing, total: true, formula: sum_group_ageing}

@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block title %}Review · {{ document.original_filename }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('documents.index', fy_id=fy.id) }}">Documents</a>
+  <span class="sep">/</span>
+  <span class="current">Review</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Review &amp; Correct</h1>
+    <p class="subtitle">
+      {{ document.original_filename }} · {{ document.category_label }}
+      {% if document.ai_used %}
+        · <span class="ai-badge">✦ Read by AI</span>
+      {% elif document.extraction_engine %}
+        · extracted with <span class="mono">{{ document.extraction_engine }}</span>
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-actions">
+    <form method="post" action="{{ url_for('documents.reextract', document_id=document.id) }}"
+          style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn">↻ Re-extract</button>
+    </form>
+
+    {% if document.review_status == 'verified' %}
+      <span class="pill pill-green"><span class="dot"></span>Verified</span>
+      {# Verified means locked. There has to be a way back, or a misread
+         spotted after sign-off can only be fixed by deleting the file. #}
+      <form method="post"
+            action="{{ url_for('documents.unverify', document_id=document.id) }}"
+            style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn">&#8634; Reopen for editing</button>
+      </form>
+    {% else %}
+      <form method="post" action="{{ url_for('documents.verify', document_id=document.id) }}"
+            style="display:inline" id="verify-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-success" id="verify-btn"
+                {% if flagged %}disabled title="Resolve the flagged rows first"{% endif %}>
+          ✓ Mark verified
+        </button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{# Locked because it is signed off - said plainly, with the way back. #}
+{% if document.review_status == 'verified' %}
+<div class="notice">
+  <span>&#128274;</span>
+  <div>
+    <strong>This document is verified, so it is read only.</strong>
+    Its figures feed the trial balance and the statements, so they do not
+    change without a deliberate act.
+    To correct a row or remove one, press
+    <strong>&#8634; Reopen for editing</strong> above &mdash; then rebuild the
+    trial balance when you are done.
+  </div>
+</div>
+{% endif %}
+
+{% if flagged %}
+<div class="notice warn">
+  <span>⚠</span>
+  <div>
+    <strong>{{ flagged }} row{{ '' if flagged == 1 else 's' }} need{{ 's' if flagged == 1 else '' }} your attention.</strong>
+    These scored below the confidence threshold, so the app is not sure it read
+    them correctly. Correct the value or accept it as-is. Verification is
+    blocked until every flagged row is resolved — this is what stops a misread
+    number reaching the financial statements.
+  </div>
+</div>
+{% elif document.review_status != 'verified' %}
+<div class="notice ok">
+  <span>✓</span>
+  <div>
+    All rows extracted with high confidence. Check them over, then
+    <strong>Mark verified</strong> to release this data to the statements.
+  </div>
+</div>
+{% endif %}
+
+{# Kept in step with the grid by review.js as rows are edited or
+   discarded - see updateBanner(). #}
+{% if balance %}
+<div class="notice {{ 'ok' if balance.balanced else 'danger' }}" id="tb-check">
+  <span class="tb-check-icon">{{ '✓' if balance.balanced else '✕' }}</span>
+  <div class="tb-check-body">
+    <strong>Trial balance check:</strong>
+    {%- if balance.balanced %}
+      debits and credits both {{ balance.total_debit|money }}.
+      This document balances.
+    {%- else %}
+      Debits {{ balance.total_debit|money }} ·
+      Credits {{ balance.total_credit|money }} ·
+      <strong>out by {{ balance.difference|money }}</strong> — something was
+      misread or a row is missing.
+    {%- endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="split">
+
+  <!-- Left: the original document -->
+  <div class="split-pane">
+    <div class="split-head">
+      <span>Original document</span>
+      <span class="muted" style="text-transform:none;font-weight:400">
+        {{ document.file_type|upper }}
+        {% if document.page_count %} · {{ document.page_count }} pages{% endif %}
+      </span>
+    </div>
+    <div class="split-body">
+      {% if document.storage_path.startswith('(') %}
+        <div class="doc-placeholder">
+          <div class="big">▣</div>
+          <h3>Demo document</h3>
+          <p class="small">This is seeded demo data, so there is no file on disk.
+             Upload a real document to see the side-by-side viewer.</p>
+        </div>
+      {% elif document.file_type == 'pdf' %}
+        <iframe class="doc-viewer"
+                src="{{ url_for('documents.serve_file', document_id=document.id) }}#view=FitH"
+                title="Original document"></iframe>
+      {% elif document.file_type == 'image' %}
+        <div style="padding:16px">
+          <img src="{{ url_for('documents.serve_file', document_id=document.id) }}"
+               style="max-width:100%;border:1px solid var(--border);border-radius:6px" alt="">
+        </div>
+      {% else %}
+        <div class="doc-placeholder">
+          <div class="big">▤</div>
+          <h3>{{ document.original_filename }}</h3>
+          <p class="small">
+            {{ document.file_type|upper }} files can't be previewed inline.
+            The extracted rows are on the right, each showing the source cell it
+            came from.
+          </p>
+          <a class="btn btn-sm"
+             href="{{ url_for('documents.serve_file', document_id=document.id) }}"
+             target="_blank">Open original file</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Right: the editable grid -->
+  <div class="split-pane">
+    <div class="split-head">
+      <span>
+        Extracted data &mdash; {{ items|length }} rows
+        <span class="edit-badge">click any figure to correct it</span>
+      </span>
+      <button class="btn btn-sm" id="add-row-btn" type="button">+ Add row</button>
+    </div>
+
+    <div class="split-body">
+      <table class="grid" id="review-grid"
+             data-document-id="{{ document.id }}"
+             data-readonly="{{ 'true' if document.review_status == 'verified' else 'false' }}">
+        <thead>
+          <tr>
+            <th style="width:34px">#</th>
+            <th>Account / description</th>
+            <th style="width:132px" class="right">Debit</th>
+            <th style="width:132px" class="right">Credit</th>
+            <th style="width:132px" class="right">Amount</th>
+            <th style="width:62px">Conf.</th>
+            <th style="width:74px">Source</th>
+            <th style="width:70px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {#
+            Every white cell here is editable - label, debit, credit and
+            amount. Corrections save as you leave the field.
+          #}
+          {% for item in items %}
+          {#
+            A document's own total is not an account. It is shown so the
+            auditor can cross-check against it, but it must never be added
+            to the figures it totals - that counts the document twice.
+          #}
+          {% set is_total = item.label|is_total_row %}
+          <tr data-item-id="{{ item.id }}"
+              {% if is_total %}data-total="1"{% endif %}
+              class="{% if item.status == 'discarded' %}row-discarded{% elif is_total %}row-doc-total{% elif item.status in ['corrected','accepted'] %}row-corrected{% elif item.needs_review %}row-flagged{% endif %}">
+            <td class="muted small" style="padding:8px 6px;text-align:center">
+              {% if is_total %}&Sigma;{% else %}{{ loop.index }}{% endif %}
+            </td>
+            <td><input class="cell" data-field="label" value="{{ item.label or '' }}"></td>
+            <td><input class="cell num" data-field="debit" value="{{ '%.2f'|format(item.debit) if item.debit is not none else '' }}"></td>
+            <td><input class="cell num" data-field="credit" value="{{ '%.2f'|format(item.credit) if item.credit is not none else '' }}"></td>
+            <td><input class="cell num" data-field="amount" value="{{ '%.2f'|format(item.amount) if item.amount is not none else '' }}"></td>
+            <td style="padding:8px 6px">
+              {% set c = item.confidence or 0 %}
+              <span class="conf {{ 'conf-high' if c >= 0.85 else ('conf-mid' if c >= 0.7 else 'conf-low') }}">
+                {{ c|pct }}
+              </span>
+            </td>
+            <td class="muted small mono" style="padding:8px 6px">{{ item.source_display }}</td>
+            <td class="actions">
+              {% if item.needs_review and item.status == 'auto' %}
+                <button class="icon-btn ok" data-action="accept" title="Accept as correct">✓</button>
+              {% endif %}
+              <button class="icon-btn no" data-action="discard" title="Exclude this row">✕</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% if not items %}
+        <div class="empty">
+          <div class="icon">▤</div>
+          <h3>Nothing extracted</h3>
+          <p class="small">
+            {{ document.extraction_error or 'The extractor found no line items in this file.' }}
+            {% if not AI_ENABLED %}
+              <br>Adding an <code>ANTHROPIC_API_KEY</code> would let AI read this document.
+            {% endif %}
+          </p>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="grid-footer">
+      <div class="totals">
+        <div class="t-item">
+          <div class="t-label">Total debit</div>
+          <div class="t-value" id="total-debit">—</div>
+        </div>
+        <div class="t-item">
+          <div class="t-label">Total credit</div>
+          <div class="t-value" id="total-credit">—</div>
+        </div>
+        <div class="t-item">
+          <div class="t-label">Difference</div>
+          <div class="t-value" id="total-diff">—</div>
+        </div>
+      </div>
+      <div>
+        <span class="muted small" id="save-status">Changes save automatically</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/review.js') }}"></script>
+{% endblock %}

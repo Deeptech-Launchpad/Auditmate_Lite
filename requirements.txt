@@ -1,0 +1,42 @@
+# Auditmate Lite — Phase 1
+# Deliberately kept light: no pandas, no PyMuPDF, no Tesseract/Poppler.
+# Scanned PDFs go to Claude as native document blocks (Claude reads them
+# directly), so no local OCR toolchain is needed.
+
+# --- Web framework ---
+Flask==3.0.3
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.7
+Flask-Login==0.6.3
+Flask-WTF==1.2.1
+WTForms==3.1.2
+Flask-Limiter==3.8.0
+
+# --- Database ---
+SQLAlchemy==2.0.31
+psycopg[binary]==3.2.3
+
+# --- Security / config ---
+argon2-cffi==23.1.0
+python-dotenv==1.0.1
+PyYAML==6.0.2
+
+# --- Document parsing (rule-based extraction) ---
+openpyxl==3.1.5
+python-docx==1.1.2
+pdfplumber==0.11.4
+
+# --- AI extraction: two interchangeable providers ---
+# Pick one with AI_PROVIDER in .env. Both are installed so you
+# can switch without reinstalling.
+anthropic>=1.0.0
+google-genai>=1.0.0
+pydantic>=2.11
+
+# --- PDF export (optional) ---
+# WeasyPrint needs GTK libraries on Windows and is awkward to install there.
+# The app detects it at runtime; without it, report export falls back to a
+# print-optimised HTML page (browser Ctrl+P -> Save as PDF).
+# Uncomment on the Linux VPS:
+# WeasyPrint==62.3
+truststore>=0.9

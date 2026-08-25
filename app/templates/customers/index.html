@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Customers · Auditmate Lite{% endblock %}
+{% block breadcrumb %}<span class="current">Customers</span>{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Customers</h1>
+    <p class="subtitle">{{ pagination.total }} client{{ '' if pagination.total == 1 else 's' }}</p>
+  </div>
+  <div class="page-actions">
+    <form class="searchbar" method="get">
+      <input type="search" name="q" value="{{ search }}"
+             placeholder="Search name, UEN, contact…">
+      <button type="submit" class="btn">Search</button>
+      {% if search %}<a href="{{ url_for('customers.index') }}" class="btn">Clear</a>{% endif %}
+    </form>
+    <a href="{{ url_for('customers.create') }}" class="btn btn-primary">+ New Customer</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body tight">
+    {% if pagination.items %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th>UEN</th>
+              <th>Entity type</th>
+              <th>Contact</th>
+              <th class="num">Financial years</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for customer in pagination.items %}
+            <tr>
+              <td>
+                <div class="stack">
+                  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}"
+                     class="strong">{{ customer.name }}</a>
+                  {% if customer.legal_name and customer.legal_name != customer.name %}
+                    <span class="muted small">{{ customer.legal_name }}</span>
+                  {% endif %}
+                </div>
+              </td>
+              <td class="mono">{{ customer.uen or '—' }}</td>
+              <td class="small">{{ customer.entity_type_label }}</td>
+              <td>
+                <div class="stack">
+                  <span class="small">{{ customer.contact_person or '—' }}</span>
+                  <span class="muted small">{{ customer.email or '' }}</span>
+                </div>
+              </td>
+              <td class="num">{{ customer.financial_years|length }}</td>
+              <td class="right">
+                <a href="{{ url_for('customers.detail', customer_id=customer.id) }}"
+                   class="btn btn-sm">Open</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if pagination.pages > 1 %}
+      <div class="toolbar" style="border-top:1px solid var(--border);border-bottom:0;justify-content:space-between">
+        <span class="muted small">
+          Page {{ pagination.page }} of {{ pagination.pages }}
+        </span>
+        <span>
+          {% if pagination.has_prev %}
+            <a class="btn btn-sm" href="{{ url_for('customers.index', page=pagination.prev_num, q=search) }}">← Previous</a>
+          {% endif %}
+          {% if pagination.has_next %}
+            <a class="btn btn-sm" href="{{ url_for('customers.index', page=pagination.next_num, q=search) }}">Next →</a>
+          {% endif %}
+        </span>
+      </div>
+      {% endif %}
+
+    {% else %}
+      <div class="empty">
+        <div class="icon">▦</div>
+        <h3>{% if search %}No matches for “{{ search }}”{% else %}No customers yet{% endif %}</h3>
+        <p>{% if search %}Try a different search term.{% else %}Add your first client to begin an engagement.{% endif %}</p>
+        <a href="{{ url_for('customers.create') }}" class="btn btn-primary">+ New Customer</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

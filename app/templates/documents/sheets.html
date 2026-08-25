@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Choose sheets · {{ document.original_filename }}{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('documents.index', fy_id=fy.id) }}">Documents</a>
+  <span class="sep">/</span>
+  <span class="current">Choose sheets</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Which sheets hold the figures?</h1>
+    <p class="subtitle">{{ document.original_filename }} · {{ sheets|length }} sheets</p>
+  </div>
+</div>
+
+<div class="notice">
+  <span>&#8594;</span>
+  <div>
+    <strong>Only the sheets you tick are read.</strong>
+    A management-accounts workbook keeps the general ledger, the schedules and
+    the summary side by side. Reading all of them merges months of
+    transaction detail into the trial balance.
+    <br>
+    Tick nothing to let Auditmate choose &mdash; it looks for a sheet named
+    like a trial balance, which is a reasonable default but not always right.
+  </div>
+</div>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Sheets in this workbook</h2>
+      <span class="hint">
+        {% if chosen %}{{ chosen|length }} selected{% else %}choosing automatically{% endif %}
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="stack" style="gap:10px">
+        {% for sheet in sheets %}
+          <label class="pick-row">
+            <input type="checkbox" name="sheets" value="{{ sheet.name }}"
+                   {% if sheet.name in chosen %}checked{% endif %}>
+            <span style="flex:1">
+              <span class="strong">{{ sheet.name }}</span>
+              {% if sheet.looks_like_tb %}
+                <span class="pill pill-blue" style="font-size:10px">
+                  named like a trial balance
+                </span>
+              {% endif %}
+              <div class="muted small" style="margin-top:3px">
+                {{ sheet.rows }} row(s) with content
+                {% if sheet.headers %}
+                  &middot; columns: {{ sheet.headers|join(' | ') }}
+                {% else %}
+                  &middot; <em>no header row recognised</em>
+                {% endif %}
+              </div>
+              {% if sheet.sample %}
+                <div class="muted small mono" style="margin-top:3px">
+                  {{ sheet.sample|join(' · ') }}
+                </div>
+              {% endif %}
+            </span>
+          </label>
+        {% endfor %}
+      </div>
+
+      <div class="form-actions">
+        <a href="{{ url_for('documents.index', fy_id=fy.id) }}" class="btn">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+          Re-read this file
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<div class="notice warn" style="margin-top:16px">
+  <span>&#9888;</span>
+  <div>
+    Re-reading replaces everything previously extracted from this file. Any
+    corrections you made in Review &amp; Correct for it will be lost, and the
+    trial balance needs rebuilding afterwards.
+  </div>
+</div>
+{% endblock %}

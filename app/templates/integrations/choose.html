@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Choose Xero organisation · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <span class="current">Xero organisation</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Which Xero organisation is {{ customer.name }}?</h1>
+    <p class="subtitle">
+      One Xero login reaches every client your firm has been invited into.
+      Choose the one whose books belong to this customer.
+    </p>
+  </div>
+</div>
+
+{% if demo %}
+<div class="notice warn">
+  <span>&#9888;</span>
+  <div>
+    <strong>Demo mode.</strong>
+    These are sample organisations, not a live Xero connection. Add
+    <code>XERO_CLIENT_ID</code> and <code>XERO_CLIENT_SECRET</code> to
+    <code>.env</code> to connect to Xero for real.
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>Organisations you can reach</h2>
+    <span class="hint">{{ tenants|length }} available</span>
+  </div>
+  <div class="card-body">
+    {% if tenants %}
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="stack" style="gap:10px">
+          {% for tenant in tenants %}
+            <label class="pick-row">
+              <input type="radio" name="tenant_id" value="{{ tenant.tenant_id }}"
+                     data-name="{{ tenant.name }}"
+                     {% if connection.tenant_id == tenant.tenant_id %}checked{% endif %}
+                     required>
+              <span>
+                <span class="strong">{{ tenant.name }}</span>
+                {% if connection.tenant_id == tenant.tenant_id %}
+                  <span class="pill pill-green" style="font-size:10.5px">
+                    currently linked
+                  </span>
+                {% endif %}
+                <div class="muted small mono">{{ tenant.tenant_id }}</div>
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="tenant_name" id="tenant_name">
+        <div class="form-actions">
+          <a href="{{ url_for('customers.detail', customer_id=customer.id) }}"
+             class="btn">Cancel</a>
+          <button type="submit" class="btn btn-primary">Link this organisation</button>
+        </div>
+      </form>
+    {% else %}
+      <div class="empty">
+        <p><strong>No organisations came back from Xero.</strong></p>
+        <p class="muted small">
+          Your firm has to be invited into the client's Xero before it can be
+          reached. The client does this inside their own Xero:
+          Settings &rarr; Users &rarr; Invite a user, with the Adviser role.
+        </p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  /* Carry the readable organisation name alongside the id, so the
+     connection can be labelled without a second call to Xero. */
+  (function () {
+    const hidden = document.getElementById('tenant_name');
+    const radios = document.querySelectorAll('input[name="tenant_id"]');
+    function sync() {
+      const picked = document.querySelector('input[name="tenant_id"]:checked');
+      if (picked && hidden) hidden.value = picked.dataset.name || '';
+    }
+    radios.forEach(r => r.addEventListener('change', sync));
+    sync();
+  })();
+</script>
+{% endblock %}

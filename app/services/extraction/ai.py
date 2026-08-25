@@ -1,0 +1,285 @@
+"""AI extraction - provider-neutral.
+
+Why this exists: rule-based parsers are exact on clean spreadsheets, but real
+audit files are frequently scanned PDFs, photographed documents, or layouts
+whose columns don't line up. Those are exactly the cases where a misread
+number would flow silently into a financial statement - so this is where AI
+earns its place.
+
+Two jobs:
+  1. `extract_with_ai`   - read a document and return structured line items.
+  2. `classify_accounts` - map unfamiliar account labels onto statement lines.
+
+The actual model call lives in `providers/` (Claude or Gemini, chosen by
+AI_PROVIDER in .env). Everything here - the schemas, the prompts, the
+confidence handling - is shared, so switching provider changes no behaviour
+downstream.
+
+Design notes:
+  * PDFs and images are sent to the model directly; both providers read
+    scanned pages, so there is no local OCR step and no Tesseract dependency.
+  * Output is constrained by a Pydantic schema, so the response is validated
+    structured data rather than text we'd have to guess our way through.
+  * The model reports its own per-row confidence. Anything it is unsure about
+    is surfaced to the auditor rather than silently accepted.
+  * Nothing here is trusted blindly - every AI-produced row still lands in the
+    Review & Correct screen for a human to confirm.
+"""
+import logging
+from decimal import Decimal
+from pathlib import Path
+from typing import List, Optional
+
+from flask import current_app
+from pydantic import BaseModel, Field
+
+from .base import ExtractedRow, ExtractionResult
+from .providers import get_provider, provider_name
+
+log = logging.getLogger(__name__)
+
+
+# --------------------------------------------------------------------------
+# Response schemas - these constrain what the model is allowed to return.
+# --------------------------------------------------------------------------
+
+class AILineItem(BaseModel):
+    label: str = Field(description="The account name or line description, cleaned up")
+    account_code: Optional[str] = Field(
+        default=None, description="Account/GL code if the document shows one")
+    amount: Optional[float] = Field(
+        default=None, description="Single amount, if the row has one value column")
+    debit: Optional[float] = Field(
+        default=None, description="Debit amount if the document has debit/credit columns")
+    credit: Optional[float] = Field(
+        default=None, description="Credit amount if the document has debit/credit columns")
+    period: str = Field(
+        default="current",
+        description="'current' or 'previous' - 'previous' for comparative-year columns")
+    page: Optional[int] = Field(
+        default=None, description="Page number this row was read from")
+    confidence: float = Field(
+        default=0.9,
+        description="Your confidence 0.0-1.0 that this row was read correctly. "
+                    "Be honest - low values get flagged for human review.")
+
+
+class AIExtraction(BaseModel):
+    document_kind: str = Field(
+        description="What this document appears to be, e.g. 'trial balance', "
+                    "'bank statement', 'invoice'")
+    currency: Optional[str] = Field(default=None, description="Currency code if visible")
+    line_items: List[AILineItem] = Field(description="Every financial line found")
+    notes: Optional[str] = Field(
+        default=None,
+        description="Anything the auditor should know: unreadable sections, "
+                    "ambiguity, totals that don't add up")
+
+
+class AIAccountMapping(BaseModel):
+    label: str = Field(description="The original account label given to you")
+    line_key: str = Field(description="The statement line key you are mapping it to")
+    confidence: float = Field(description="0.0-1.0 confidence in this mapping")
+    reasoning: str = Field(description="One short sentence explaining the choice")
+
+
+class AIAccountMappings(BaseModel):
+    mappings: List[AIAccountMapping]
+
+
+# --------------------------------------------------------------------------
+# Availability
+# --------------------------------------------------------------------------
+
+def ai_available() -> bool:
+    """True when the configured provider has a key."""
+    try:
+        return get_provider().available()
+    except Exception:                              # noqa: BLE001
+        return False
+
+
+def active_provider_label() -> str:
+    """Human-readable name of the engine in use, for the UI."""
+    try:
+        return get_provider().LABEL
+    except Exception:                              # noqa: BLE001
+        return provider_name().title()
+
+
+def test_connection() -> dict:
+    """Check the configured provider's key with a tiny real request."""
+    try:
+        provider = get_provider()
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    if not provider.available():
+        return {"ok": False,
+                "error": f"No API key set for provider {provider_name()!r}"}
+    result = provider.test_connection()
+    result["provider"] = provider.LABEL
+    return result
+
+
+EXTRACTION_SYSTEM_PROMPT = """You are a data extraction assistant for a \
+Singapore audit firm. You read accounting documents and return the financial \
+line items they contain.
+
+Rules:
+- Extract every account line with a monetary value. Do not summarise, \
+aggregate, or skip rows.
+- Preserve the document's own wording for account labels. Do not rename \
+"Sundry Debtors" to "Trade Receivables" - mapping happens later.
+- If the document has separate Debit and Credit columns, populate `debit` and \
+`credit`. If it has a single amount column, populate `amount` only.
+- Negative numbers may appear in parentheses, e.g. (1,234.00) means -1234.00.
+- Amounts may carry Cr/Dr suffixes or S$ prefixes - return clean numbers.
+- If a document shows two year columns, mark the prior-year rows as \
+period="previous".
+- Skip page headers, footers and page numbers. DO keep genuine total lines, \
+labelled exactly as the document labels them.
+- Set `confidence` honestly per row. If a figure is blurred, ambiguous, or you \
+inferred a column alignment, score it below 0.8 so a human checks it. \
+Accuracy matters more than completeness here - a flagged row is cheap, a \
+wrong number in a financial statement is not."""
+
+
+CLASSIFY_SYSTEM_PROMPT = """You map accounting labels onto financial statement \
+lines for Singapore FRS financial statements.
+
+You will be given a list of account labels from a client's books, and the set \
+of valid statement line keys. For each label, choose the single best line key.
+
+Guidance:
+- "Sundry Debtors", "Trade Debtors", "Accounts Receivable" -> trade_receivables
+- "Sundry Creditors", "Trade Creditors" -> trade_payables
+- "Cash at Bank", "Bank OCBC", "Petty Cash" -> cash_and_equivalents
+- "Turnover", "Sales", "Fee Income" -> revenue
+- Directors' remuneration is a separate line from general staff costs.
+- If a label genuinely doesn't fit any available key, use "unmapped" and give \
+it a low confidence. Do not force a bad match - an unmapped item gets a human \
+decision, a wrong match silently corrupts the accounts."""
+
+
+# --------------------------------------------------------------------------
+# Document extraction
+# --------------------------------------------------------------------------
+
+def extract_with_ai(path: Path, file_type: str, category: str = "other",
+                    raw_text: str = "") -> ExtractionResult:
+    """Send a document to the configured model and return structured rows."""
+    result = ExtractionResult(engine="ai", ai_used=True)
+
+    try:
+        provider = get_provider()
+    except ValueError as exc:
+        result.error = str(exc)
+        return result
+
+    if not provider.available():
+        result.error = (f"No API key configured for {provider.LABEL}. "
+                        f"Set it in .env and restart.")
+        return result
+
+    result.engine = provider_name()
+    category_hint = (f"The auditor filed this document under the category "
+                     f"'{category}'. ") if category != "other" else ""
+
+    try:
+        parts = []
+
+        if file_type == "pdf":
+            parts.append({"type": "pdf", "data": path.read_bytes()})
+        elif file_type == "image":
+            suffix = path.suffix.lower()
+            mime = "image/png" if suffix == ".png" else "image/jpeg"
+            parts.append({"type": "image", "data": path.read_bytes(),
+                          "mime": mime})
+        elif raw_text:
+            # Word docs / CSVs the rule parser struggled with: send the text.
+            parts.append({"type": "text",
+                          "text": f"Document contents:\n\n{raw_text[:100000]}"})
+        else:
+            result.error = "Nothing to send to the AI provider"
+            return result
+
+        parts.append({
+            "type": "text",
+            "text": (f"{category_hint}Extract all financial line items from "
+                     f"this document. Return every account line with its "
+                     f"amounts."),
+        })
+
+        parsed = provider.structured_call(
+            EXTRACTION_SYSTEM_PROMPT, parts, AIExtraction, max_tokens=16000)
+
+        for item in parsed.line_items:
+            result.rows.append(ExtractedRow(
+                label=item.label,
+                raw_label=item.label,
+                amount=Decimal(str(item.amount)) if item.amount is not None else None,
+                debit=Decimal(str(item.debit)) if item.debit is not None else None,
+                credit=Decimal(str(item.credit)) if item.credit is not None else None,
+                account_code=item.account_code,
+                period=item.period if item.period in ("current", "previous") else "current",
+                source_ref={"page": item.page} if item.page else {"source": "ai"},
+                confidence=max(0.0, min(1.0, item.confidence)),
+            ))
+
+        if parsed.notes:
+            result.raw_text = parsed.notes
+
+        log.info("%s extracted %d rows from %s",
+                 provider.LABEL, len(result.rows), path.name)
+
+    except Exception as exc:                       # noqa: BLE001
+        log.exception("AI extraction failed")
+        result.error = f"AI extraction failed ({provider.LABEL}): {exc}"
+
+    return result
+
+
+# --------------------------------------------------------------------------
+# Account classification
+# --------------------------------------------------------------------------
+
+def classify_accounts(labels: List[str], line_keys: List[str],
+                      statement_type: str) -> dict:
+    """Ask the model to map unfamiliar account labels onto statement lines.
+
+    Only called for labels the deterministic rules could not match, so the
+    cost stays proportional to how unusual the client's chart of accounts is.
+    Returns {label: {"line_key", "confidence", "reasoning"}}.
+    """
+    if not labels:
+        return {}
+
+    try:
+        provider = get_provider()
+    except ValueError:
+        return {}
+    if not provider.available():
+        return {}
+
+    prompt = (
+        f"Statement type: {statement_type}\n\n"
+        "Valid line keys:\n" + "\n".join(f"- {k}" for k in line_keys) +
+        "\n- unmapped\n\n"
+        "Account labels to map:\n" + "\n".join(f"- {l}" for l in labels)
+    )
+
+    try:
+        parsed = provider.structured_call(
+            CLASSIFY_SYSTEM_PROMPT, [{"type": "text", "text": prompt}],
+            AIAccountMappings, max_tokens=8000)
+
+        return {
+            m.label: {"line_key": m.line_key,
+                      "confidence": m.confidence,
+                      "reasoning": m.reasoning}
+            for m in parsed.mappings
+        }
+
+    except Exception:                              # noqa: BLE001
+        log.exception("AI account classification failed")
+        return {}

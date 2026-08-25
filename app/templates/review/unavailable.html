@@ -1,0 +1,27 @@
+{% extends "review/_shell.html" %}
+{% block title %}Link unavailable · Auditmate{% endblock %}
+{% block panel %}
+  {% if reason == 'expired' %}
+    <div class="mark">⏳</div>
+    <h1>This link has expired</h1>
+    <p>
+      For security, review links are only valid for a limited time
+      {% if link and link.expires_at %}
+        — this one expired on {{ link.expires_at|datefmt('%d %B %Y') }}.
+      {% else %}.{% endif %}
+    </p>
+    <p>Please contact your auditor and they will send you a fresh link.</p>
+  {% elif reason == 'revoked' %}
+    <div class="mark">🔒</div>
+    <h1>This link has been withdrawn</h1>
+    <p>Your auditor has revoked this link. If you still need to review the
+       trial balance, please get in touch with them for a new one.</p>
+  {% else %}
+    <div class="mark">🔍</div>
+    <h1>We couldn't open that link</h1>
+    <p>The link may be incomplete, or it may have been replaced by a newer
+       one. Check that you copied the whole address from the email, or ask
+       your auditor to resend it.</p>
+  {% endif %}
+  <p class="brandline">AltiusNXT Audit</p>
+{% endblock %}

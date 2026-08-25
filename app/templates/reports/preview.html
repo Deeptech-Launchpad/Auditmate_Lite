@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ report.title }} · {{ customer.name }}</title>
+  {% if not for_pdf %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  {% endif %}
+  <style>
+    {% include "reports/_styles.html" %}
+
+    {% if not for_pdf %}
+      /* Screen only: mimic sheets of A4 on a desk so the auditor can see
+         where the page breaks will fall before exporting. */
+      body { background: #e9ecef; margin: 0; padding: 26px 16px 60px; }
+      .print-bar {
+        max-width: 210mm; margin: 0 auto 18px; display: flex;
+        justify-content: space-between; align-items: center; gap: 12px;
+      }
+      .rpt-doc { max-width: 210mm; margin: 0 auto; }
+      .rpt-page {
+        background: #fff; padding: 20mm 18mm; margin-bottom: 18px;
+        box-shadow: 0 1px 4px rgba(0,0,0,.18);
+        min-height: 120mm;
+      }
+      @media print {
+        body { background: #fff; padding: 0; }
+        .print-bar { display: none; }
+        .rpt-doc { max-width: none; }
+        .rpt-page {
+          box-shadow: none; padding: 0; margin: 0; min-height: 0;
+          break-before: page;
+        }
+        .rpt-page:first-child { break-before: auto; }
+      }
+    {% endif %}
+  </style>
+</head>
+<body>
+
+{% if not for_pdf %}
+<div class="print-bar">
+  <a href="{{ url_for('reports.builder', fy_id=fy.id) }}" class="btn btn-sm">← Back to builder</a>
+  <span class="muted small">
+    {{ payloads|length }} sections · {{ customer.legal_name or customer.name }} · {{ fy.year_label }}
+  </span>
+  <button class="btn btn-sm btn-primary" onclick="window.print()">⎙ Print / Save as PDF</button>
+</div>
+{% endif %}
+
+<div class="rpt-doc">
+  {% include "reports/_document.html" %}
+</div>
+
+</body>
+</html>

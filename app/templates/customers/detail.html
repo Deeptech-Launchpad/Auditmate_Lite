@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}{{ customer.name }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.index') }}">Customers</a>
+  <span class="sep">/</span>
+  <span class="current">{{ customer.name }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ customer.name }}</h1>
+    <p class="subtitle">
+      {{ customer.entity_type_label }}
+      {% if customer.uen %} · UEN {{ customer.uen }}{% endif %}
+      {% if customer.postal_code %} · Singapore {{ customer.postal_code }}{% endif %}
+    </p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('customers.edit', customer_id=customer.id) }}" class="btn">Edit details</a>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 300px;gap:18px;align-items:start">
+
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Financial years</h2>
+        <span class="hint">Each year is a separate engagement workspace</span>
+      </div>
+      <div class="card-body">
+        {% if customer.financial_years %}
+          <div class="fy-grid">
+            {% for year in customer.financial_years %}
+            <a class="fy-card"
+               href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=year.id) }}">
+              <div class="fy-head">
+                <span class="fy-label">{{ year.year_label }}</span>
+                {% if year.status == 'in_progress' %}
+                  <span class="pill pill-blue"><span class="dot"></span>In progress</span>
+                {% elif year.status == 'statements_shared' %}
+                  <span class="pill pill-amber"><span class="dot"></span>Shared</span>
+                {% elif year.status == 'approved' %}
+                  <span class="pill pill-green"><span class="dot"></span>Approved</span>
+                {% elif year.status == 'report_generated' %}
+                  <span class="pill pill-purple"><span class="dot"></span>Report done</span>
+                {% else %}
+                  <span class="pill pill-grey">{{ year.status_label }}</span>
+                {% endif %}
+              </div>
+              <div class="fy-dates">
+                {{ year.start_date|datefmt }} — {{ year.end_date|datefmt }}
+              </div>
+              <div class="fy-stats">
+                <span>{{ year.documents|length }} documents</span>
+                <span>{{ year.statements|length }} statements</span>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty" style="padding:30px">
+            <p>No financial years yet. Add one below to start work.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Add a financial year</h2></div>
+      <div class="card-body">
+        <form method="post"
+              action="{{ url_for('customers.add_year', customer_id=customer.id) }}"
+              style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field" style="max-width:200px">
+            <label for="year_label">Year label</label>
+            <input id="year_label" name="year_label" placeholder="FY2026" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Create year</button>
+          <span class="muted small" style="flex:1;min-width:200px">
+            Dates are derived from the FYE month
+            ({{ customer.financial_year_end_month }}). The previous year is linked
+            automatically so statements show comparatives.
+          </span>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Client details</h2></div>
+      <div class="card-body">
+        {% macro row(label, value) %}
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #f0f2f5">
+            <span class="muted small">{{ label }}</span>
+            <span class="small right" style="max-width:60%">{{ value or '—' }}</span>
+          </div>
+        {% endmacro %}
+
+        {{ row('UEN', customer.uen) }}
+        {{ row('GST reg.', customer.gst_reg_no) }}
+        {{ row('Incorporated', customer.incorporation_date|datefmt if customer.incorporation_date else None) }}
+        {{ row('FYE month', customer.financial_year_end_month) }}
+        {{ row('Currency', customer.books_currency) }}
+        {{ row('Contact', customer.contact_person) }}
+        {{ row('Email', customer.email) }}
+        {{ row('Phone', customer.phone) }}
+        {{ row('Address', (customer.address_line1 ~ (', ' ~ customer.address_line2 if customer.address_line2 else '')) if customer.address_line1 else None) }}
+        {{ row('Partner', customer.engagement_partner.name if customer.engagement_partner else None) }}
+      </div>
+    </div>
+
+    {% if customer.notes %}
+    <div class="card">
+      <div class="card-head"><h2>Notes</h2></div>
+      <div class="card-body">
+        <p class="small" style="margin:0;white-space:pre-wrap">{{ customer.notes }}</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

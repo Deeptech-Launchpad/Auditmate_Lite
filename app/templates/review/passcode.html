@@ -1,0 +1,31 @@
+{% extends "review/_shell.html" %}
+{% block title %}Access code · Auditmate{% endblock %}
+{% block panel %}
+  <div class="mark">🔑</div>
+  <h1>Enter your access code</h1>
+  <p>Your auditor provided a short code separately from this email. Please
+     enter it to open the trial balance.</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div style="margin:16px 0 0">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}"><span>{{ message }}</span></div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('review.submit_passcode', token=token) }}"
+        style="margin-top:22px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <input name="passcode" inputmode="numeric" autocomplete="off" required
+             autofocus placeholder="e.g. 4827"
+             style="text-align:center;font-size:22px;letter-spacing:6px">
+    </div>
+    <button type="submit" class="btn btn-primary btn-lg"
+            style="width:100%;margin-top:16px">Open trial balance</button>
+  </form>
+  <p class="brandline">AltiusNXT Audit</p>
+{% endblock %}

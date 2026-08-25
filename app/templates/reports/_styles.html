@@ -1,0 +1,143 @@
+{#
+  Annual report typography.
+
+  One stylesheet, three destinations: the builder's live preview (scaled
+  down), the on-screen preview, and the WeasyPrint PDF. `for_pdf` switches
+  the paged-media rules on; `scope` prefixes every selector so the builder
+  preview cannot leak these styles into the application chrome around it.
+#}
+{% set S = scope|default('') %}
+
+{% if for_pdf %}
+@page {
+  size: A4;
+  margin: 20mm 18mm 18mm;
+  @bottom-center {
+    content: counter(page);
+    font-family: "Times New Roman", Times, serif;
+    font-size: 9pt;
+    color: #000;
+  }
+}
+/* Real page numbers on the contents page - WeasyPrint resolves these
+   against where each section actually lands. */
+{{ S }} .contents .c-page a::after { content: target-counter(attr(href), page); }
+{{ S }} .contents .c-page a { text-decoration: none; color: inherit; }
+{{ S }} .page-break { break-before: page; }
+{{ S }} .rpt-page { break-inside: auto; }
+{{ S }} table.fin { break-inside: auto; }
+{{ S }} table.fin tr { break-inside: avoid; }
+{{ S }} .rpt-head { break-after: avoid; }
+{{ S }} h3.note-title, {{ S }} .tbl-head { break-after: avoid; }
+{% endif %}
+
+{{ S }} .rpt-doc {
+  font-family: "Times New Roman", Times, Georgia, serif;
+  font-size: {{ '10.5pt' if for_pdf else '13.5px' }};
+  line-height: 1.45;
+  color: #000;
+  text-align: justify;
+}
+{{ S }} .rpt-doc p { margin: 0 0 8px; }
+{{ S }} .rpt-doc h4 {
+  font-size: 1em; font-weight: bold; margin: 14px 0 6px; text-align: left;
+}
+{{ S }} .rpt-doc em { font-style: italic; }
+
+/* --- running header, repeated at the top of every section ------------- */
+{{ S }} .rpt-head { text-align: center; margin: 0 0 18px; }
+{{ S }} .rpt-co {
+  font-weight: bold; text-transform: uppercase; letter-spacing: .2px;
+}
+{{ S }} .rpt-uen { margin-bottom: 10px; }
+{{ S }} .rpt-sect {
+  font-weight: bold; text-decoration: underline; margin-top: 4px;
+}
+
+/* --- cover page -------------------------------------------------------- */
+{{ S }} .cover { text-align: center; margin: {{ '40px 0 44px' if for_pdf else '20px 0 32px' }}; }
+{{ S }} .cover h1 {
+  font-size: 1.75em; font-weight: bold; letter-spacing: 1px; margin: 0 0 10px;
+}
+{{ S }} .cover-sub { font-style: italic; margin: 0 0 30px; }
+{{ S }} .cover-co {
+  font-size: 1.25em; font-weight: bold; margin: 0 0 4px; line-height: 1.3;
+}
+{{ S }} .cover-uen { margin: 0 0 18px; }
+{{ S }} .cover-date { font-weight: bold; margin: 0; }
+
+{{ S }} h3.ruled {
+  font-size: 1em; font-weight: bold; text-align: center;
+  text-decoration: underline; margin: 0 0 18px;
+}
+{{ S }} .corp-label {
+  font-weight: bold; text-transform: uppercase; margin: 12px 0 3px;
+}
+{{ S }} .corp-value { margin: 0 0 10px; text-align: left; }
+
+{{ S }} table.contents { width: 100%; border-collapse: collapse; margin-top: 4px; }
+{{ S }} .contents td { padding: 2px 0; vertical-align: bottom; border: 0; }
+{{ S }} .contents .c-title { white-space: nowrap; }
+{{ S }} .contents .c-dots { width: 100%; }
+{{ S }} .contents .c-dots .leader {
+  display: block; border-bottom: 1px dotted #555; margin: 0 6px 3px;
+}
+{{ S }} .contents .c-page { text-align: right; white-space: nowrap; }
+
+/* --- statements and note tables ---------------------------------------- */
+{{ S }} table.fin {
+  width: 100%; border-collapse: collapse; margin: 6px 0 4px;
+  text-align: left;
+}
+{{ S }} table.fin th, {{ S }} table.fin td {
+  padding: {{ '2.5pt 4pt' if for_pdf else '3px 5px' }};
+  border: 0; vertical-align: bottom;
+}
+{{ S }} table.fin th.num, {{ S }} table.fin td.num {
+  text-align: right; width: {{ '84pt' if for_pdf else '110px' }};
+  white-space: nowrap;
+}
+{{ S }} table.fin th.notes, {{ S }} table.fin td.notes {
+  text-align: center; width: {{ '32pt' if for_pdf else '46px' }};
+}
+{{ S }} table.fin .hdr-dates th { font-weight: normal; }
+{{ S }} table.fin .hdr-ccy th {
+  font-weight: normal; border-bottom: .8pt solid #000; padding-bottom: 3px;
+}
+{{ S }} table.fin tbody tr:first-child td { padding-top: 7px; }
+
+{{ S }} table.fin tr.group-head td {
+  font-weight: bold; padding-top: 10px;
+}
+{{ S }} table.fin tr.group-head.major td { text-transform: uppercase; }
+
+{{ S }} table.fin tr.subtotal td,
+{{ S }} table.fin tr.ruled-above td { border-top: .8pt solid #000; }
+{{ S }} table.fin tr.subtotal td { font-weight: normal; }
+{{ S }} table.fin tr.total td {
+  font-weight: bold; border-top: .8pt solid #000;
+  border-bottom: 2.5pt double #000;
+}
+{{ S }} table.fin tr.detail td.lbl { padding-left: {{ '14pt' if for_pdf else '18px' }}; }
+{{ S }} table.fin td.indent-1 { padding-left: {{ '14pt' if for_pdf else '18px' }}; }
+{{ S }} table.fin td.indent-2 { padding-left: {{ '28pt' if for_pdf else '36px' }}; }
+
+{{ S }} table.note-table { margin-bottom: 12px; }
+{{ S }} h3.note-title {
+  font-size: 1em; font-weight: bold; text-align: left; margin: 0 0 8px;
+}
+{{ S }} .tbl-head { margin: 12px 0 2px; font-style: normal; text-align: left; }
+
+{{ S }} .rpt-foot {
+  margin-top: 16px; font-size: .92em; text-align: left;
+}
+{{ S }} .rpt-missing { font-style: italic; color: #777; }
+{{ S }} .missing-binding {
+  background: #fff3cd; color: #7a5b00; padding: 0 3px; border-radius: 2px;
+  font-style: italic;
+}
+{% if for_pdf %}
+/* Nothing needs highlighting in a delivered PDF, but it must still be
+   visible that a field was never filled in. */
+{{ S }} .missing-binding { background: none; color: #000; }
+{% endif %}

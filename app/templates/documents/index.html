@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}Documents · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <span class="current">Documents</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Documents</h1>
+    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }} · {{ documents|length }} file(s)</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('statements.index', fy_id=fy.id) }}" class="btn">Statements →</a>
+    <a href="{{ url_for('documents.upload', fy_id=fy.id) }}" class="btn">+ Upload</a>
+    {% set pending = documents|selectattr('extraction_status', 'in', ['queued', 'failed'])|list %}
+    {% if pending %}
+      <form method="post" action="{{ url_for('documents.analyse', fy_id=fy.id) }}"
+            style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary">
+          ⚡ Analyse {{ pending|length }} document{{ '' if pending|length == 1 else 's' }}
+        </button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{#
+  Where the figures come from.
+
+  Two channels, both permanent. Xero supplies what the client recorded -
+  exact, no extraction risk. Uploads supply what the client could not record:
+  the bank's own statement, IRAS notices, signed contracts, confirmations
+  sent straight to the auditor. Third-party evidence outranks
+  client-generated evidence, so connecting Xero never removes the need to
+  upload - it removes the need to re-key a trial balance.
+#}
+<div class="source-grid">
+
+  <div class="card source-card">
+    <div class="card-body">
+      <div class="source-head">
+        <span class="source-icon">&#128193;</span>
+        <div>
+          <h3>Upload documents</h3>
+          <p class="muted small">
+            Bank statements, invoices, ledgers, schedules &mdash; anything on
+            paper or in a file. Read automatically, then checked by you.
+          </p>
+        </div>
+      </div>
+      <div class="source-actions">
+        <a href="{{ url_for('documents.upload', fy_id=fy.id) }}"
+           class="btn btn-primary">+ Upload files</a>
+        <span class="muted small">{{ documents|length }} in this engagement</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card source-card">
+    <div class="card-body">
+      <div class="source-head">
+        <span class="source-icon">&#128279;</span>
+        <div>
+          <h3>
+            Connect to Xero
+            {% if xero_demo %}
+              <span class="pill pill-amber" style="font-size:10px">demo mode</span>
+            {% endif %}
+          </h3>
+          <p class="muted small">
+            Pull the trial balance straight from the client's accounting
+            system. Exact figures, no file to read.
+          </p>
+        </div>
+      </div>
+
+      {% if not xero_available %}
+        <div class="source-actions">
+          <span class="muted small">
+            Not configured on this server. Add <code>XERO_CLIENT_ID</code> and
+            <code>XERO_CLIENT_SECRET</code> to <code>.env</code>.
+          </span>
+        </div>
+
+      {% elif not xero_conn %}
+        <div class="source-actions">
+          <form method="post"
+                action="{{ url_for('integrations.connect', customer_id=customer.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="return_to" value="{{ request.path }}">
+            <button type="submit" class="btn btn-primary">Connect to Xero</button>
+          </form>
+          <span class="muted small">You sign in on Xero's own page</span>
+        </div>
+
+      {% elif not xero_conn.tenant_id %}
+        <div class="source-actions">
+          <a href="{{ url_for('integrations.choose', customer_id=customer.id) }}"
+             class="btn btn-primary">Choose the organisation</a>
+          <span class="muted small">Connected, but no organisation picked yet</span>
+        </div>
+
+      {% elif xero_conn.needs_attention %}
+        <div class="source-actions">
+          <form method="post"
+                action="{{ url_for('integrations.connect', customer_id=customer.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="return_to" value="{{ request.path }}">
+            <button type="submit" class="btn btn-primary">Reconnect to Xero</button>
+          </form>
+          <span class="small" style="color:var(--red)">
+            {{ xero_conn.last_error or 'The connection has expired.' }}
+          </span>
+        </div>
+
+      {% else %}
+        <div class="connected-line">
+          <span class="pill pill-green">&#10003; Connected</span>
+          <span class="strong small">{{ xero_conn.tenant_name }}</span>
+          {% if xero_conn.last_synced_at %}
+            <span class="muted small">
+              · last pulled {{ xero_conn.last_synced_at|datefmt('%d %b %Y, %H:%M') }}
+              ({{ xero_conn.last_sync_accounts }} accounts)
+            </span>
+          {% endif %}
+        </div>
+        <div class="source-actions">
+          {% if fy.tb_is_approved %}
+            <span class="muted small">
+              The trial balance is approved and locked &mdash; reopen it before
+              pulling new figures.
+            </span>
+          {% else %}
+            <form method="post"
+                  action="{{ url_for('integrations.pull', fy_id=fy.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-primary">
+                &#11015; Pull trial balance as at {{ fy.end_date|datefmt('%d %b %Y') }}
+              </button>
+            </form>
+          {% endif %}
+          <form method="post"
+                action="{{ url_for('integrations.disconnect', customer_id=customer.id) }}"
+                onsubmit="return confirm('Disconnect {{ customer.name }} from Xero?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="return_to" value="{{ request.path }}">
+            <button type="submit" class="btn btn-sm">Disconnect</button>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{#
+  Verifying a document, or changing which sheets are read, changes what the
+  trial balance should say - but nothing happens until it is rebuilt. The
+  next step belongs here, where the change was just made.
+#}
+{% if fy.tb_is_stale and not fy.tb_is_approved %}
+<div class="notice warn">
+  <span>&#8635;</span>
+  <div>
+    <strong>The trial balance is out of date.</strong>
+    A document here has changed since it was last built.
+    <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">
+      Go to the trial balance and rebuild &rarr;</a>
+  </div>
+</div>
+{% endif %}
+
+{% if pending %}
+<div class="notice">
+  <span>⚡</span>
+  <div>
+    <strong>{{ pending|length }} document(s) uploaded but not yet analysed.</strong>
+    Press <strong>Analyse</strong> to read the figures out of them. You can keep
+    uploading first — analysing the whole batch at once is fine.
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <form class="toolbar" method="get">
+    <label class="muted small">Category</label>
+    <select name="category" onchange="this.form.submit()">
+      <option value="">All</option>
+      {% for key, label in DOCUMENT_CATEGORIES %}
+        <option value="{{ key }}" {% if category == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="muted small">Review status</label>
+    <select name="status" onchange="this.form.submit()">
+      <option value="">All</option>
+      {% for key, label in [('pending','Pending'),('in_review','In review'),('verified','Verified')] %}
+        <option value="{{ key }}" {% if status == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    {% if category or status %}
+      <a href="{{ url_for('documents.index', fy_id=fy.id) }}" class="btn btn-sm">Clear filters</a>
+    {% endif %}
+  </form>
+
+  <div class="card-body tight">
+    {% if documents %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Category</th>
+              <th>Engine</th>
+              <th class="num">Rows</th>
+              <th class="num">Confidence</th>
+              <th>Review</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for doc in documents %}
+            <tr>
+              <td>
+                <div class="stack">
+                  <span class="strong">{{ doc.original_filename }}</span>
+                  <span class="muted small">
+                    {{ doc.file_type|upper }} · {{ doc.size_display }} ·
+                    {{ doc.uploaded_at|datefmt('%d %b %Y, %H:%M') }}
+                  </span>
+                </div>
+              </td>
+              <td class="small">{{ doc.category_label }}</td>
+              <td>
+                {% if doc.ai_used %}
+                  <span class="ai-badge">✦ AI</span>
+                {% elif doc.extraction_engine %}
+                  <span class="muted small mono">{{ doc.extraction_engine }}</span>
+                {% else %}
+                  <span class="muted small">—</span>
+                {% endif %}
+              </td>
+              <td class="num">
+                {% if doc.extraction_status == 'extracted' %}
+                  {{ doc.line_items|length }}
+                  {% if doc.rows_needing_review %}
+                    <br><span class="pill pill-amber" style="margin-top:3px">
+                      {{ doc.rows_needing_review }} flagged
+                    </span>
+                  {% endif %}
+                {% elif doc.extraction_status == 'queued' %}
+                  <span class="pill pill-grey">Queued</span>
+                {% elif doc.extraction_status == 'failed' %}
+                  <span class="pill pill-red" title="{{ doc.extraction_error }}">Failed</span>
+                {% else %}
+                  <span class="pill pill-blue">{{ doc.extraction_status }}</span>
+                {% endif %}
+              </td>
+              <td class="num">
+                {% if doc.extraction_confidence %}
+                  {% set c = doc.extraction_confidence %}
+                  <span class="conf {{ 'conf-high' if c >= 0.85 else ('conf-mid' if c >= 0.7 else 'conf-low') }}">
+                    {{ c|pct }}
+                  </span>
+                {% else %}—{% endif %}
+                {% if doc.source_sheets %}
+                  <div class="muted small" style="margin-top:3px">
+                    reading: {{ doc.source_sheets|join(', ') }}
+                  </div>
+                {% endif %}
+              </td>
+              <td>
+                {% if doc.review_status == 'verified' %}
+                  <span class="pill pill-green">✓ Verified</span>
+                {% elif doc.review_status == 'in_review' %}
+                  <span class="pill pill-amber">In review</span>
+                {% else %}
+                  <span class="pill pill-grey">Pending</span>
+                {% endif %}
+              </td>
+              <td class="right nowrap">
+                {# A workbook's figures may live on any of its sheets, so the
+                   auditor needs a way to say which - see documents.sheets. #}
+                {% if doc.file_type in ('xlsx', 'xls') %}
+                  <a href="{{ url_for('documents.sheets', document_id=doc.id) }}"
+                     class="btn btn-sm" title="Choose which sheets to read">
+                    &#9638; Sheets
+                  </a>
+                {% endif %}
+                <a href="{{ url_for('documents.review', document_id=doc.id) }}"
+                   class="btn btn-sm {{ 'btn-primary' if doc.review_status != 'verified' }}">
+                  {{ 'View' if doc.review_status == 'verified' else 'Review' }}
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        <div class="icon">▣</div>
+        <h3>No documents{% if category or status %} match these filters{% endif %}</h3>
+        <p>Upload the client's records to begin extraction.</p>
+        <a href="{{ url_for('documents.upload', fy_id=fy.id) }}" class="btn btn-primary">
+          + Upload documents
+        </a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

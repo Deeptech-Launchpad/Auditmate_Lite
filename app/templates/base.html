@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Auditmate Lite{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="logo">
+        <span class="logo-mark">A</span>
+        <span>Auditmate</span>
+      </div>
+      <div class="tagline">Audit Management · Singapore</div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a class="nav-item {% if request.endpoint == 'dashboard.index' %}active{% endif %}"
+         href="{{ url_for('dashboard.index') }}">
+        <span class="icon">▤</span> Dashboard
+      </a>
+      <a class="nav-item {% if request.blueprint == 'customers' %}active{% endif %}"
+         href="{{ url_for('customers.index') }}">
+        <span class="icon">▦</span> Customers
+      </a>
+
+      {% if fy is defined and fy %}
+      <div class="nav-label">
+        Current: {{ fy.customer.name|truncate(20) }} · {{ fy.year_label }}
+      </div>
+      <a class="nav-item {% if request.endpoint == 'customers.workspace' %}active{% endif %}"
+         href="{{ url_for('customers.workspace', customer_id=fy.customer_id, fy_id=fy.id) }}">
+        <span class="icon">◈</span> Overview
+      </a>
+      <a class="nav-item {% if request.blueprint == 'documents' %}active{% endif %}"
+         href="{{ url_for('documents.index', fy_id=fy.id) }}">
+        <span class="icon">▣</span> 1. Documents
+      </a>
+      <a class="nav-item {% if request.blueprint == 'trial_balance' %}active{% endif %}"
+         href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">
+        <span class="icon">▤</span> 2. Trial Balance
+      </a>
+      <a class="nav-item {% if request.endpoint == 'trial_balance.review' %}active{% endif %}"
+         href="{{ url_for('trial_balance.review', fy_id=fy.id) }}">
+        <span class="icon">✉</span> 3. Customer Review
+      </a>
+      <a class="nav-item {% if request.blueprint == 'statements'
+                             and request.endpoint != 'statements.versions' %}active{% endif %}"
+         href="{{ url_for('statements.index', fy_id=fy.id) }}">
+        <span class="icon">▥</span> 4. Statements
+      </a>
+      <a class="nav-item {% if request.blueprint == 'reports' %}active{% endif %}"
+         href="{{ url_for('reports.builder', fy_id=fy.id) }}">
+        <span class="icon">▧</span> 5. Audit Report
+      </a>
+      {% endif %}
+
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="avatar">{{ current_user.initials }}</div>
+        <div class="stack" style="min-width:0">
+          <div class="name">{{ current_user.name }}</div>
+          <div class="role">{{ current_user.role|capitalize }}</div>
+        </div>
+      </div>
+      <a href="{{ url_for('auth.logout') }}"
+         style="color:#7d8ba3;display:block;margin-top:10px;font-size:12px">Sign out</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="breadcrumb">
+        {% block breadcrumb %}
+          <span class="current">Dashboard</span>
+        {% endblock %}
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px">
+        {#
+          Type to filter, rather than a plain select. A firm with a hundred
+          engagements cannot scroll to the one it wants, and the customer's
+          name is the thing an auditor knows - so the list narrows as they
+          type it.
+        #}
+        {% if nav_engagements %}
+        <div class="engagement-picker" id="engagement-picker"
+             title="Switch engagement">
+          <span class="picker-label">Engagement</span>
+          <input type="text" id="engagement-search" autocomplete="off"
+                 role="combobox" aria-expanded="false"
+                 aria-controls="engagement-list"
+                 placeholder="{% if fy is defined and fy %}{{ fy.customer.name|truncate(26) }} · {{ fy.year_label }}{% else %}Type a customer or year…{% endif %}"
+                 value="">
+          <span class="picker-caret">&#9662;</span>
+          <ul class="engagement-list" id="engagement-list" role="listbox" hidden>
+            {% for engagement in nav_engagements %}
+              <li role="option"
+                  data-url="{{ url_for('customers.workspace',
+                                       customer_id=engagement.customer_id,
+                                       fy_id=engagement.id) }}"
+                  data-search="{{ (engagement.customer.name ~ ' ' ~ engagement.year_label)|lower }}"
+                  {% if fy is defined and fy and fy.id == engagement.id %}
+                    class="current" aria-selected="true"
+                  {% endif %}>
+                <span class="eng-name">{{ engagement.customer.name|truncate(30) }}</span>
+                <span class="eng-year">{{ engagement.year_label }}</span>
+              </li>
+            {% endfor %}
+            <li class="no-match" hidden>No engagement matches that.</li>
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if AI_ENABLED %}
+          <span class="ai-badge">✦ AI on · {{ AI_PROVIDER_LABEL }}</span>
+        {% else %}
+          <span class="pill pill-grey" title="Set a provider API key in .env to enable AI extraction">
+            AI off
+          </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flashes">
+            {% for category, message in messages %}
+              <div class="flash flash-{{ category }}">
+                <span>{% if category == 'success' %}✓{% elif category == 'error' %}✕{% elif category == 'warning' %}⚠{% else %}ℹ{% endif %}</span>
+                <span>{{ message }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+
+<script>
+  window.CSRF_TOKEN = "{{ csrf_token() }}";
+</script>
+<script src="{{ url_for('static', filename='js/engagement-picker.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

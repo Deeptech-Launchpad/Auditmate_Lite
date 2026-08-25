@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Audit Report · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <span class="current">Audit Report</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Audit Report Builder</h1>
+    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('reports.preview', report_id=report.id) }}"
+       class="btn" target="_blank">Preview full report</a>
+    <a href="{{ url_for('reports.export', report_id=report.id) }}"
+       class="btn btn-primary">
+      {{ '⬇ Export PDF' if pdf_available else '⎙ Print / Save as PDF' }}
+    </a>
+  </div>
+</div>
+
+<div class="notice">
+  <span>&#8505;</span>
+  <div>
+    <strong>Built from the approved trial balance.</strong>
+    Every figure below - statements and note tables alike - is derived from
+    the trial balance you approved, so nothing here is typed by hand. Section
+    order and wording come from <code>config/report_sections.yaml</code>.
+    Toggle sections on and off, drag to reorder, and click any narrative
+    text in the preview to edit it there. Shaded fields are filled from the
+    customer record and cannot be typed over.
+  </div>
+</div>
+
+<div class="report-layout">
+
+  <div class="card" style="margin:0">
+    <div class="card-head">
+      <h2>Sections</h2>
+      <span class="hint">{{ report.enabled_sections|length }} of {{ report.sections|length }} on</span>
+    </div>
+    <div class="card-body">
+      <div id="section-list" data-report-id="{{ report.id }}">
+        {% for section in report.sections %}
+        <div class="section-item {{ '' if section.is_enabled else 'disabled' }}"
+             draggable="true" data-section-id="{{ section.id }}">
+          <span class="handle">⠿</span>
+          <input type="checkbox" class="toggle" {% if section.is_enabled %}checked{% endif %}
+                 data-section-id="{{ section.id }}">
+          <span class="stitle">
+            {{ section.title }}
+            <div class="stype">{{ section.section_type|replace('_', ' ') }}</div>
+          </span>
+          {% if section.section_type != 'statement' %}
+            <button class="icon-btn edit-btn" data-section-id="{{ section.id }}"
+                    title="Edit this section in the preview">✎</button>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Live preview <span class="edit-badge">click any text to edit</span></h2>
+        <span class="hint" id="save-hint">Enabled sections, in order</span>
+      </div>
+      <div class="card-body">
+        {#
+          The same partial the exported report uses, so the builder shows the
+          finished document rather than an approximation of it. Styles are
+          scoped to .rpt-mini so report typography cannot leak into the
+          application chrome around this panel.
+        #}
+        <style>
+          {% with for_pdf = False, scope = '.rpt-mini' %}
+            {% include "reports/_styles.html" %}
+          {% endwith %}
+          .rpt-mini { max-height: 680px; overflow: auto; background: #e9ecef;
+                      padding: 14px; border-radius: 6px; }
+          .rpt-mini .rpt-doc { font-size: 12px; }
+          .rpt-mini .rpt-page { background: #fff; padding: 26px 30px;
+                                margin-bottom: 12px;
+                                box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+        </style>
+        <div class="rpt-mini" id="live-report">
+          <div class="rpt-doc">
+            {% with editable = true %}
+              {% include "reports/_document.html" %}
+            {% endwith %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/report.js') }}"></script>
+{% endblock %}

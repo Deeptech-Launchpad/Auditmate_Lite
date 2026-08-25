@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Audit Report · Locked · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <span class="current">Audit Report</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Audit Report</h1>
+    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <div class="empty">
+      <div class="icon">🔒</div>
+      <h3>Locked until the statements are approved</h3>
+      <p style="max-width:520px;margin:0 auto 20px">
+        The audit report pulls its figures from the approved financial
+        statements, so it stays locked until the client has signed them off.
+        This ordering is deliberate — it prevents a report being issued against
+        numbers the customer has not yet agreed.
+      </p>
+
+      <div class="progress-rail" style="max-width:560px;margin:0 auto 24px">
+        <div class="rail-step {{ 'done' if fy.documents else '' }}">
+          <span class="bullet">{{ '✓' if fy.documents else '1' }}</span>
+          <span class="text">Documents</span>
+        </div>
+        <div class="rail-line {{ 'done' if fy.tb_accounts else '' }}"></div>
+        <div class="rail-step {{ 'done' if fy.statements else ('active' if fy.documents else '') }}">
+          <span class="bullet">{{ '✓' if fy.tb_accounts else '2' }}</span>
+          <span class="text">Trial Balance</span>
+        </div>
+        <div class="rail-line"></div>
+        <div class="rail-step {{ 'active' if fy.tb_versions else '' }}">
+          <span class="bullet">3</span>
+          <span class="text">Approval</span>
+        </div>
+        <div class="rail-line"></div>
+        <div class="rail-step">
+          <span class="bullet">4</span>
+          <span class="text">Report</span>
+        </div>
+      </div>
+
+      {% if not fy.tb_accounts %}
+        <p class="muted small">Next step: build the standard trial balance.</p>
+        <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn btn-primary">
+          Go to the trial balance →
+        </a>
+      {% elif not fy.tb_versions %}
+        <p class="muted small">
+          Next step: send the trial balance to {{ customer.name }} to verify.
+        </p>
+        <a href="{{ url_for('trial_balance.review', fy_id=fy.id) }}" class="btn btn-primary">
+          Send for verification →
+        </a>
+      {% elif fy.pending_tb_changes %}
+        <p class="muted small">
+          {{ fy.pending_tb_changes }} customer change(s) still need your
+          decision.
+        </p>
+        <a href="{{ url_for('trial_balance.review', fy_id=fy.id) }}" class="btn btn-primary">
+          Go to customer review →
+        </a>
+      {% else %}
+        <p class="muted small">
+          The customer has responded. Next step: approve the trial balance —
+          that generates the statements and unlocks this report.
+        </p>
+        <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn btn-primary">
+          Approve the trial balance →
+        </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+{% block title %}Customer review · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <span class="current">Customer review</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Customer review</h1>
+    <p class="subtitle">
+      {{ customer.name }} · {{ fy.year_label }} ·
+      {{ versions|length }} version{{ '' if versions|length == 1 else 's' }}
+      {% if customer.email %} · {{ customer.email }}{% endif %}
+    </p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('statements.index', fy_id=fy.id) }}" class="btn">← Statements</a>
+    {% if not fy.final_version %}
+      <form method="post" action="{{ url_for('statements.send_to_customer', fy_id=fy.id) }}"
+            style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary">
+          ✉ Send {{ 'again' if versions else 'to customer' }} for verification
+        </button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if not email_ready %}
+<div class="notice warn">
+  <span>⚠</span>
+  <div>
+    <strong>Email is not configured yet.</strong>
+    The app will still prepare each version and build the Excel workbook — you
+    just download it and send it yourself. Add <code>SMTP_USER</code> and
+    <code>SMTP_PASSWORD</code> (a Gmail App Password) to <code>.env</code> and
+    restart to send and receive automatically.
+  </div>
+</div>
+{% endif %}
+
+{% if fy.final_version %}
+<div class="notice ok">
+  <span>✓</span>
+  <div>
+    <strong>Version {{ fy.final_version.version_no }} is final</strong> —
+    agreed by {{ fy.approved_by_name }}
+    on {{ fy.approved_at|datefmt('%d %b %Y') }}.
+    The audit report is built from these figures.
+    <a href="{{ url_for('reports.builder', fy_id=fy.id) }}">Go to the audit report →</a>
+  </div>
+</div>
+{% endif %}
+
+<div class="notice">
+  <span>ℹ</span>
+  <div>
+    <strong>How the round-trip works:</strong> the customer receives an editable
+    Excel workbook. They type corrections into the <em>Revised Amount</em>
+    column and reply to the email, leaving the subject line alone. The
+    reference in the subject
+    {% if versions and versions[0].token %}
+      (<code>{{ versions[0].token }}</code>)
+    {% endif %}
+    is what files their reply against this engagement. Every round is kept below.
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:18px;align-items:start">
+
+  <div>
+    <!-- ---------------------------------------------- version history --- -->
+    <div class="card">
+      <div class="card-head">
+        <h2>Version history</h2>
+        <span class="hint">Newest first</span>
+      </div>
+      <div class="card-body">
+        {% if versions %}
+          {% for version in versions %}
+          <div class="version-row {% if version.is_final %}is-final{% endif %}
+                      {% if version.source == 'customer' %}from-customer{% endif %}">
+            <div class="version-badge">v{{ version.version_no }}</div>
+
+            <div class="stack" style="flex:1;min-width:0">
+              <div>
+                <span class="strong">
+                  {% if version.source == 'customer' %}
+                    Returned by customer
+                  {% else %}
+                    Prepared by {{ version.author.name if version.author else 'auditor' }}
+                  {% endif %}
+                </span>
+                {% if version.is_final %}
+                  <span class="pill pill-green" style="margin-left:6px">✓ Final</span>
+                {% elif version.status == 'sent' %}
+                  <span class="pill pill-amber" style="margin-left:6px">Sent, awaiting reply</span>
+                {% elif version.status == 'customer_revised' %}
+                  <span class="pill pill-purple" style="margin-left:6px">Changes received</span>
+                {% else %}
+                  <span class="pill pill-grey" style="margin-left:6px">Draft</span>
+                {% endif %}
+              </div>
+
+              <div class="muted small">
+                {{ version.created_at|datefmt('%d %b %Y, %H:%M') }}
+                {% if version.sent_at %} · sent to {{ version.sent_to }}{% endif %}
+                {% if version.received_at %} · received from {{ version.received_from }}{% endif %}
+                {% if version.statement_count %} · {{ version.statement_count }} statements{% endif %}
+              </div>
+
+              {% if version.customer_comments %}
+                <div class="small" style="margin-top:6px;padding:8px 10px;background:var(--purple-light);border-radius:5px;color:#4d2b7d">
+                  <strong>Customer comments:</strong><br>
+                  {{ version.customer_comments|truncate(400) }}
+                </div>
+              {% endif %}
+              {% if version.notes %}
+                <div class="muted small" style="margin-top:5px;font-style:italic">
+                  “{{ version.notes|truncate(240) }}”
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="stack" style="gap:5px">
+              {% if version.xlsx_path %}
+                <a class="btn btn-sm"
+                   href="{{ url_for('statements.download_version', version_id=version.id, which='sent') }}">
+                  ⬇ Workbook sent
+                </a>
+              {% endif %}
+              {% if version.revised_file_path %}
+                <a class="btn btn-sm"
+                   href="{{ url_for('statements.download_version', version_id=version.id, which='revised') }}">
+                  ⬇ Their reply
+                </a>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty" style="padding:34px 16px">
+            <div class="icon">✉</div>
+            <h3>No versions yet</h3>
+            <p>Send the statements to {{ customer.name }} to start the review.
+               Each round is recorded here.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ------------------------------------------- changes since last --- -->
+    {% if diffs %}
+    <div class="card">
+      <div class="card-head">
+        <h2>What changed in the latest version</h2>
+        <span class="hint">{{ diffs|length }} figure(s) moved</span>
+      </div>
+      <div class="card-body tight">
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Line</th>
+                <th class="num">Before</th>
+                <th class="num">After</th>
+                <th class="num">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in diffs %}
+              <tr>
+                <td>
+                  <div class="stack">
+                    <span class="strong">{{ d.label }}</span>
+                    <span class="muted small">{{ d.statement|replace('_', ' ') }}</span>
+                  </div>
+                </td>
+                <td class="num muted">{{ d.before|money }}</td>
+                <td class="num strong">{{ d.after|money }}</td>
+                <td class="num {{ 'diff-up' if d.delta > 0 else 'diff-down' }}">
+                  {{ '+' if d.delta > 0 }}{{ d.delta|money }}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    <!-- ---------------------------------------------- pick up replies --- -->
+    <div class="card">
+      <div class="card-head"><h2>Get the customer's changes</h2></div>
+      <div class="card-body">
+
+        <form method="post" action="{{ url_for('statements.check_replies', fy_id=fy.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-primary" style="width:100%"
+                  {% if not email_ready %}disabled title="Email not configured"{% endif %}>
+            ↻ Check mailbox for replies
+          </button>
+        </form>
+        <p class="muted small" style="margin:9px 0 0">
+          Looks for unread replies carrying this engagement's reference and
+          files any attached workbook as the next version.
+        </p>
+
+        <div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>
+
+        <h3 style="font-size:13.5px;margin-bottom:8px">Or upload it yourself</h3>
+        <p class="muted small" style="margin-top:0">
+          Always works — use this if the customer replied from a different
+          address or changed the subject line.
+        </p>
+        <form method="post" enctype="multipart/form-data"
+              action="{{ url_for('statements.upload_revision', fy_id=fy.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field">
+            <input type="file" name="revision" accept=".xlsx,.xls" required>
+          </div>
+          <div class="field" style="margin-top:9px">
+            <input name="note" placeholder="Note (optional)">
+          </div>
+          <button type="submit" class="btn" style="width:100%;margin-top:10px">
+            ⬆ Upload customer's revised version
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------ mark as final --- -->
+    {% if versions and not fy.final_version %}
+    <div class="card">
+      <div class="card-head"><h2>Agree the final version</h2></div>
+      <div class="card-body">
+        <p class="muted small" style="margin-top:0">
+          When the customer is happy with the figures, mark the latest version
+          final. This freezes it and unlocks the audit report.
+        </p>
+        <form method="post" action="{{ url_for('statements.finalise', fy_id=fy.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field">
+            <label for="version_id">Version to finalise</label>
+            <select id="version_id" name="version_id">
+              {% for version in versions %}
+                <option value="{{ version.id }}" {% if loop.first %}selected{% endif %}>
+                  v{{ version.version_no }} —
+                  {{ 'from customer' if version.source == 'customer' else 'prepared by us' }}
+                  ({{ version.created_at|datefmt('%d %b') }})
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field" style="margin-top:10px">
+            <label for="approved_by_name">Agreed by *</label>
+            <input id="approved_by_name" name="approved_by_name" required
+                   placeholder="e.g. {{ customer.contact_person or 'Director name' }}">
+          </div>
+          <div class="field" style="margin-top:10px">
+            <label for="approval_note">Note</label>
+            <input id="approval_note" name="approval_note"
+                   placeholder="e.g. confirmed by email 12 Aug">
+          </div>
+
+          {% if check and not check.balanced %}
+          <div class="notice danger" style="margin:12px 0 0">
+            <span>✕</span>
+            <div>
+              <strong>The balance sheet does not balance.</strong>
+              Assets {{ check.assets|money }} vs equity and liabilities
+              {{ check.equity_and_liabilities|money }} —
+              out by <strong>{{ check.difference|money }}</strong>.
+              A revision may have been entered one-sided.
+              <label class="checkbox-row" style="margin:10px 0 0">
+                <input type="checkbox" name="confirm_imbalance" value="1">
+                <span>Finalise anyway — I accept this difference</span>
+              </label>
+            </div>
+          </div>
+          {% endif %}
+
+          <button type="submit" class="btn btn-success" style="width:100%;margin-top:12px">
+            ✓ Mark final &amp; unlock report
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ----------------------------------------------- email preview --- -->
+    {% if preview %}
+    <div class="card">
+      <div class="card-head">
+        <h2>Email preview</h2>
+        <span class="hint">{{ 'will be sent' if email_ready else 'not configured' }}</span>
+      </div>
+      <div class="card-body">
+        <div class="email-preview">
+          <div class="hdr">
+            <strong>To:</strong> {{ preview.to or '(no email on customer record)' }}<br>
+            <strong>Subject:</strong> {{ preview.subject }}
+          </div>{{ preview.body }}</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

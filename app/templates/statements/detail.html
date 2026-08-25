@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}{{ statement.type_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('statements.index', fy_id=fy.id) }}">Statements</a>
+  <span class="sep">/</span>
+  <span class="current">{{ statement.type_label }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ statement.type_label }}</h1>
+    <p class="subtitle">
+      {{ customer.name }} · year ended {{ fy.end_date|datefmt }} · {{ customer.books_currency }}
+    </p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('statements.preview', statement_id=statement.id) }}"
+       class="btn" target="_blank">⎙ Print preview</a>
+    <a href="{{ url_for('statements.index', fy_id=fy.id) }}" class="btn">All statements</a>
+  </div>
+</div>
+
+{% if check %}
+<div class="notice {{ 'ok' if check.balanced else 'danger' }}">
+  <span>{{ '✓' if check.balanced else '✕' }}</span>
+  <div>
+    <strong>Balance check:</strong>
+    Total assets {{ check.assets|money }} vs
+    total equity &amp; liabilities {{ check.equity_and_liabilities|money }}
+    {% if check.balanced %}
+      — balanced.
+    {% else %}
+      — <strong>out by {{ check.difference|money }}</strong>. Check the unmapped
+      accounts below, or adjust a figure directly.
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="notice">
+  <span>✎</span>
+  <div>
+    Click any figure to override it. The auto-calculated value is kept
+    underneath — clear the box to revert. Overridden lines are highlighted and
+    survive a regenerate.
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>{{ statement.type_label }}</h2>
+    <span class="hint">as at {{ fy.end_date|datefmt }}</span>
+  </div>
+  <div class="card-body tight">
+    <div class="table-wrap">
+      <table class="fin" id="statement-table" data-statement-id="{{ statement.id }}">
+        <thead>
+          <tr>
+            <th>&nbsp;</th>
+            <th style="width:170px">{{ fy.year_label }}</th>
+            <th style="width:150px">
+              {{ fy.previous_year.year_label if fy.previous_year else 'Prior year' }}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(group=None) %}
+          {% for line in statement.lines %}
+            {% if line.group_key != ns.group %}
+              {% set ns.group = line.group_key %}
+              {% if line.group_key and statement.statement_type != 'trial_balance' %}
+              <tr class="group-head">
+                <td colspan="3">{{ line.group_key|replace('_', ' ') }}</td>
+              </tr>
+              {% endif %}
+            {% endif %}
+            <tr data-line-id="{{ line.id }}"
+                class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %} {% if line.is_overridden %}overridden{% endif %}">
+              <td class="{% if line.indent %}indent-{{ line.indent }}{% endif %}">
+                {{ line.label }}
+                {% if line.is_overridden %}<span class="override-flag">overridden</span>{% endif %}
+              </td>
+              <td class="num">
+                <input class="amount" data-line-id="{{ line.id }}"
+                       value="{{ '%.2f'|format(line.effective_amount) if line.effective_amount else '' }}"
+                       placeholder="—">
+              </td>
+              <td class="num muted">{{ line.amount_previous|money }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% if unmapped %}
+<div class="card">
+  <div class="card-head">
+    <h2>Unmapped accounts ({{ unmapped|length }})</h2>
+    <span class="hint">Assign each one — the choice is remembered for this client</span>
+  </div>
+  <div class="card-body">
+    <div class="notice warn" style="margin-bottom:14px">
+      <span>⚠</span>
+      <div>
+        These accounts came from verified documents but didn't match any
+        statement line, so they are <strong>not included</strong> in the figures
+        above. Assign each one below. Your choice is saved as a rule for
+        {{ customer.name }}, so next year they map automatically.
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Account label</th>
+            <th class="num">Amount</th>
+            <th style="width:300px">Map to line</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in unmapped %}
+          <tr>
+            <td class="strong">{{ item.label }}</td>
+            <td class="num">
+              {% if item.amount is not none %}{{ item.amount|money }}
+              {% elif item.debit %}{{ item.debit|money }} Dr
+              {% elif item.credit %}{{ item.credit|money }} Cr
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              <select class="map-select" data-label="{{ item.label }}"
+                      style="padding:6px 9px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;width:100%">
+                <option value="">— choose a line —</option>
+                {% for line in statement.lines %}
+                  {% if not line.is_total and not line.is_subtotal %}
+                    <option value="{{ line.line_key }}">{{ line.label }}</option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/statements.js') }}"></script>
+{% endblock %}

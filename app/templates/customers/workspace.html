@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}{{ customer.name }} {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.index') }}">Customers</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <span class="current">{{ fy.year_label }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ fy.year_label }} — {{ customer.name }}</h1>
+    <p class="subtitle">
+      {{ fy.start_date|datefmt }} to {{ fy.end_date|datefmt }}
+      {% if fy.previous_year %} · comparatives from {{ fy.previous_year.year_label }}{% endif %}
+    </p>
+  </div>
+  <div class="page-actions">
+    {% if fy.status == 'in_progress' %}
+      <span class="pill pill-blue"><span class="dot"></span>In progress</span>
+    {% elif fy.status == 'statements_shared' %}
+      <span class="pill pill-amber"><span class="dot"></span>Statements shared</span>
+    {% elif fy.status == 'approved' %}
+      <span class="pill pill-green"><span class="dot"></span>Approved</span>
+    {% elif fy.status == 'report_generated' %}
+      <span class="pill pill-purple"><span class="dot"></span>Report generated</span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    {% set has_docs = documents|length > 0 %}
+    {% set has_verified = verified_count > 0 %}
+    {% set has_statements = statements|length > 0 %}
+    {% set is_approved = fy.is_approved %}
+
+    <div class="progress-rail">
+      <div class="rail-step {{ 'done' if has_verified else ('active' if has_docs else '') }}">
+        <span class="bullet">{{ '✓' if has_verified else '1' }}</span>
+        <span class="text">Documents</span>
+      </div>
+      <div class="rail-line {{ 'done' if has_verified else '' }}"></div>
+
+      <div class="rail-step {{ 'done' if has_statements else ('active' if has_verified else '') }}">
+        <span class="bullet">{{ '✓' if has_statements else '2' }}</span>
+        <span class="text">Statements</span>
+      </div>
+      <div class="rail-line {{ 'done' if has_statements else '' }}"></div>
+
+      <div class="rail-step {{ 'done' if is_approved else ('active' if has_statements else '') }}">
+        <span class="bullet">{{ '✓' if is_approved else '3' }}</span>
+        <span class="text">Approval</span>
+      </div>
+      <div class="rail-line {{ 'done' if is_approved else '' }}"></div>
+
+      <div class="rail-step {{ 'done' if fy.status == 'report_generated' else ('active' if is_approved else '') }}">
+        <span class="bullet">{{ '✓' if fy.status == 'report_generated' else '4' }}</span>
+        <span class="text">Audit Report</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="statement-grid">
+
+  <a class="statement-card" href="{{ url_for('documents.index', fy_id=fy.id) }}">
+    <div class="st-name">▣ Documents &amp; sources</div>
+    <div class="st-meta">
+      {{ documents|length }} document(s) · {{ verified_count }} verified
+      {% if xero_conn and xero_conn.tenant_id %}
+        <br><span class="pill pill-green" style="margin-top:6px">
+          &#10003; Xero: {{ xero_conn.tenant_name }}
+        </span>
+      {% elif xero_available %}
+        <br><span class="muted small">Xero not connected</span>
+      {% endif %}
+      {% if fy.documents_pending_review %}
+        <br><span class="pill pill-amber" style="margin-top:6px">
+          {{ fy.documents_pending_review }} pending review
+        </span>
+      {% endif %}
+    </div>
+  </a>
+
+  <a class="statement-card" href="{{ url_for('statements.index', fy_id=fy.id) }}">
+    <div class="st-name">▥ Financial Statements</div>
+    <div class="st-meta">
+      {% if has_statements %}
+        {{ statements|length }} generated
+      {% else %}
+        Not generated yet
+      {% endif %}
+      {% if not has_verified %}
+        <br><span class="muted small">Verify a document first</span>
+      {% endif %}
+    </div>
+  </a>
+
+  <a class="statement-card" href="{{ url_for('statements.versions', fy_id=fy.id) }}">
+    <div class="st-name">✉ Customer Review</div>
+    <div class="st-meta">
+      {% if fy.final_version %}
+        <span class="pill pill-green">✓ v{{ fy.final_version.version_no }} final</span>
+      {% elif fy.versions %}
+        {{ fy.versions|length }} version(s) ·
+        latest {{ fy.latest_version.status_label|lower }}
+      {% else %}
+        Not sent yet
+      {% endif %}
+      {% if not has_statements %}
+        <br><span class="muted small">Generate the statements first</span>
+      {% endif %}
+    </div>
+  </a>
+
+  <a class="statement-card" href="{{ url_for('reports.builder', fy_id=fy.id) }}">
+    <div class="st-name">▧ Audit Report</div>
+    <div class="st-meta">
+      {% if fy.final_version %}
+        Unlocked — built from v{{ fy.final_version.version_no }}
+      {% else %}
+        Locked until a version is marked final
+      {% endif %}
+    </div>
+  </a>
+
+</div>
+
+{% if documents %}
+<div class="card" style="margin-top:18px">
+  <div class="card-head">
+    <h2>Recent documents</h2>
+    <a href="{{ url_for('documents.upload', fy_id=fy.id) }}" class="btn btn-sm btn-primary">
+      + Upload
+    </a>
+  </div>
+  <div class="card-body tight">
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Category</th>
+            <th>Extraction</th>
+            <th>Review</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for doc in documents[:8] %}
+          <tr>
+            <td>
+              <div class="stack">
+                <span class="strong">{{ doc.original_filename }}</span>
+                <span class="muted small">{{ doc.size_display }} · {{ doc.uploaded_at|datefmt }}</span>
+              </div>
+            </td>
+            <td class="small">{{ doc.category_label }}</td>
+            <td>
+              {% if doc.extraction_status == 'extracted' %}
+                <span class="pill pill-green">{{ doc.line_items|length }} rows</span>
+                {% if doc.ai_used %}<span class="ai-badge" style="margin-left:4px">✦ AI</span>{% endif %}
+              {% elif doc.extraction_status == 'queued' %}
+                <span class="pill pill-grey">Queued</span>
+              {% elif doc.extraction_status == 'failed' %}
+                <span class="pill pill-red">Failed</span>
+              {% else %}
+                <span class="pill pill-blue">{{ doc.extraction_status }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if doc.review_status == 'verified' %}
+                <span class="pill pill-green">✓ Verified</span>
+              {% elif doc.review_status == 'in_review' %}
+                <span class="pill pill-amber">In review</span>
+              {% else %}
+                <span class="pill pill-grey">Pending</span>
+              {% endif %}
+            </td>
+            <td class="right">
+              <a href="{{ url_for('documents.review', document_id=doc.id) }}"
+                 class="btn btn-sm">Review</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="card" style="margin-top:18px">
+  <div class="card-body">
+    {# Two ways in, not one. This is the engagement's landing page, so it
+       must not imply that uploading is the only route - a connected client
+       never needs to send a trial balance at all. #}
+    <div class="empty">
+      <div class="icon">▣</div>
+      <h3>Nothing in this engagement yet</h3>
+      <p>Bring the figures in either way &mdash; or both. Most engagements use
+         both: the accounting system for the books, uploads for the bank
+         statements and confirmations it cannot hold.</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:6px">
+        <a href="{{ url_for('documents.upload', fy_id=fy.id) }}" class="btn btn-primary">
+          &#128193; Upload documents
+        </a>
+        <a href="{{ url_for('documents.index', fy_id=fy.id) }}" class="btn">
+          &#128279; Connect to Xero
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

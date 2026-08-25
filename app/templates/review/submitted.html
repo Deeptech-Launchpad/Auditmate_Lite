@@ -1,0 +1,22 @@
+{% extends "review/_shell.html" %}
+{% block title %}Thank you · Auditmate{% endblock %}
+{% block panel %}
+  <div class="mark">✅</div>
+  <h1>Thank you — we have it</h1>
+  {% if changes %}
+    <p>
+      You submitted <strong>{{ changes }} change{{ '' if changes == 1 else 's' }}</strong>
+      to the trial balance for {{ customer.name }}, {{ fy.year_label }}.
+    </p>
+    <p>Your auditor will review each one and come back to you if anything
+       needs discussing.</p>
+  {% else %}
+    <p>
+      You confirmed the trial balance for {{ customer.name }},
+      {{ fy.year_label }} without changes.
+    </p>
+    <p>Your auditor has been notified and will carry on from here.</p>
+  {% endif %}
+  <p style="margin-top:18px">You can close this page now.</p>
+  <p class="brandline">AltiusNXT Audit</p>
+{% endblock %}

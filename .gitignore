@@ -1,0 +1,36 @@
+# Secrets and local config
+.env
+
+# Uploaded customer documents — never commit these
+storage/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Generated PDFs
+*.pdf.tmp
+instance/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# Report template supplied by the client - never commit
+templates_private/
+
+# Server logs from the dev runner
+server.out
+server.err
+nohup.out
+
+# Sample/test data that carries client figures
+sample_data/*.xlsx
+sample_data/*.csv
+sample_data/*.pdf

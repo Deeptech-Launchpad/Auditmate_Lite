@@ -1,0 +1,172 @@
+# Seed rules: account label -> statement line.
+#
+# These run before any AI call. Anything matched here costs nothing and is
+# deterministic. Labels that match nothing go to the AI classifier (if a key
+# is configured) and then to the auditor's "Unmapped items" tray.
+#
+# match: contains (default) | exact | regex     — case-insensitive
+# sign:  1 keeps the amount, -1 flips it (e.g. contra accounts)
+# Lower priority number wins when several rules match.
+
+# ---------------------------------------------------------------- income ---
+- {pattern: "revenue",              statement: profit_and_loss, line: revenue, priority: 10, sign: -1}
+- {pattern: "sales",                statement: profit_and_loss, line: revenue, priority: 15, sign: -1}
+- {pattern: "turnover",             statement: profit_and_loss, line: revenue, priority: 10, sign: -1}
+- {pattern: "fee income",           statement: profit_and_loss, line: revenue, priority: 10, sign: -1}
+- {pattern: "service income",       statement: profit_and_loss, line: revenue, priority: 10, sign: -1}
+- {pattern: "other income",         statement: profit_and_loss, line: other_income, priority: 10}
+- {pattern: "interest income",      statement: profit_and_loss, line: interest_income, priority: 10}
+
+# -------------------------------------------------------------- expenses ---
+- {pattern: "cost of sales",        statement: profit_and_loss, line: service_charges, priority: 10}
+- {pattern: "cost of goods",        statement: profit_and_loss, line: service_charges, priority: 10}
+- {pattern: "purchases",            statement: profit_and_loss, line: service_charges, priority: 20}
+- {pattern: "director",             statement: profit_and_loss, line: directors_remuneration, priority: 5}
+- {pattern: "salary",               statement: profit_and_loss, line: staff_salaries, priority: 15}
+- {pattern: "salaries",             statement: profit_and_loss, line: staff_salaries, priority: 15}
+- {pattern: "wages",                statement: profit_and_loss, line: staff_salaries, priority: 15}
+- {pattern: "cpf",                  statement: profit_and_loss, line: staff_salaries, priority: 15}
+- {pattern: "employee benefit",     statement: profit_and_loss, line: staff_salaries, priority: 10}
+- {pattern: "bonus",                statement: profit_and_loss, line: staff_salaries, priority: 20}
+- {pattern: "depreciation",         statement: profit_and_loss, line: depreciation, priority: 10}
+- {pattern: "amortisation",         statement: profit_and_loss, line: depreciation, priority: 10}
+- {pattern: "rent",                 statement: profit_and_loss, line: office_rent, priority: 15}
+- {pattern: "audit fee",            statement: profit_and_loss, line: accounting_charges, priority: 10}
+- {pattern: "professional fee",     statement: profit_and_loss, line: accounting_charges, priority: 10}
+- {pattern: "legal fee",            statement: profit_and_loss, line: accounting_charges, priority: 10}
+- {pattern: "accounting fee",       statement: profit_and_loss, line: accounting_charges, priority: 10}
+- {pattern: "interest expense",     statement: profit_and_loss, line: bank_charges, priority: 10}
+- {pattern: "bank charge",          statement: profit_and_loss, line: bank_charges, priority: 15}
+- {pattern: "finance cost",         statement: profit_and_loss, line: bank_charges, priority: 10}
+- {pattern: "utilities",            statement: profit_and_loss, line: other_expenses, priority: 20}
+- {pattern: "telephone",            statement: profit_and_loss, line: other_expenses, priority: 20}
+- {pattern: "insurance",            statement: profit_and_loss, line: other_expenses, priority: 20}
+- {pattern: "travel",               statement: profit_and_loss, line: other_expenses, priority: 20}
+- {pattern: "income tax",           statement: profit_and_loss, line: tax_expense, priority: 10}
+- {pattern: "tax expense",          statement: profit_and_loss, line: tax_expense, priority: 10}
+
+# ---------------------------------------------------------------- assets ---
+- {pattern: "property, plant",      statement: balance_sheet, line: ppe, priority: 5}
+- {pattern: "plant and equipment",  statement: balance_sheet, line: ppe, priority: 5}
+- {pattern: "fixed asset",          statement: balance_sheet, line: ppe, priority: 10}
+- {pattern: "motor vehicle",        statement: balance_sheet, line: ppe, priority: 15}
+- {pattern: "office equipment",     statement: balance_sheet, line: ppe, priority: 15}
+- {pattern: "furniture",            statement: balance_sheet, line: ppe, priority: 15}
+- {pattern: "renovation",           statement: balance_sheet, line: ppe, priority: 15}
+- {pattern: "intangible",           statement: balance_sheet, line: intangible_assets, priority: 10}
+- {pattern: "goodwill",             statement: balance_sheet, line: intangible_assets, priority: 10}
+- {pattern: "investment",           statement: balance_sheet, line: investments, priority: 15}
+- {pattern: "inventor",             statement: balance_sheet, line: inventories, priority: 10}
+- {pattern: "stock in trade",       statement: balance_sheet, line: inventories, priority: 10}
+- {pattern: "trade receivable",     statement: balance_sheet, line: trade_receivables, priority: 5}
+- {pattern: "trade debtor",         statement: balance_sheet, line: trade_receivables, priority: 5}
+- {pattern: "sundry debtor",        statement: balance_sheet, line: trade_receivables, priority: 5}
+- {pattern: "accounts receivable",  statement: balance_sheet, line: trade_receivables, priority: 5}
+- {pattern: "debtor",               statement: balance_sheet, line: trade_receivables, priority: 25}
+- {pattern: "prepay",               statement: balance_sheet, line: prepayments, priority: 10}
+- {pattern: "deposit",              statement: balance_sheet, line: prepayments, priority: 20}
+- {pattern: "cash at bank",         statement: balance_sheet, line: cash_and_equivalents, priority: 5}
+- {pattern: "cash in hand",         statement: balance_sheet, line: cash_and_equivalents, priority: 5}
+- {pattern: "petty cash",           statement: balance_sheet, line: cash_and_equivalents, priority: 5}
+- {pattern: "bank",                 statement: balance_sheet, line: cash_and_equivalents, priority: 30}
+- {pattern: "cash",                 statement: balance_sheet, line: cash_and_equivalents, priority: 30}
+- {pattern: "fixed deposit",        statement: balance_sheet, line: cash_and_equivalents, priority: 10}
+
+# ----------------------------------------------------------- equity/liab ---
+- {pattern: "share capital",        statement: balance_sheet, line: share_capital, priority: 5, sign: -1}
+- {pattern: "retained earning",     statement: balance_sheet, line: retained_earnings, priority: 5, sign: -1}
+- {pattern: "accumulated profit",   statement: balance_sheet, line: retained_earnings, priority: 5, sign: -1}
+- {pattern: "accumulated loss",     statement: balance_sheet, line: retained_earnings, priority: 5, sign: -1}
+- {pattern: "trade payable",        statement: balance_sheet, line: trade_payables, priority: 5, sign: -1}
+- {pattern: "trade creditor",       statement: balance_sheet, line: trade_payables, priority: 5, sign: -1}
+- {pattern: "sundry creditor",      statement: balance_sheet, line: trade_payables, priority: 5, sign: -1}
+- {pattern: "accounts payable",     statement: balance_sheet, line: trade_payables, priority: 5, sign: -1}
+- {pattern: "creditor",             statement: balance_sheet, line: trade_payables, priority: 25, sign: -1}
+- {pattern: "accrual",              statement: balance_sheet, line: accruals, priority: 10, sign: -1}
+- {pattern: "accrued",              statement: balance_sheet, line: accruals, priority: 10, sign: -1}
+- {pattern: "provision for tax",    statement: balance_sheet, line: tax_payable, priority: 5, sign: -1}
+- {pattern: "tax payable",          statement: balance_sheet, line: tax_payable, priority: 5, sign: -1}
+- {pattern: "deferred tax",         statement: balance_sheet, line: deferred_tax, priority: 5, sign: -1}
+- {pattern: "bank loan",            statement: balance_sheet, line: long_term_borrowings, priority: 10, sign: -1}
+- {pattern: "term loan",            statement: balance_sheet, line: long_term_borrowings, priority: 10, sign: -1}
+- {pattern: "hire purchase",        statement: balance_sheet, line: long_term_borrowings, priority: 10, sign: -1}
+- {pattern: "bank overdraft",       statement: balance_sheet, line: short_term_borrowings, priority: 10, sign: -1}
+- {pattern: "director.*loan",       statement: balance_sheet, line: short_term_borrowings, match: regex, priority: 3, sign: -1}
+
+# --- added to match the client's template line keys ---
+- {pattern: "cpf",                  statement: profit_and_loss, line: cpf, priority: 10}
+- {pattern: "staff bonus",          statement: profit_and_loss, line: staff_bonus, priority: 8}
+- {pattern: "bonus",                statement: profit_and_loss, line: staff_bonus, priority: 18}
+- {pattern: "entertainment",        statement: profit_and_loss, line: entertainment, priority: 12}
+- {pattern: "training",             statement: profit_and_loss, line: training_expenses, priority: 12}
+- {pattern: "staff house",          statement: profit_and_loss, line: staff_house_rental, priority: 6}
+- {pattern: "manpower",             statement: profit_and_loss, line: manpower_supply, priority: 12}
+- {pattern: "secretarial",          statement: profit_and_loss, line: secretarial_fee, priority: 10}
+- {pattern: "website",              statement: profit_and_loss, line: website_expenses, priority: 12}
+- {pattern: "mom application",      statement: profit_and_loss, line: mom_application_fee, priority: 8}
+- {pattern: "commission",           statement: profit_and_loss, line: commission_employee, priority: 14}
+- {pattern: "consulting",           statement: profit_and_loss, line: consulting_fee, priority: 12}
+- {pattern: "petty cash expense",   statement: profit_and_loss, line: petty_cash_expenses, priority: 8}
+- {pattern: "iras rebate",          statement: profit_and_loss, line: iras_rebate, priority: 8}
+- {pattern: "gst payable",          statement: balance_sheet, line: trade_payables, priority: 8, sign: -1}
+- {pattern: "working capital",      statement: balance_sheet, line: working_capital, priority: 5, sign: -1}
+- {pattern: "purchases",            statement: profit_and_loss, line: purchases, priority: 18}
+- {pattern: "design",               statement: profit_and_loss, line: design_implementation, priority: 16}
+- {pattern: "service charge",       statement: profit_and_loss, line: service_charges, priority: 10}
+- {pattern: "other comprehensive",  statement: profit_and_loss, line: other_comprehensive_income, priority: 5, sign: -1}
+
+# --- gaps found during end-to-end testing with real-shaped documents ---
+- {pattern: "accounting charge",    statement: profit_and_loss, line: accounting_charges, priority: 8}
+- {pattern: "other expense",        statement: profit_and_loss, line: other_expenses, priority: 22}
+- {pattern: "sundry expense",       statement: profit_and_loss, line: other_expenses, priority: 22}
+- {pattern: "income tax expense",   statement: profit_and_loss, line: tax_expense, priority: 8}
+- {pattern: "provision for income tax", statement: balance_sheet, line: tax_payable, priority: 4, sign: -1}
+- {pattern: "other payable",        statement: balance_sheet, line: trade_payables, priority: 4, sign: -1}
+
+# --- Xero's default chart of accounts ---------------------------------------
+# A new Xero organisation ships with these account names, so most Xero pulls
+# will contain them verbatim. Mapping them here means a first pull lands
+# largely mapped instead of leaving the auditor a page of amber rows.
+- {pattern: "advertising",          statement: profit_and_loss, line: other_expenses, priority: 14}
+- {pattern: "general expenses",     statement: profit_and_loss, line: other_expenses, priority: 20}
+- {pattern: "light, power",         statement: profit_and_loss, line: other_expenses, priority: 14}
+- {pattern: "subscriptions",        statement: profit_and_loss, line: other_expenses, priority: 14}
+- {pattern: "computer equipment",   statement: balance_sheet, line: ppe, priority: 8}
+- {pattern: "office equipment",     statement: balance_sheet, line: ppe, priority: 8}
+- {pattern: "cost of goods sold",   statement: profit_and_loss, line: purchases, priority: 8}
+- {pattern: "business bank account", statement: balance_sheet, line: cash_and_equivalents, priority: 8}
+- {pattern: "accounts receivable",  statement: balance_sheet, line: trade_receivables, priority: 8}
+- {pattern: "accounts payable",     statement: balance_sheet, line: trade_payables, priority: 8, sign: -1}
+- {pattern: "superannuation",       statement: profit_and_loss, line: cpf, priority: 10}
+- {pattern: "other revenue",        statement: profit_and_loss, line: other_income, priority: 10, sign: -1}
+
+# --- gaps found testing a real Singapore SME's management accounts ----------
+# Lower priority number wins. These sit BELOW the generic rules they need to
+# beat: "Loan from Director" was being claimed by the catch-all "director"
+# rule (priority 5) and booked as director's remuneration - an expense -
+# when it is a liability owed to him.
+- {pattern: "loan from director",   statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
+- {pattern: "loan to director",     statement: balance_sheet, line: prepayments, priority: 2}
+- {pattern: "repayment of loan",    statement: balance_sheet, line: short_term_borrowings, priority: 3, sign: -1}
+- {pattern: "loan to 3rd part",     statement: balance_sheet, line: prepayments, priority: 3}
+- {pattern: "loan to third part",   statement: balance_sheet, line: prepayments, priority: 3}
+- {pattern: "staff loan",           statement: balance_sheet, line: prepayments, priority: 3}
+- {pattern: "loan to employee",     statement: balance_sheet, line: prepayments, priority: 3}
+- {pattern: "amount due from",      statement: balance_sheet, line: prepayments, priority: 6}
+
+# "Bank 1 Charg" is not matched by "bank charge", so only the catch-all
+# "bank" (priority 30, cash) claimed it - putting a bank fee into cash.
+- {pattern: "charg",                statement: profit_and_loss, line: bank_charges, priority: 14}
+- {pattern: "loan interest",        statement: profit_and_loss, line: interest_expense, priority: 4}
+- {pattern: "interest on loan",     statement: profit_and_loss, line: interest_expense, priority: 4}
+
+- {pattern: "cost of service",      statement: profit_and_loss, line: service_charges, priority: 6}
+- {pattern: "cost of good",         statement: profit_and_loss, line: purchases, priority: 6}
+- {pattern: "exp claim",            statement: profit_and_loss, line: other_expenses, priority: 12}
+- {pattern: "expense claim",        statement: profit_and_loss, line: other_expenses, priority: 12}
+- {pattern: "gst payment",          statement: profit_and_loss, line: gst_payables_expense, priority: 6}
+- {pattern: "income tax payment",   statement: profit_and_loss, line: tax_expense, priority: 6}
+- {pattern: "laptop",               statement: balance_sheet, line: ppe, priority: 8}
+- {pattern: "computer",             statement: balance_sheet, line: ppe, priority: 8}
+- {pattern: "furniture",            statement: balance_sheet, line: ppe, priority: 8}
+- {pattern: "asset ",               statement: balance_sheet, line: ppe, priority: 20}

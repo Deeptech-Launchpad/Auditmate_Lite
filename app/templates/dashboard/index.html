@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Auditmate Lite{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <p class="subtitle">Overview of all engagements</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('customers.create') }}" class="btn btn-primary">+ New Customer</a>
+  </div>
+</div>
+
+<div class="metric-grid">
+  <div class="metric accent-blue">
+    <div class="label">Customers</div>
+    <div class="value">{{ metrics.customers }}</div>
+    <div class="foot">Active clients</div>
+  </div>
+  <div class="metric accent-amber">
+    <div class="label">Documents Pending</div>
+    <div class="value">{{ metrics.documents_pending }}</div>
+    <div class="foot">Awaiting review</div>
+  </div>
+  <div class="metric accent-green">
+    <div class="label">Awaiting Approval</div>
+    <div class="value">{{ metrics.statements_awaiting }}</div>
+    <div class="foot">Statements shared</div>
+  </div>
+  <div class="metric">
+    <div class="label">Reports Generated</div>
+    <div class="value">{{ metrics.reports_generated }}</div>
+    <div class="foot">Completed</div>
+  </div>
+</div>
+
+<div class="notice" style="align-items:center">
+  <span>→</span>
+  <div>
+    <strong>Where the work happens:</strong>
+    open an engagement below to reach its
+    <strong>Documents → Statements → Audit Report</strong> workspace.
+    Those steps are scoped to one customer and financial year, so they appear
+    in the left sidebar once an engagement is open.
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start">
+
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Active engagements</h2>
+        <a href="{{ url_for('customers.index') }}" class="hint">View all customers →</a>
+      </div>
+      <div class="card-body tight">
+        {% if active_years %}
+          <div class="table-wrap">
+            <table class="data">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Year</th>
+                  <th>Status</th>
+                  <th class="num">Documents</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for year in active_years %}
+                <tr>
+                  <td>
+                    <div class="stack">
+                      <span class="strong">{{ year.customer.name }}</span>
+                      <span class="muted small">{{ year.customer.uen or '—' }}</span>
+                    </div>
+                  </td>
+                  <td class="nowrap">{{ year.year_label }}</td>
+                  <td>
+                    {% if year.status == 'in_progress' %}
+                      <span class="pill pill-blue"><span class="dot"></span>In progress</span>
+                    {% elif year.status == 'statements_shared' %}
+                      <span class="pill pill-amber"><span class="dot"></span>Shared</span>
+                    {% elif year.status == 'approved' %}
+                      <span class="pill pill-green"><span class="dot"></span>Approved</span>
+                    {% else %}
+                      <span class="pill pill-grey">{{ year.status_label }}</span>
+                    {% endif %}
+                  </td>
+                  <td class="num">
+                    {{ year.documents|length }}
+                    {% if year.documents_pending_review %}
+                      <span class="muted small">({{ year.documents_pending_review }} pending)</span>
+                    {% endif %}
+                  </td>
+                  <td class="right">
+                    <a href="{{ url_for('customers.workspace', customer_id=year.customer_id, fy_id=year.id) }}"
+                       class="btn btn-sm btn-primary">Open workspace →</a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="empty">
+            <div class="icon">▦</div>
+            <h3>No engagements yet</h3>
+            <p>Add your first customer to get started.</p>
+            <a href="{{ url_for('customers.create') }}" class="btn btn-primary">+ New Customer</a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if needs_attention %}
+    <div class="card">
+      <div class="card-head">
+        <h2>Documents needing review</h2>
+        <span class="hint">Extracted, awaiting your check</span>
+      </div>
+      <div class="card-body tight">
+        <div class="table-wrap">
+          <table class="data">
+            <tbody>
+              {% for doc in needs_attention %}
+              <tr>
+                <td>
+                  <div class="stack">
+                    <span class="strong">{{ doc.original_filename }}</span>
+                    <span class="muted small">
+                      {{ doc.financial_year.customer.name }} · {{ doc.category_label }}
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  {% if doc.ai_used %}<span class="ai-badge">✦ AI</span>{% endif %}
+                </td>
+                <td class="num">
+                  {% if doc.rows_needing_review %}
+                    <span class="pill pill-amber">{{ doc.rows_needing_review }} flagged</span>
+                  {% else %}
+                    <span class="pill pill-green">Ready</span>
+                  {% endif %}
+                </td>
+                <td class="right">
+                  <a href="{{ url_for('documents.review', document_id=doc.id) }}"
+                     class="btn btn-sm">Review</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Extraction</h2></div>
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span class="muted small">Documents processed</span>
+          <span class="strong">{{ total_docs }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span class="muted small">Handled by AI</span>
+          <span class="strong">{{ ai_docs }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span class="muted small">Rule-based (no cost)</span>
+          <span class="strong">{{ total_docs - ai_docs }}</span>
+        </div>
+        <p class="muted small" style="margin:14px 0 0;line-height:1.6">
+          Deterministic parsers run first. AI is only called when a file is
+          scanned, unreadable, or the parser's confidence is low.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Recent activity</h2></div>
+      <div class="card-body tight">
+        {% if recent_activity %}
+          <table class="data">
+            <tbody>
+              {% for log in recent_activity %}
+              <tr>
+                <td>
+                  <div class="stack">
+                    <span class="small">
+                      <span class="strong">{{ log.action|replace('_', ' ')|capitalize }}</span>
+                      <span class="muted">{{ log.entity_type|replace('_', ' ') }}</span>
+                    </span>
+                    <span class="muted small">
+                      {{ log.user.name if log.user else 'System' }} ·
+                      {{ log.created_at|datefmt('%d %b, %H:%M') }}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="empty" style="padding:30px 16px">
+            <p class="small">No activity recorded yet.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if not AI_ENABLED %}
+<div class="ai-note" style="margin-top:4px">
+  <span class="icon">✦</span>
+  <div>
+    <strong>AI extraction is currently off.</strong>
+    Rule-based extraction still handles Excel, CSV, Word and typed PDFs.
+    Add an <code>ANTHROPIC_API_KEY</code> to your <code>.env</code> file and restart
+    to enable AI reading of scanned documents and automatic account mapping.
+  </div>
+</div>
+{% endif %}
+{% endblock %}

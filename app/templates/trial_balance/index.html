@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+{% block title %}Trial Balance · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <span class="current">Trial Balance</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Standard Trial Balance</h1>
+    <p class="subtitle">
+      {{ customer.name }} · {{ fy.year_label }} ·
+      {{ totals.accounts }} account{{ '' if totals.accounts == 1 else 's' }}
+      {% if fy.tb_is_approved %}
+        · <span class="pill pill-green">✓ Approved</span>
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-actions">
+    {% if fy.tb_is_approved %}
+      <form method="post" action="{{ url_for('trial_balance.reopen', fy_id=fy.id) }}"
+            style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn">↺ Reopen for editing</button>
+      </form>
+      <a href="{{ url_for('statements.index', fy_id=fy.id) }}" class="btn btn-primary">
+        Statements →
+      </a>
+    {% else %}
+      <form method="post" action="{{ url_for('trial_balance.build', fy_id=fy.id) }}"
+            style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn {{ 'btn-primary' if not accounts }}">
+          {{ '↻ Rebuild from sources' if accounts else '⚡ Build trial balance' }}
+        </button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if not verified_docs and not accounts %}
+<div class="notice warn">
+  <span>⚠</span>
+  <div>
+    <strong>No verified documents yet.</strong>
+    The trial balance is built from documents you have signed off in
+    Review &amp; Correct.
+    <a href="{{ url_for('documents.index', fy_id=fy.id) }}">Go to documents →</a>
+  </div>
+</div>
+{% endif %}
+
+{% set confirmed = fy.tb_versions
+     | selectattr('source', 'equalto', 'customer')
+     | rejectattr('changes') | list | first %}
+{% if confirmed and not fy.tb_is_approved %}
+<div class="notice ok">
+  <span>✓</span>
+  <div>
+    <strong>{{ customer.name }} confirmed these figures</strong>
+    on {{ confirmed.submitted_at|datefmt('%d %B %Y at %H:%M') }} — they
+    reviewed the trial balance and proposed no changes.
+    You can approve it below.
+  </div>
+</div>
+{% elif fy.pending_tb_changes and not fy.tb_is_approved %}
+<div class="notice warn">
+  <span>⚠</span>
+  <div>
+    <strong>{{ fy.pending_tb_changes }} customer change(s) awaiting your
+    decision.</strong>
+    Accept or reject each one before approving.
+    <a href="{{ url_for('trial_balance.review', fy_id=fy.id) }}">Go to Customer Review →</a>
+  </div>
+</div>
+{% endif %}
+
+{#
+  A source changed after this trial balance was built, so what is shown
+  below is out of date. Said here rather than left to be noticed.
+#}
+{% if fy.tb_is_stale and not fy.tb_is_approved %}
+<div class="notice warn">
+  <span>&#8635;</span>
+  <div>
+    <strong>A source document has changed since this was built.</strong>
+    The figures below are from the earlier read. Rebuild to bring them up to
+    date.
+    <div style="margin-top:10px">
+      <form method="post" action="{{ url_for('trial_balance.build', fy_id=fy.id) }}"
+            style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-sm btn-primary">
+          &#8635; Rebuild from sources
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if accounts %}
+  {% if fy.tb_is_approved %}
+  <div class="notice ok">
+    <span>✓</span>
+    <div>
+      <strong>Approved{% if fy.tb_approved_by_name %} by {{ fy.tb_approved_by_name }}{% endif %}</strong>
+      on {{ fy.tb_approved_at|datefmt('%d %b %Y, %H:%M') }}.
+      The financial statements were generated from these figures. Reopen the
+      trial balance to change anything.
+    </div>
+  </div>
+  {% else %}
+    {% if not totals.balanced %}
+    <div class="notice danger">
+      <span>✕</span>
+      <div>
+        <strong>The trial balance does not balance.</strong>
+        Debits {{ totals.debit|money }} vs credits {{ totals.credit|money }} —
+        out by <strong>{{ totals.difference|money }}</strong>.
+        Something is missing or misread; check the source documents before
+        approving.
+      </div>
+    </div>
+    {% elif totals.unmapped %}
+    <div class="notice warn">
+      <span>⚠</span>
+      <div>
+        <strong>{{ totals.unmapped }} account(s) are not mapped to a statement line.</strong>
+        They balance, but they would contribute to no financial statement.
+        Set a line for each amber row below — your choice is remembered for
+        {{ customer.name }} next year.
+      </div>
+    </div>
+    {% else %}
+    <div class="notice ok">
+      <span>✓</span>
+      <div>
+        <strong>Balanced and fully mapped.</strong>
+        Debits equal credits at {{ totals.debit|money }} and every account
+        rolls up to a statement line. Ready to approve.
+      </div>
+    </div>
+    {% endif %}
+  {% endif %}
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>
+      Accounts
+      {% if fy.tb_is_approved %}
+        <span class="pill pill-grey" style="font-size:10.5px;margin-left:8px">
+          &#128274; Locked
+        </span>
+      {% endif %}
+    </h2>
+    {#
+      The approve/reopen banner sits at the top of the page, which is off
+      screen by the time you are looking at row forty. The lock has to be
+      legible and undoable from here too.
+    #}
+    <span class="hint">
+      {% if fy.tb_is_approved %}
+        Approved — the statements and report are built from these figures.
+        <form method="post" action="{{ url_for('trial_balance.reopen', fy_id=fy.id) }}"
+              style="display:inline;margin-left:8px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm">&#8634; Reopen to edit</button>
+        </form>
+      {% else %}
+        Debits {{ totals.debit|money }} · Credits {{ totals.credit|money }}
+      {% endif %}
+    </span>
+  </div>
+  <div class="card-body tight">
+    {% if accounts %}
+    <div class="table-wrap">
+      <table class="grid" id="tb-grid"
+             data-fy-id="{{ fy.id }}"
+             data-readonly="{{ 'true' if fy.tb_is_approved else 'false' }}">
+        {#
+          Column order follows the client's own trial balance workbook:
+          account, category, which statement it lands in, Dr, Cr, Total.
+          "Maps to" stays because it is the one column that is a decision -
+          Category and FS are derived from it and shown so the auditor can
+          see the consequence of the mapping without opening a statement.
+          The Code column appears only when the client's chart of accounts
+          actually has codes; an empty column is just noise.
+        #}
+        <thead>
+          <tr>
+            {% if has_codes %}<th style="width:80px">Code</th>{% endif %}
+            <th>Account</th>
+            <th style="width:170px">Category</th>
+            <th style="width:110px">FS</th>
+            <th style="width:230px">Maps to</th>
+            <th style="width:115px" class="right">Dr.</th>
+            <th style="width:115px" class="right">Cr.</th>
+            <th style="width:120px" class="right">Total</th>
+            <th style="width:130px">Source</th>
+            <th style="width:44px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for account in accounts %}
+          <tr data-account-id="{{ account.id }}"
+              class="{% if not account.standard_key %}row-flagged{% elif account.is_adjustment %}row-corrected{% endif %}">
+            {% if has_codes %}
+            <td class="muted small mono" style="padding:8px 10px">
+              {{ account.account_code or '—' }}
+            </td>
+            {% endif %}
+            <td>
+              <input class="cell" data-field="account_name"
+                     value="{{ account.account_name }}">
+            </td>
+            {# Both derived from "Maps to" - never typed, and refreshed by
+               the browser as soon as the mapping changes. #}
+            <td class="small tb-category" style="padding:8px 10px">
+              {% if account.category_label %}
+                {{ account.category_label }}
+              {% else %}
+                <span class="muted">— unmapped —</span>
+              {% endif %}
+            </td>
+            <td class="small tb-fs" style="padding:8px 10px">
+              {% if account.fs_label %}
+                <span class="pill {{ 'pill-blue' if account.fs_label == 'P&L' else 'pill-grey' }}"
+                      style="font-size:10.5px">{{ account.fs_label }}</span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td style="padding:4px 8px">
+              <select class="map-select" data-account-id="{{ account.id }}"
+                      style="width:100%;padding:5px 7px;border:1px solid var(--border);border-radius:5px;font-size:12.5px;font-family:inherit">
+                <option value="">— not mapped —</option>
+                {% for group in line_options %}
+                  <optgroup label="{{ group.statement }}">
+                    {% for line in group.lines %}
+                      <option value="{{ line.key }}"
+                        {% if account.standard_key == line.key %}selected{% endif %}>
+                        {{ line.label }}
+                      </option>
+                    {% endfor %}
+                  </optgroup>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input class="cell num" data-field="debit"
+                       value="{{ '%.2f'|format(account.debit) if account.debit else '' }}"></td>
+            <td><input class="cell num" data-field="credit"
+                       value="{{ '%.2f'|format(account.credit) if account.credit else '' }}"></td>
+            {# Signed net, the way the client's workbook closes each row. #}
+            <td class="num right mono small tb-total" style="padding:8px 10px">
+              {{ account.net|money }}
+            </td>
+            <td style="padding:8px 6px">
+              {# "Uploaded" plus the document's own category, so the auditor
+                 knows which file to open to check the figure. #}
+              <span class="pill {{ 'pill-purple' if account.is_adjustment else 'pill-grey' }}"
+                    style="font-size:10.5px">
+                {%- if account.source == 'xero' %}Xero
+                {%- elif account.source_detail %}Uploaded
+                {%- else %}{{ account.source_label }}{% endif -%}
+              </span>
+              {% if account.source_detail %}
+                <div class="muted" style="font-size:10px;margin-top:2px">
+                  {{ account.source_detail }}
+                </div>
+              {% endif %}
+            </td>
+            <td class="actions">
+              <button class="icon-btn no" data-action="delete"
+                      title="Remove this account">✕</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="grid-total">
+            <td colspan="{{ 5 if has_codes else 4 }}" class="right">Total</td>
+            <td class="num right mono" id="foot-debit">{{ totals.debit|money }}</td>
+            <td class="num right mono" id="foot-credit">{{ totals.credit|money }}</td>
+            <td class="num right mono" id="foot-total">{{ totals.difference|money(false) }}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="grid-footer">
+      <div class="totals">
+        <div class="t-item">
+          <div class="t-label">Total debit</div>
+          <div class="t-value" id="tb-debit">{{ totals.debit|money }}</div>
+        </div>
+        <div class="t-item">
+          <div class="t-label">Total credit</div>
+          <div class="t-value" id="tb-credit">{{ totals.credit|money }}</div>
+        </div>
+        <div class="t-item">
+          <div class="t-label">Difference</div>
+          <div class="t-value" id="tb-diff"
+               style="color:{{ 'var(--green)' if totals.balanced else 'var(--red)' }}">
+            {{ totals.difference|money }}
+          </div>
+        </div>
+        <div class="t-item">
+          <div class="t-label">Unmapped</div>
+          <div class="t-value" id="tb-unmapped"
+               style="color:{{ 'var(--green)' if not totals.unmapped else 'var(--amber)' }}">
+            {{ totals.unmapped }}
+          </div>
+        </div>
+      </div>
+      <span class="muted small" id="tb-status">Changes save automatically</span>
+    </div>
+
+    {% else %}
+      <div class="empty">
+        <div class="icon">▥</div>
+        <h3>No trial balance yet</h3>
+        <p>Build it from your verified documents. Every source merges into one
+           standard trial balance that the statements are generated from.</p>
+        {% if verified_docs %}
+        <form method="post" action="{{ url_for('trial_balance.build', fy_id=fy.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-primary">⚡ Build trial balance</button>
+        </form>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if not fy.tb_is_approved %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start">
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Add an account or adjustment</h2>
+    </div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('trial_balance.add', fy_id=fy.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid">
+          <div class="field">
+            <label for="account_code">Code</label>
+            <input id="account_code" name="account_code" placeholder="optional">
+          </div>
+          <div class="field">
+            <label for="account_name">Account name *</label>
+            <input id="account_name" name="account_name" required>
+          </div>
+          <div class="field">
+            <label for="debit">Debit</label>
+            <input id="debit" name="debit" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label for="credit">Credit</label>
+            <input id="credit" name="credit" placeholder="0.00">
+          </div>
+          <div class="field full">
+            <label for="notes">Reason / note</label>
+            <input id="notes" name="notes"
+                   placeholder="e.g. accrual not in the client's ledger">
+          </div>
+        </div>
+        <label class="checkbox-row" style="margin-top:12px">
+          <input type="checkbox" name="is_adjustment" value="1">
+          <span>This is an audit adjustment (flagged separately in the trial balance)</span>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Add to trial balance</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Approve the trial balance</h2>
+      <span class="hint">This generates the statements</span>
+    </div>
+    <div class="card-body">
+      <p class="small muted" style="margin-top:0">
+        Approving locks the trial balance and generates every financial
+        statement from it. The audit report is produced from those statements,
+        so nothing downstream exists until this step.
+      </p>
+
+      <form method="post" action="{{ url_for('trial_balance.approve', fy_id=fy.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field">
+          <label for="approved_by">Approved by</label>
+          <input id="approved_by" name="approved_by"
+                 placeholder="e.g. {{ current_user.name }}">
+        </div>
+
+        {% if totals.unmapped %}
+        <div class="notice warn" style="margin:12px 0 0">
+          <span>⚠</span>
+          <div>{{ totals.unmapped }} account(s) still unmapped — map them first.</div>
+        </div>
+        {% elif not totals.balanced %}
+        <div class="notice danger" style="margin:12px 0 0">
+          <span>✕</span>
+          <div>
+            Out by {{ totals.difference|money }}.
+            <label class="checkbox-row" style="margin:10px 0 0">
+              <input type="checkbox" name="confirm_unbalanced" value="1">
+              <span>Approve anyway — I accept this difference</span>
+            </label>
+          </div>
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-success" style="width:100%;margin-top:14px"
+                {% if totals.unmapped or not accounts %}disabled{% endif %}>
+          ✓ Approve &amp; generate statements
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/trial_balance.js') }}"></script>
+{% endblock %}

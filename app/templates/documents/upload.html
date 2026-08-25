@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Upload documents · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <span class="current">Upload</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Upload documents</h1>
+    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('documents.index', fy_id=fy.id) }}" class="btn">Back to documents</a>
+  </div>
+</div>
+
+<div class="notice">
+  <span>ℹ</span>
+  <div>
+    Figures are pulled out of each file automatically after upload. Excel, CSV,
+    Word and typed PDFs are parsed directly.
+    {% if AI_ENABLED %}
+      Scanned PDFs and images are read by AI.
+    {% else %}
+      Scanned PDFs need an <code>ANTHROPIC_API_KEY</code> in <code>.env</code> to be read automatically.
+    {% endif %}
+    You review everything before it reaches the financial statements.
+  </div>
+</div>
+
+<form method="post" enctype="multipart/form-data" id="upload-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card">
+    <div class="card-body">
+
+      <div class="field" style="max-width:340px;margin-bottom:18px">
+        <label for="category">Document category</label>
+        <select id="category" name="category" required>
+          {% for key, label in DOCUMENT_CATEGORIES %}
+            <option value="{{ key }}" {% if key == 'trial_balance' %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <span class="help">Applies to every file in this batch — upload different
+          categories separately</span>
+      </div>
+
+      <div class="dropzone" id="dropzone">
+        <div class="big">⬆</div>
+        <h3>Drop files here</h3>
+        <p>or click to browse — PDF, Excel, CSV, Word, images · max 25 MB each</p>
+        <input type="file" id="file-input" name="files" multiple hidden
+               accept=".pdf,.xlsx,.xls,.csv,.docx,.png,.jpg,.jpeg">
+      </div>
+
+      <div class="file-list" id="file-list"></div>
+
+      <div class="form-actions">
+        <a href="{{ url_for('documents.index', fy_id=fy.id) }}" class="btn">Cancel</a>
+        <button type="submit" class="btn btn-primary" id="submit-btn" disabled>
+          Upload &amp; extract
+        </button>
+      </div>
+
+    </div>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+{% endblock %}
