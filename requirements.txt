@@ -18,6 +18,10 @@ psycopg[binary]==3.2.3
 
 # --- Security / config ---
 argon2-cffi==23.1.0
+# Fernet, for the stored Xero OAuth tokens. It arrives anyway as a
+# dependency of pdfminer.six, but app/services/secrets.py imports it
+# directly, so it is named here rather than left to chance.
+cryptography>=42.0
 python-dotenv==1.0.1
 PyYAML==6.0.2
 
