@@ -985,3 +985,56 @@ tr.row-doc-total input.cell { font-weight: 600; }
 .src-legend .sw-over { background: rgba(255, 176, 32, .30);
                        box-shadow: inset 2px 0 0 #b06a00; }
 .src-legend .legend-tip { margin-left: auto; color: #77808d; font-style: italic; }
+
+/* -----------------------------------------------------------------------
+   Password show/hide.
+
+   The button sits inside the field's border rather than beside it, so the
+   input keeps its full width and the row does not grow taller than the
+   email field above it. Extra right padding on the input stops a long
+   password running underneath the icon.
+   ----------------------------------------------------------------------- */
+
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 40px; }
+
+.pw-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: #8a929e;
+  cursor: pointer;
+}
+.pw-toggle:hover { color: #3f4754; background: rgba(20, 30, 50, .05); }
+.pw-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(30, 77, 140, .18);
+  color: #3f4754;
+}
+
+.pw-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* One icon, two states: the eye is always drawn and the stroke through it
+   appears only while the password is visible - so the button shows what
+   pressing it will do next. */
+.pw-toggle .slash { opacity: 0; transition: opacity .12s; }
+.pw-toggle.shown { color: var(--brand, #1e4d8c); }
+.pw-toggle.shown .slash { opacity: 1; }

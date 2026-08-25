@@ -36,8 +36,20 @@
 
       <div class="field">
         <label for="password">Password</label>
-        <input type="password" id="password" name="password"
-               required autocomplete="current-password">
+        <div class="pw-wrap">
+          <input type="password" id="password" name="password"
+                 required autocomplete="current-password">
+          <button type="button" class="pw-toggle" id="pw-toggle"
+                  aria-controls="password" aria-pressed="false"
+                  aria-label="Show password" title="Show password">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path class="eye" d="M1.8 12S5.4 5.4 12 5.4 22.2 12 22.2 12
+                                   18.6 18.6 12 18.6 1.8 12 1.8 12Z"/>
+              <circle class="eye" cx="12" cy="12" r="3.2"/>
+              <line class="slash" x1="4" y1="20" x2="20" y2="4"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div class="checkbox-row">
@@ -53,5 +65,46 @@
     </p>
   </div>
 </div>
+
+<script>
+  /*
+    Show/hide the password.
+
+    Typing a long password blind is where sign-in failures actually come
+    from - and this one is handed over by whoever set the account up, so it
+    gets typed from a note rather than from memory.
+
+    It starts hidden and reverts to hidden on submit, so a revealed password
+    is never left on screen behind a loading page or in a browser's
+    back-forward cache.
+  */
+  (function () {
+    const input = document.getElementById('password');
+    const button = document.getElementById('pw-toggle');
+    if (!input || !button) return;
+
+    function set(shown) {
+      input.type = shown ? 'text' : 'password';
+      button.classList.toggle('shown', shown);
+      button.setAttribute('aria-pressed', shown ? 'true' : 'false');
+      const label = shown ? 'Hide password' : 'Show password';
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+    }
+
+    button.addEventListener('click', function () {
+      const shown = input.type === 'password';
+      set(shown);
+      /* Keep the caret where it was: toggling the type moves it to the
+         start in some browsers, which is maddening mid-word. */
+      const at = input.value.length;
+      input.focus();
+      try { input.setSelectionRange(at, at); } catch (e) { /* not fatal */ }
+    });
+
+    const form = input.closest('form');
+    if (form) form.addEventListener('submit', function () { set(false); });
+  })();
+</script>
 </body>
 </html>
