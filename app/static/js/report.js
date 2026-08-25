@@ -130,16 +130,30 @@
 
   const original = new WeakMap();
 
+  /* A statement figure or label is plain text, not rich content: it must
+     never go through serialise(), which would wrap it in markup. */
+  function isCell(field) {
+    return field.classList.contains('ed-amount')
+        || field.classList.contains('ed-label');
+  }
+
   report.addEventListener('focusin', event => {
     const field = event.target.closest('[contenteditable="true"]');
     if (!field) return;
-    original.set(field, field.dataset.field === 'title'
+    original.set(field, (field.dataset.field === 'title' || isCell(field))
       ? field.textContent.trim() : serialise(field));
   });
 
   report.addEventListener('focusout', async event => {
     const field = event.target.closest('[contenteditable="true"]');
     if (!field) return;
+
+    /* Figures and labels save through their own endpoints - see the second
+       block below, which owns them and exposes this hook. */
+    if (isCell(field)) {
+      if (window.__auditmateSaveCell) await window.__auditmateSaveCell(field);
+      return;
+    }
 
     const key = field.dataset.field || 'content_html';
     const value = key === 'title' ? field.textContent.trim() : serialise(field);
@@ -205,4 +219,236 @@
     field.focus();
   });
 
+})();
+
+/* ------------------------------------------------------------------------
+   Figures and labels on statement and note pages.
+
+   Wording is presentation, so it is simply stored. A figure is not: it goes
+   to an endpoint that records it as an override, keeps the computed value
+   underneath and recalculates every dependent total. The response carries
+   the recalculated statement, which is why the whole table is repainted
+   rather than just the cell that was typed in - a changed line moves its
+   subtotal, its total, and often the balance sheet's footing.
+   ------------------------------------------------------------------------ */
+(function () {
+  const report = document.getElementById('live-report');
+  const hint = document.getElementById('save-hint');
+  if (!report) return;
+
+  function csrfHeaders() {
+    return { 'Content-Type': 'application/json',
+             'X-CSRFToken': window.CSRF_TOKEN };
+  }
+
+  function say(message, tone) {
+    if (!hint) return;
+    hint.textContent = message;
+    hint.className = 'hint' + (tone ? ' ' + tone : '');
+    if (tone !== 'saving') {
+      setTimeout(() => {
+        hint.textContent = 'Enabled sections, in order';
+        hint.className = 'hint';
+      }, 2500);
+    }
+  }
+
+  /* Same presentation as the report's own `stmt` filter: whole dollars,
+     thousands separated, negatives in brackets, nil as a double hyphen. */
+  function fmt(value) {
+    if (value === null || value === undefined || value === '') return '--';
+    const amount = Math.round(Number(value));
+    if (!isFinite(amount) || amount === 0) return '--';
+    const body = Math.abs(amount).toLocaleString('en-US');
+    return amount < 0 ? '(' + body + ')' : body;
+  }
+
+  /* Repaint a statement after the server recalculated it. */
+  function applyLines(lines) {
+    lines.forEach(line => {
+      const cell = report.querySelector(
+        '.ed-amount[data-line-id="' + line.id + '"]');
+      if (cell) {
+        cell.textContent = fmt(line.amount);
+        cell.dataset.computed = line.amount;
+        const td = cell.closest('td');
+        if (td) {
+          td.classList.toggle('is-overridden', !!line.overridden);
+          if (line.overridden) td.classList.remove('from-tb', 'is-computed');
+        }
+      }
+      const label = report.querySelector(
+        '.ed-label[data-line-id="' + line.id + '"]');
+      if (label) label.classList.toggle('is-edited', !!line.label_overridden);
+    });
+  }
+
+  async function saveCell(field) {
+    const key = field.dataset.field;                 /* 'label' | 'amount' */
+    const value = field.textContent.trim();
+
+    let url, body;
+    if (field.dataset.lineId) {
+      url = '/reports/api/line/' + field.dataset.lineId;
+      body = {};
+      body[key] = value;
+    } else {
+      url = '/reports/api/note-row';
+      body = {
+        section_id: field.dataset.sectionId,
+        table_index: Number(field.dataset.tableIndex),
+        row_index: Number(field.dataset.rowIndex),
+        anchor_label: field.dataset.anchor
+      };
+      body[key] = value;
+    }
+
+    say('Saving...', 'saving');
+    try {
+      const response = await fetch(url, {
+        method: 'PATCH', headers: csrfHeaders(), body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        /* A typo must not silently become a nil figure. Put back what was
+           there and say why. */
+        say(data.error || 'Could not save', 'failed');
+        if (key === 'amount') field.textContent = fmt(field.dataset.computed);
+        return;
+      }
+      if (data.lines) applyLines(data.lines);
+      say('Saved', 'saved');
+    } catch (err) {
+      say('Could not save - the figure on screen is not stored', 'failed');
+    }
+  }
+
+  window.__auditmateSaveCell = saveCell;
+
+  /* Enter commits a cell rather than inserting a line break into a table. */
+  report.addEventListener('keydown', event => {
+    const field = event.target.closest('.ed-amount, .ed-label');
+    if (!field) return;
+    if (event.key === 'Enter') { event.preventDefault(); field.blur(); }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (field.dataset.field === 'amount') {
+        field.textContent = fmt(field.dataset.computed);
+      }
+      field.blur();
+    }
+  });
+
+  /* --------------------------------------------------------- sources --- */
+
+  let panel = null;
+
+  function closePanel() {
+    if (panel) { panel.remove(); panel = null; }
+  }
+
+  function sourceRow(account) {
+    const mapped = account.mapped_by === 'auditor'
+      ? '<span class="by-auditor">mapped by auditor</span>'
+      : '<span class="by-auto">mapped automatically</span>';
+    const where = account.document
+      ? account.document + (account.category ? ' · ' + account.category : '')
+      : (account.source === 'xero' ? 'Xero' : 'entered by hand');
+    const code = account.code ? account.code + '  ' : '';
+    return '<li><div class="src-line">'
+         + '<span class="src-name">' + code + account.name + '</span>'
+         + '<span class="src-amt">' + fmt(account.amount) + '</span>'
+         + '</div><div class="src-meta">' + where + ' · ' + mapped
+         + '</div></li>';
+  }
+
+  function openPanel(anchor, data) {
+    closePanel();
+    panel = document.createElement('div');
+    panel.className = 'src-panel';
+
+    let body;
+    if (data.kind === 'computed') {
+      body = '<p class="src-none">Calculated from other lines'
+           + (data.formula ? ' <code>' + data.formula + '</code>' : '')
+           + '. It has no accounts of its own - change the lines it adds up.</p>';
+    } else if (!data.accounts || !data.accounts.length) {
+      body = '<p class="src-none">Nothing in the trial balance maps here, so'
+           + ' this line prints nil. If that is wrong the account is either'
+           + ' unmapped or mapped elsewhere - check Coverage.</p>';
+    } else {
+      body = '<ul class="src-list">'
+           + data.accounts.map(sourceRow).join('') + '</ul>';
+    }
+
+    const overridden = data.overridden
+      ? '<p class="src-over">Overridden by an auditor. The calculated figure'
+        + ' was <strong>' + fmt(data.computed_amount) + '</strong>.'
+        + ' Clear the cell to put it back.</p>'
+      : '';
+
+    panel.innerHTML = '<div class="src-head">'
+      + (data.label || 'Where this came from') + '</div>'
+      + body + overridden
+      + '<button type="button" class="src-close">Close</button>';
+
+    document.body.appendChild(panel);
+    const box = anchor.getBoundingClientRect();
+    panel.style.top = (window.scrollY + box.bottom + 6) + 'px';
+    panel.style.left = Math.max(8, Math.min(
+      window.scrollX + box.left - 240,
+      window.scrollX + document.documentElement.clientWidth
+        - panel.offsetWidth - 12)) + 'px';
+
+    panel.querySelector('.src-close').addEventListener('click', closePanel);
+  }
+
+  report.addEventListener('click', async event => {
+    const dot = event.target.closest('.src-dot');
+    if (!dot) return;
+    event.preventDefault();
+
+    const url = dot.dataset.lineId
+      ? '/reports/api/line/' + dot.dataset.lineId + '/sources'
+      : '/reports/api/account/' + dot.dataset.accountId + '/sources';
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.ok) openPanel(dot, data);
+    } catch (err) {
+      say('Could not load the sources', 'failed');
+    }
+  });
+
+  document.addEventListener('click', event => {
+    if (panel && !panel.contains(event.target)
+        && !event.target.closest('.src-dot')) closePanel();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closePanel();
+  });
+
+  /* ---------------------------------------------------- sources toggle -- */
+
+  const toggle = document.getElementById('show-sources');
+  if (toggle) {
+    /* Remembered per browser so the working preference survives a reload,
+       and never travels with the document. */
+    let on = true;
+    try { on = localStorage.getItem('auditmate.showSources') !== '0'; }
+    catch (e) { /* private window: fall back to on */ }
+
+    const paint = function () {
+      report.classList.toggle('show-sources', on);
+      toggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+      toggle.classList.toggle('on', on);
+    };
+    toggle.addEventListener('click', () => {
+      on = !on;
+      try { localStorage.setItem('auditmate.showSources', on ? '1' : '0'); }
+      catch (e) { /* not fatal */ }
+      paint();
+    });
+    paint();
+  }
 })();

@@ -28,12 +28,35 @@
   <span>&#8505;</span>
   <div>
     <strong>Built from the approved trial balance.</strong>
-    Every figure below - statements and note tables alike - is derived from
-    the trial balance you approved, so nothing here is typed by hand. Section
-    order and wording come from <code>config/report_sections.yaml</code>.
-    Toggle sections on and off, drag to reorder, and click any narrative
-    text in the preview to edit it there. Shaded fields are filled from the
-    customer record and cannot be typed over.
+    Everything below is editable in place - narrative, statement wording and
+    the figures themselves. Click and type. A figure you change is stored as
+    a recorded override with the calculated value kept underneath and every
+    dependent total recalculated, so the report can never quietly disagree
+    with the statements behind it. Clear a figure to put the calculation
+    back.
+    <br>
+    With <strong>Show sources</strong> on, a blue underline means the figure
+    came from the trial balance and amber means an auditor changed it. Click
+    the &#9432; beside any figure to see which accounts and which uploaded
+    document it came from. None of these marks are printed.
+  </div>
+</div>
+
+{#
+  Coverage: what is in the trial balance but not in the report.
+
+  The statement builder walks the template's lines and pulls the accounts
+  matching each. An account mapped to a key no template consumes is
+  therefore never looked at - it does not appear, and until now nothing
+  said so. This panel is that missing warning.
+#}
+<div class="card coverage-card" id="coverage-card" data-fy-id="{{ fy.id }}">
+  <div class="card-head">
+    <h2>Coverage</h2>
+    <span class="hint" id="coverage-hint">checking&hellip;</span>
+  </div>
+  <div class="card-body" id="coverage-body">
+    <p class="muted small">Reconciling the trial balance against the report&hellip;</p>
   </div>
 </div>
 
@@ -69,8 +92,15 @@
   <div>
     <div class="card">
       <div class="card-head">
-        <h2>Live preview <span class="edit-badge">click any text to edit</span></h2>
-        <span class="hint" id="save-hint">Enabled sections, in order</span>
+        <h2>Live preview <span class="edit-badge">click any text or figure to edit</span></h2>
+        <div class="preview-tools">
+          <button type="button" id="show-sources" class="chip-toggle on"
+                  aria-pressed="true"
+                  title="Underline figures that came from the trial balance, and mark the ones an auditor has changed. Never printed.">
+            Show sources
+          </button>
+          <span class="hint" id="save-hint">Enabled sections, in order</span>
+        </div>
       </div>
       <div class="card-body">
         {#
@@ -90,7 +120,7 @@
                                 margin-bottom: 12px;
                                 box-shadow: 0 1px 3px rgba(0,0,0,.15); }
         </style>
-        <div class="rpt-mini" id="live-report">
+        <div class="rpt-mini is-editing" id="live-report">
           <div class="rpt-doc">
             {% with editable = true %}
               {% include "reports/_document.html" %}
@@ -105,4 +135,5 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/report.js') }}"></script>
+<script src="{{ url_for('static', filename='js/coverage.js') }}"></script>
 {% endblock %}

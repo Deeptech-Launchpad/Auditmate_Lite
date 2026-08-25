@@ -141,3 +141,79 @@
    visible that a field was never filled in. */
 {{ S }} .missing-binding { background: none; color: #000; }
 {% endif %}
+
+/* ----------------------------------------------------------------------
+   Working marks: provenance and overrides.
+
+   These exist only while an auditor is editing. The delivered report is the
+   same document rendered without `editable`, and every rule below is fenced
+   behind `.is-editing` so a client can never receive a page covered in
+   blue and amber. `@media print` strips them a second time, in case a
+   builder page is printed straight from the browser.
+
+   Three states, deliberately distinguishable without relying on colour
+   alone - each also carries a different underline weight:
+
+     from-tb        computed from the trial balance, untouched
+     is-computed    the result of a formula over other lines
+     is-overridden  an auditor typed a different figure
+   ---------------------------------------------------------------------- */
+
+{{ S }} .ed-label,
+{{ S }} .ed-amount {
+  outline: none;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+{{ S }}.is-editing .ed-label:hover,
+{{ S }}.is-editing .ed-amount:hover { background: rgba(0, 90, 200, .07); }
+{{ S }}.is-editing .ed-label:focus,
+{{ S }}.is-editing .ed-amount:focus {
+  background: #fffbe6;
+  box-shadow: 0 0 0 2px rgba(200, 150, 0, .45);
+}
+
+{{ S }}.is-editing.show-sources td.from-tb .ed-amount {
+  border-bottom: 1px solid rgba(0, 90, 200, .55);
+}
+{{ S }}.is-editing.show-sources td.is-computed .ed-amount {
+  border-bottom: 1px dotted rgba(90, 90, 110, .6);
+}
+{{ S }}.is-editing.show-sources td.is-overridden .ed-amount,
+{{ S }}.is-editing.show-sources .ed-label.is-edited {
+  border-bottom: 2px solid #b06a00;
+  background: rgba(255, 176, 32, .16);
+}
+
+/* The little circled i that opens the sources panel. */
+{{ S }} .src-dot {
+  border: 0; background: none; cursor: pointer; padding: 0 0 0 4px;
+  font-size: .85em; line-height: 1; color: #2563a8; opacity: 0;
+  transition: opacity .12s;
+}
+{{ S }}.is-editing.show-sources .src-dot { opacity: .5; }
+{{ S }}.is-editing .ed-cell:hover .src-dot { opacity: 1; }
+
+/* An override whose row no longer exists in the rebuilt note. */
+{{ S }} .stale-note {
+  margin-left: 6px; font-size: .78em; color: #a33; font-style: italic;
+}
+{{ S }} tr.stale td { background: rgba(200, 40, 40, .06); }
+
+{% if for_pdf %}
+/* The delivered document carries no working marks at all. */
+{{ S }} .ed-label, {{ S }} .ed-amount {
+  background: none; border-bottom: 0; box-shadow: none; padding: 0;
+}
+{{ S }} .src-dot, {{ S }} .stale-note { display: none; }
+{{ S }} tr.stale td { background: none; }
+{% endif %}
+
+@media print {
+  {{ S }} .ed-label, {{ S }} .ed-amount {
+    background: none !important; border-bottom: 0 !important;
+    box-shadow: none !important; padding: 0 !important;
+  }
+  {{ S }} .src-dot, {{ S }} .stale-note { display: none !important; }
+  {{ S }} tr.stale td { background: none !important; }
+}

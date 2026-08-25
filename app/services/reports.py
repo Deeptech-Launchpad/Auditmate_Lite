@@ -208,8 +208,58 @@ def section_payload(section, customer, financial_year, chips: bool = False):
                                           chips=chips)
         payload["tables"] = notes_service.build_tables(
             spec.get("note_table"), financial_year)
+        apply_note_overrides(section, payload["tables"])
 
     return payload
+
+
+def apply_note_overrides(section, tables):
+    """Lay the auditor's edits over the computed note tables.
+
+    Note tables are recomputed from the trial balance on every render, so an
+    edit cannot live on the row. It lives in `report_figure_overrides`,
+    addressed by position, and is put back here.
+
+    An override is applied only when the row at that position still has the
+    label it had when the edit was made. If the note has since been rebuilt
+    with different accounts, the edit is shown as stale rather than dropped
+    onto whichever figure happens to sit there now - silently moving an
+    auditor's correction onto a different account is the one outcome worth
+    engineering against.
+    """
+    from ..models import ReportFigureOverride
+
+    if not tables:
+        return
+
+    overrides = ReportFigureOverride.query.filter_by(
+        report_id=section.report_id, section_key=section.section_key).all()
+    if not overrides:
+        return
+
+    by_position = {(o.table_index, o.row_index): o for o in overrides}
+
+    for table_index, table in enumerate(tables):
+        for row_index, row in enumerate(table.get("rows", [])):
+            override = by_position.get((table_index, row_index))
+            if override is None:
+                continue
+
+            row["override_id"] = override.id
+            if not override.matches(row):
+                # The row moved. Say so on the face of the report rather
+                # than applying the figure to the wrong account.
+                row["stale_override"] = override.anchor_label
+                continue
+
+            if override.label_override is not None:
+                row["original_label"] = row.get("label")
+                row["label"] = override.label_override
+                row["label_overridden"] = True
+            if override.amount_override is not None:
+                row["computed_current"] = row.get("current")
+                row["current"] = override.amount_override
+                row["overridden"] = True
 
 
 def weasyprint_available() -> bool:

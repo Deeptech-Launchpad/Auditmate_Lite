@@ -32,6 +32,46 @@
   <td class="num">{{ value|stmt }}</td>
 {% endmacro %}
 
+{#
+  Editable cells.
+
+  Three things are true of a figure on a statement page and each is shown:
+  where it came from, whether an auditor has changed it, and what it was
+  before they did. The classes carry the state, the data- attributes carry
+  the identity the editor and the sources panel need.
+
+  Everything here is inert unless `editable` - the delivered PDF renders the
+  same document with plain cells, so the client never sees the working marks.
+#}
+{% macro stmt_label(line) %}
+  {% if editable %}
+    <span class="ed-label{{ ' is-edited' if line.label_is_overridden }}"
+          contenteditable="true" data-line-id="{{ line.id }}"
+          data-field="label" data-original="{{ line.label }}"
+          title="{{ 'Was: ' ~ line.label if line.label_is_overridden
+                    else 'Click to reword' }}">{{ line.effective_label }}</span>
+  {% else %}{{ line.effective_label }}{% endif %}
+{% endmacro %}
+
+{% macro stmt_amount(line) %}
+  {% if editable %}
+    {% set from_tb = (line.source_line_item_ids or [])|length %}
+    <td class="num ed-cell{{ ' is-overridden' if line.is_overridden }}{{
+           ' from-tb' if from_tb and not line.is_overridden }}{{
+           ' is-computed' if line.is_computed and not line.is_overridden }}">
+      <span class="ed-amount" contenteditable="true"
+            data-line-id="{{ line.id }}" data-field="amount"
+            data-computed="{{ line.amount_current }}">{{ line.effective_amount|stmt }}</span>
+      {% if from_tb or line.is_computed %}
+        <button type="button" class="src-dot" data-line-id="{{ line.id }}"
+                title="Where this figure came from">&#9432;</button>
+      {% endif %}
+    </td>
+  {% else %}
+    <td class="num">{{ line.effective_amount|stmt }}</td>
+  {% endif %}
+{% endmacro %}
+
 
 {% set fy_end = fy.end_date.strftime('%d.%m.%Y') if fy.end_date else '' %}
 {% set fy_prev_end = fy.previous_year.end_date.strftime('%d.%m.%Y')
@@ -175,9 +215,9 @@
                   {% endif %}
                 {% endif %}
                 <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}{% if line.is_detail %} detail{% endif %}">
-                  <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ line.label }}</td>
+                  <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ stmt_label(line) }}</td>
                   {% if show_notes %}<td class="notes">{{ line.note_ref or '' }}</td>{% endif %}
-                  {{ amount_cell(line.effective_amount) }}
+                  {{ stmt_amount(line) }}
                   {{ amount_cell(line.amount_previous) }}
                 </tr>
               {% endif %}
@@ -206,10 +246,12 @@
 
       {#
         In the builder these are live editing surfaces: click the text and
-        type. Only the narrative is editable - statements and note tables are
-        derived from the trial balance and must not be typed over. Substituted
-        fields render as uneditable chips so editing the text around them
-        cannot destroy the placeholder underneath.
+        type. Substituted fields render as uneditable chips so editing the
+        text around them cannot destroy the placeholder underneath.
+
+        Figures are editable too, but never by simply typing over the page:
+        an edited figure is written back as a recorded override, so the
+        report can never quietly disagree with the statements behind it.
       #}
       {% if is_note %}
         <h3 class="note-title"{% if editable %} contenteditable="true"
@@ -222,6 +264,7 @@
            data-placeholder="Click to write this section…"{% endif %}>{{ payload.html|safe }}</div>
 
       {% for table in payload.tables %}
+        {% set loop_table = loop.index0 %}
         {% if table.heading %}<p class="tbl-head">{{ table.heading }}</p>{% endif %}
         <table class="fin note-table">
           <thead>
@@ -238,10 +281,45 @@
           </thead>
           <tbody>
             {% for row in table.rows %}
-              <tr class="{% if row.bold %}subtotal{% endif %}{% if row.rule %} ruled-above{% endif %}">
-                <td class="lbl">{{ row.label }}</td>
+              {% set acct_id = row.ref[3:] if row.ref and row.ref.startswith('tb:') else None %}
+              <tr class="{% if row.bold %}subtotal{% endif %}{% if row.rule %} ruled-above{% endif %}{% if row.stale_override %} stale{% endif %}">
+                <td class="lbl">
+                  {% if editable %}
+                    <span class="ed-label{{ ' is-edited' if row.label_overridden }}"
+                          contenteditable="true" data-field="label"
+                          data-section-id="{{ section.id }}"
+                          data-table-index="{{ loop_table }}"
+                          data-row-index="{{ loop.index0 }}"
+                          data-anchor="{{ row.original_label or row.label }}"
+                          >{{ row.label }}</span>
+                  {% else %}{{ row.label }}{% endif %}
+                  {% if row.stale_override %}
+                    <span class="stale-note" title="The note was rebuilt and this
+                          row is no longer '{{ row.stale_override }}', so your edit
+                          has not been applied.">edit no longer matches</span>
+                  {% endif %}
+                </td>
                 {% if row.current is none %}
                   <td class="num"></td><td class="num"></td>
+                {% elif editable %}
+                  <td class="num ed-cell{{ ' is-overridden' if row.overridden }}{{ ' from-tb' if acct_id and not row.overridden }}">
+                    <span class="ed-amount" contenteditable="true"
+                          data-field="amount"
+                          data-section-id="{{ section.id }}"
+                          data-table-index="{{ loop_table }}"
+                          data-row-index="{{ loop.index0 }}"
+                          data-anchor="{{ row.original_label or row.label }}"
+                          data-computed="{{ row.computed_current
+                                            if row.computed_current is not none
+                                            else row.current }}"
+                          >{{ row.current|stmt }}</span>
+                    {% if acct_id %}
+                      <button type="button" class="src-dot"
+                              data-account-id="{{ acct_id }}"
+                              title="Where this figure came from">&#9432;</button>
+                    {% endif %}
+                  </td>
+                  {{ amount_cell(row.previous) }}
                 {% else %}
                   {{ amount_cell(row.current) }}
                   {{ amount_cell(row.previous) }}

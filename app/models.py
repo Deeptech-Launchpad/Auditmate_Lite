@@ -548,6 +548,11 @@ class StatementLine(db.Model):
     source = db.Column(db.String(20), default="auto")   # auto | manual | computed
     manual_override_amount = db.Column(Numeric(18, 2))
 
+    # Wording differs between clients - Revenue or Turnover, Cost of sales or
+    # Cost of goods sold. The label is presentation only, so unlike the
+    # figure it can be rewritten freely without anything downstream moving.
+    label_override = db.Column(db.String(255))
+
     # Which extracted rows fed this line — the provenance trail.
     source_line_item_ids = db.Column(JSON)
 
@@ -564,6 +569,15 @@ class StatementLine(db.Model):
     @property
     def is_overridden(self):
         return self.manual_override_amount is not None
+
+    @property
+    def effective_label(self):
+        """The wording actually printed."""
+        return self.label_override or self.label
+
+    @property
+    def label_is_overridden(self):
+        return bool(self.label_override)
 
     def __repr__(self):
         return f"<Line {self.line_key} {self.effective_amount}>"
@@ -895,6 +909,64 @@ class AuditReportSection(db.Model):
     data_binding = db.Column(JSON)
 
     report = db.relationship("AuditReport", back_populates="sections")
+
+
+class ReportFigureOverride(db.Model):
+    """An auditor's edit to one row of a note table.
+
+    Statement lines are stored rows, so an override lives on the row itself.
+    Note tables are not - `app/services/notes.py` computes them from the
+    trial balance every time the report is rendered, so there is no row to
+    write to. This table is that missing home: it holds the auditor's
+    wording and figure for one row, addressed by where the row sits.
+
+    Identified by position rather than by the row's `ref`, because plenty of
+    rows (totals, tax reconciliation lines, currency rows) have no ref at
+    all. If the underlying note is rebuilt with different rows the override
+    is dropped rather than applied to the wrong line - see `matches`.
+    """
+
+    __tablename__ = "report_figure_overrides"
+    __table_args__ = (
+        db.UniqueConstraint("report_id", "section_key", "table_index",
+                            "row_index", name="uq_report_figure_row"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    report_id = db.Column(db.Integer, db.ForeignKey("audit_reports.id"),
+                          nullable=False)
+    section_key = db.Column(db.String(80), nullable=False)
+    table_index = db.Column(db.Integer, nullable=False, default=0)
+    row_index = db.Column(db.Integer, nullable=False, default=0)
+
+    # What the row said when the override was made. If the note is rebuilt
+    # and the row at this position is now a different account, the override
+    # is ignored rather than silently applied to someone else's figure.
+    anchor_label = db.Column(db.String(255))
+
+    label_override = db.Column(db.String(255))
+    amount_override = db.Column(Numeric(18, 2))
+
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    report = db.relationship("AuditReport")
+
+    def matches(self, row):
+        """True when this override still belongs to the row given."""
+        if not self.anchor_label:
+            return True
+        return (row.get("label") or "") == self.anchor_label
+
+    @property
+    def is_empty(self):
+        return self.label_override is None and self.amount_override is None
+
+    def __repr__(self):
+        return (f"<FigureOverride {self.section_key}"
+                f"[{self.table_index}][{self.row_index}]>")
 
 
 # --------------------------------------------------------------------------

@@ -11,6 +11,7 @@ from .extensions import db
 
 def register_cli(app):
     app.cli.add_command(init_db)
+    app.cli.add_command(sync_schema)
     app.cli.add_command(create_admin)
     app.cli.add_command(seed_demo)
     app.cli.add_command(reset_db)
@@ -27,6 +28,78 @@ def init_db():
     """Create all database tables."""
     db.create_all()
     click.echo("Database tables created.")
+
+
+@click.command("sync-schema")
+@click.option("--apply", "do_apply", is_flag=True,
+              help="Actually run the statements. Without this it only reports.")
+@with_appcontext
+def sync_schema(do_apply):
+    """Add columns the models have and the database does not.
+
+    `init-db` calls create_all(), which creates missing TABLES but will never
+    alter an existing one - so a release that adds a column leaves the
+    database a version behind, and the app fails with UndefinedColumn on the
+    first query that touches it.
+
+    Alembic is the proper answer and is not initialised in this project, so
+    this is the narrow substitute: compare the models against the live
+    schema and add what is missing. It only ever ADDS, and only columns that
+    are nullable or carry a default - never a NOT NULL column with no
+    default, which would fail on any table that already has rows, and never
+    a drop or a type change, which could lose client data.
+    """
+    from sqlalchemy import inspect
+
+    inspector = inspect(db.engine)
+    existing_tables = set(inspector.get_table_names())
+    dialect = db.engine.dialect
+
+    planned, skipped = [], []
+
+    for table in db.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue                      # create_all() handles whole tables
+        have = {c["name"] for c in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in have:
+                continue
+            unsafe = (not column.nullable
+                      and column.default is None
+                      and column.server_default is None)
+            if unsafe:
+                skipped.append((table.name, column.name,
+                                "NOT NULL with no default"))
+                continue
+            type_sql = column.type.compile(dialect)
+            planned.append((table.name, column.name, type_sql))
+
+    if not planned and not skipped:
+        click.echo("Schema is up to date - nothing to add.")
+        return
+
+    for table_name, column_name, type_sql in planned:
+        click.echo(f"  + {table_name}.{column_name}  {type_sql}")
+    for table_name, column_name, why in skipped:
+        click.echo(f"  ! {table_name}.{column_name} skipped - {why}")
+
+    if not do_apply:
+        click.echo("")
+        click.echo(f"{len(planned)} column(s) to add. "
+                   f"Re-run with --apply to make the change.")
+        return
+
+    for table_name, column_name, type_sql in planned:
+        db.session.execute(text(
+            f'ALTER TABLE "{table_name}" '
+            f'ADD COLUMN IF NOT EXISTS "{column_name}" {type_sql}'))
+    db.session.commit()
+
+    # Whole tables that are new still need creating.
+    db.create_all()
+    click.echo("")
+    click.echo(f"Added {len(planned)} column(s). Existing rows keep NULL "
+               f"until something writes to them.")
 
 
 @click.command("reset-db")

@@ -7,8 +7,11 @@ from flask import (Blueprint, abort, current_app, flash, jsonify, redirect,
 from flask_login import current_user, login_required
 
 from ..extensions import db
-from ..models import AuditReport, AuditReportSection, FinancialYear
+from ..models import (AuditReport, AuditReportSection, FinancialYear,
+                      ReportFigureOverride, StatementLine)
+from ..services import provenance as provenance_service
 from ..services import reports as report_service
+from ..services import statements as statement_service
 from ..services.audit import record
 
 bp = Blueprint("reports", __name__, url_prefix="/reports")
@@ -81,6 +84,164 @@ def update_section(section_id):
     db.session.commit()
 
     return jsonify({"ok": True})
+
+
+def _decimal(raw):
+    """Parse a figure typed into the report. Returns (value, error)."""
+    from decimal import Decimal, InvalidOperation
+
+    if raw is None or str(raw).strip() == "":
+        return None, None                     # cleared: revert to computed
+    cleaned = (str(raw).replace(",", "").replace("−", "-").strip())
+    # Accountants write a negative as (1,234).
+    if cleaned.startswith("(") and cleaned.endswith(")"):
+        cleaned = "-" + cleaned[1:-1].strip()
+    try:
+        return Decimal(cleaned), None
+    except InvalidOperation:
+        return None, f"{raw!r} is not a number."
+
+
+@bp.route("/api/line/<int:line_id>", methods=["PATCH"])
+@login_required
+def update_line(line_id):
+    """Edit a statement line from inside the report.
+
+    The wording and the figure are handled differently on purpose. A label is
+    presentation - one client says Revenue, another Turnover - so it is simply
+    stored. A figure is not: it is written through the same override path the
+    Statements page uses, so the computed value is kept underneath, the change
+    is recorded, and every dependent total is recalculated. Typing a number
+    into the report can therefore never leave the report disagreeing with the
+    statements behind it.
+    """
+    line = db.session.get(StatementLine, line_id) or abort(404)
+    payload = request.get_json(silent=True) or {}
+    before = {"label": line.effective_label, "amount": str(line.effective_amount)}
+
+    if "label" in payload:
+        text = (payload["label"] or "").strip()
+        # Back to the template wording when cleared or typed back to it.
+        line.label_override = None if (not text or text == line.label) else text
+
+    if "amount" in payload:
+        value, error = _decimal(payload["amount"])
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
+        line.manual_override_amount = value
+        line.source = ("manual" if value is not None
+                       else ("computed" if line.formula else "auto"))
+
+    record("statement_line", line.id, "report_edit", before=before,
+           after={"label": line.effective_label,
+                  "amount": str(line.effective_amount)})
+    db.session.commit()
+
+    # Totals are formulas over these lines, so the whole statement is redone.
+    statement_service.recalculate(line.statement_id)
+
+    statement = line.statement
+    return jsonify({
+        "ok": True,
+        "lines": [{"id": l.id,
+                   "amount": float(l.effective_amount or 0),
+                   "label": l.effective_label,
+                   "overridden": l.is_overridden,
+                   "label_overridden": l.label_is_overridden}
+                  for l in statement.lines],
+    })
+
+
+@bp.route("/api/note-row", methods=["PATCH"])
+@login_required
+def update_note_row():
+    """Edit one row of a note table.
+
+    Note tables have no stored rows - they are recomputed from the trial
+    balance on every render - so the edit is held by position and reapplied
+    at render time. `anchor_label` records what the row said when it was
+    edited, so a later rebuild that changes the note shows the edit as stale
+    instead of moving it onto a different account.
+    """
+    payload = request.get_json(silent=True) or {}
+    section = db.session.get(AuditReportSection,
+                             int(payload.get("section_id", 0))) or abort(404)
+
+    table_index = int(payload.get("table_index", 0))
+    row_index = int(payload.get("row_index", 0))
+
+    override = ReportFigureOverride.query.filter_by(
+        report_id=section.report_id, section_key=section.section_key,
+        table_index=table_index, row_index=row_index).first()
+
+    if override is None:
+        override = ReportFigureOverride(
+            report_id=section.report_id, section_key=section.section_key,
+            table_index=table_index, row_index=row_index,
+            created_by=current_user.id)
+        db.session.add(override)
+
+    override.anchor_label = payload.get("anchor_label") or override.anchor_label
+
+    if "label" in payload:
+        text = (payload["label"] or "").strip()
+        override.label_override = text or None
+
+    if "amount" in payload:
+        value, error = _decimal(payload["amount"])
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
+        override.amount_override = value
+
+    # An override holding neither a label nor a figure is just clutter.
+    if override.is_empty:
+        db.session.delete(override)
+        db.session.commit()
+        return jsonify({"ok": True, "cleared": True})
+
+    record("report_figure_override", override.id or 0, "note_edit",
+           after={"section": section.section_key,
+                  "label": override.label_override,
+                  "amount": str(override.amount_override)})
+    db.session.commit()
+    return jsonify({"ok": True, "override_id": override.id})
+
+
+@bp.route("/api/line/<int:line_id>/sources")
+@login_required
+def line_sources(line_id):
+    """Which trial balance accounts make up this printed figure."""
+    line = db.session.get(StatementLine, line_id) or abort(404)
+    return jsonify({"ok": True, **provenance_service.for_statement_line(line)})
+
+
+@bp.route("/api/account/<int:account_id>/sources")
+@login_required
+def account_sources(account_id):
+    """Provenance for a note-table row that came from one account."""
+    found = provenance_service.for_account(account_id)
+    if found is None:
+        abort(404)
+    return jsonify({"ok": True, **found})
+
+
+@bp.route("/api/fy/<int:fy_id>/coverage")
+@login_required
+def coverage(fy_id):
+    """What in the trial balance never reached the report."""
+    return jsonify(provenance_service.coverage(fy_id))
+
+
+@bp.route("/api/fy/<int:fy_id>/suggest", methods=["POST"])
+@login_required
+def suggest(fy_id):
+    """Propose a home for every account the report is missing.
+
+    Mapping rules run first; only what they cannot place is sent to the AI,
+    and only account names go - never figures, never the client's name.
+    """
+    use_ai = bool((request.get_json(silent=True) or {}).get("use_ai", True))
+    return jsonify(provenance_service.suggest(fy_id, use_ai=use_ai))
 
 
 @bp.route("/api/report/<int:report_id>/reorder", methods=["POST"])

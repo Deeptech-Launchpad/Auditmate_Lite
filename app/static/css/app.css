@@ -812,3 +812,152 @@ tr.change-row.status-pending  { background: var(--amber-light); }
 tr.row-doc-total td { background: #f2f4f7; font-weight: 600; }
 tr.row-doc-total input.cell { font-weight: 600; }
 .split-head .edit-badge { white-space: nowrap; }
+
+/* ---------------------------------------------------------------------
+   Report builder: coverage panel, sources panel, editing toggle.
+
+   These belong to the application chrome, not to the report typography in
+   reports/_styles.html - nothing here is ever printed or exported.
+   --------------------------------------------------------------------- */
+
+.preview-tools { display: flex; align-items: center; gap: 10px; }
+
+.chip-toggle {
+  border: 1px solid var(--line, #d5d9e0);
+  background: #fff;
+  color: #5a6472;
+  border-radius: 999px;
+  padding: 3px 11px;
+  font-size: 11.5px;
+  cursor: pointer;
+  line-height: 1.6;
+}
+.chip-toggle:hover { border-color: #9aa5b4; color: #2c3440; }
+.chip-toggle.on {
+  background: #eaf2fb;
+  border-color: #9cc0e6;
+  color: #1c4f86;
+}
+
+/* ------------------------------------------------------------ coverage */
+
+.coverage-card { margin-bottom: 16px; }
+.coverage-card .hint.ok { color: #1b7a43; }
+.coverage-card .hint.warn { color: #9a5b00; font-weight: 600; }
+
+.cv-clean {
+  background: #edf8f1;
+  border-left: 3px solid #2f9e5f;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.cv-summary {
+  background: #fff6e6;
+  border-left: 3px solid #d69200;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.cv-group { margin-bottom: 16px; }
+.cv-group h3 {
+  font-size: 13px;
+  margin: 0 0 2px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.cv-count {
+  background: #eceff3;
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #55606f;
+}
+
+.cv-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.cv-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: #77808d;
+  border-bottom: 1px solid var(--line, #e3e6ea);
+  padding: 5px 8px;
+  font-weight: 600;
+}
+.cv-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #f0f2f5;
+  vertical-align: top;
+}
+.cv-table .cv-num { text-align: right; font-variant-numeric: tabular-nums; }
+.cv-code { color: #8a929e; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.cv-key { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
+          color: #55606f; }
+.cv-sugg { font-size: 11.5px; color: #1c4f86; }
+.cv-sugg code { background: #eaf2fb; padding: 0 4px; border-radius: 3px; }
+.cv-sugg em { color: #77808d; font-style: normal; }
+
+.cv-actions { display: flex; gap: 8px; margin-top: 6px; }
+
+/* ------------------------------------------------------------- sources */
+
+.src-panel {
+  position: absolute;
+  z-index: 60;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  background: #fff;
+  border: 1px solid #ccd2da;
+  border-radius: 7px;
+  box-shadow: 0 8px 26px rgba(15, 25, 45, .18);
+  padding: 12px 14px;
+  font-size: 12.5px;
+  font-family: var(--ui-font, system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: #26303c;
+}
+.src-head {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: #6a7482;
+  border-bottom: 1px solid #eceff3;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+.src-list { list-style: none; margin: 0; padding: 0; }
+.src-list li { padding: 6px 0; border-bottom: 1px solid #f2f4f7; }
+.src-list li:last-child { border-bottom: 0; }
+.src-line { display: flex; justify-content: space-between; gap: 10px; }
+.src-name { font-weight: 500; }
+.src-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.src-meta { color: #77808d; font-size: 11.5px; margin-top: 2px; }
+.by-auditor { color: #1b7a43; }
+.by-auto { color: #8a6d00; }
+.src-none { color: #55606f; margin: 0; }
+.src-over {
+  margin: 8px 0 0;
+  background: #fff6e6;
+  border-left: 3px solid #d69200;
+  padding: 6px 9px;
+  border-radius: 3px;
+}
+.src-close {
+  margin-top: 10px;
+  border: 1px solid #d5d9e0;
+  background: #f7f8fa;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.src-close:hover { background: #eceff3; }
+
+@media print {
+  .src-panel, .coverage-card, .preview-tools { display: none !important; }
+}
