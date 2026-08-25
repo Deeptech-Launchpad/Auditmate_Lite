@@ -141,13 +141,32 @@
   report.addEventListener('focusin', event => {
     const field = event.target.closest('[contenteditable="true"]');
     if (!field) return;
-    original.set(field, (field.dataset.field === 'title' || isCell(field))
-      ? field.textContent.trim() : serialise(field));
+    const plain = field.dataset.field === 'title'
+               || field.dataset.labelKey || isCell(field);
+    original.set(field, plain ? field.textContent.trim() : serialise(field));
   });
 
   report.addEventListener('focusout', async event => {
     const field = event.target.closest('[contenteditable="true"]');
     if (!field) return;
+
+    /* A fixed caption on the cover page: stored on the section, not on any
+       statement line, so it is handled here rather than by the cell hook. */
+    if (field.dataset.labelKey) {
+      const text = field.textContent.trim();
+      if (text === original.get(field)) return;
+      say('Saving…', 'saving');
+      try {
+        const labels = {};
+        labels[field.dataset.labelKey] = text;
+        await patchSection(field.dataset.sectionId, { labels: labels });
+        original.set(field, text);
+        say('Saved', 'saved');
+      } catch (err) {
+        say('Could not save — your text is still here', 'failed');
+      }
+      return;
+    }
 
     /* Figures and labels save through their own endpoints - see the second
        block below, which owns them and exposes this hook. */
@@ -184,7 +203,8 @@
   report.addEventListener('keydown', event => {
     const field = event.target.closest('[contenteditable="true"]');
     if (!field) return;
-    if (event.key === 'Enter' && field.dataset.field === 'title') {
+    if (event.key === 'Enter'
+        && (field.dataset.field === 'title' || field.dataset.labelKey)) {
       event.preventDefault();
       field.blur();
     }

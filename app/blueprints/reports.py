@@ -79,6 +79,22 @@ def update_section(section_id):
     if "sort_order" in payload:
         section.sort_order = int(payload["sort_order"])
 
+    if "labels" in payload:
+        # Fixed captions on the cover page - "CORPORATE INFORMATION" and the
+        # like. Merged rather than replaced so editing one caption cannot
+        # discard the others, and a caption typed back to its default is
+        # dropped rather than stored as a redundant override.
+        binding = dict(section.data_binding or {})
+        labels = dict(binding.get("labels") or {})
+        for key, value in (payload["labels"] or {}).items():
+            text = (value or "").strip()
+            if text:
+                labels[key] = text
+            else:
+                labels.pop(key, None)
+        binding["labels"] = labels
+        section.data_binding = binding
+
     record("report_section", section.id, "update",
            after={"enabled": section.is_enabled})
     db.session.commit()

@@ -43,6 +43,23 @@
   Everything here is inert unless `editable` - the delivered PDF renders the
   same document with plain cells, so the client never sees the working marks.
 #}
+{#
+  A fixed caption on the cover page - "CORPORATE INFORMATION", "THE BOARD OF
+  DIRECTORS" and so on. The values beside them stay bound to the customer
+  record, because a name typed here and a name on the customer would then
+  disagree with nothing to say which is right. The wording is different: it
+  varies between firms and clients, so it is editable and stored on the
+  section itself.
+#}
+{% macro cover_label(section, key, default) %}
+  {%- set labels = (section.data_binding or {}).get('labels') or {} -%}
+  {%- if editable -%}
+    <span class="ed-label" contenteditable="true"
+          data-section-id="{{ section.id }}" data-label-key="{{ key }}"
+          data-original="{{ default }}">{{ labels.get(key, default) }}</span>
+  {%- else -%}{{ labels.get(key, default) }}{%- endif -%}
+{% endmacro %}
+
 {% macro stmt_label(line) %}
   {% if editable %}
     <span class="ed-label{{ ' is-edited' if line.label_is_overridden }}"
@@ -89,30 +106,35 @@
     {# ---------------------------------------------------------- cover -- #}
     {% if is_cover %}
       <div class="cover">
-        <h1>ANNUAL REPORT {{ fy.year_label }}</h1>
-        <p class="cover-sub">Financial Statements and Other Financial Information</p>
+        <h1>{{ cover_label(section, 'title', 'ANNUAL REPORT') }} {{ fy.year_label }}</h1>
+        <p class="cover-sub">{{ cover_label(section, 'subtitle',
+             'Financial Statements and Other Financial Information') }}</p>
         <h2 class="cover-co">{{ (customer.legal_name or customer.name)|upper }}</h2>
         <p class="cover-uen">(Registration No: {{ customer.uen or '—' }})</p>
         <p class="cover-date">{{ fy.end_date|datefmt('%d %B %Y') }}</p>
       </div>
 
-      <h3 class="ruled">CORPORATE INFORMATION</h3>
+      <h3 class="ruled">{{ cover_label(section, 'corp_info',
+                            'CORPORATE INFORMATION') }}</h3>
 
       <div class="corp-grid">
-        <div class="corp-label">THE BOARD OF DIRECTORS</div>
+        <div class="corp-label">{{ cover_label(section, 'directors',
+                                   'THE BOARD OF DIRECTORS') }}</div>
         <div class="corp-value">
           {% if customer.directors %}
             {{ customer.directors|replace('\n', '<br>')|safe }}
           {% else %}<span class="missing-binding">[not provided]</span>{% endif %}
         </div>
 
-        <div class="corp-label">COMPANY SECRETARY</div>
+        <div class="corp-label">{{ cover_label(section, 'secretary',
+                                   'COMPANY SECRETARY') }}</div>
         <div class="corp-value">
           {% if customer.company_secretary %}{{ customer.company_secretary }}
           {% else %}<span class="missing-binding">[not provided]</span>{% endif %}
         </div>
 
-        <div class="corp-label">REGISTERED OFFICE</div>
+        <div class="corp-label">{{ cover_label(section, 'office',
+                                   'REGISTERED OFFICE') }}</div>
         <div class="corp-value">
           {% for part in [customer.address_line1, customer.address_line2,
                           ('Singapore ' ~ customer.postal_code) if customer.postal_code else None] %}
@@ -121,7 +143,8 @@
         </div>
       </div>
 
-      <div class="corp-label" style="margin-top:18px">CONTENTS</div>
+      <div class="corp-label" style="margin-top:18px">{{
+           cover_label(section, 'contents', 'CONTENTS') }}</div>
       {#
         Page numbers come from WeasyPrint's target-counter, so the contents
         page cites where each section actually lands. Nothing is printed on
