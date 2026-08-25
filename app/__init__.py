@@ -1,5 +1,6 @@
 """Application factory."""
 import logging
+import os
 from datetime import datetime
 
 from flask import Flask, render_template
@@ -184,6 +185,30 @@ def create_app(config_object=Config):
         if value is None:
             return "—"
         return f"{float(value) * 100:.0f}%"
+
+    # --- Cache busting for static files ---
+    @app.url_defaults
+    def stamp_static(endpoint, values):
+        """Append the file's modification time to every static URL.
+
+        nginx serves /static/ with `expires 30d`, which is right - these
+        files rarely change and should not be re-fetched on every page. But
+        it also means that after a deployment a browser keeps using the old
+        CSS and JavaScript for a month, and the new UI silently does not
+        work. A hard refresh fixes it for whoever knows to do that; nobody
+        else finds out.
+
+        Stamping the URL makes the two behave properly together: an
+        unchanged file keeps the same URL and stays cached, a changed one
+        gets a new URL and is fetched immediately.
+        """
+        if endpoint != "static" or "filename" not in values:
+            return
+        try:
+            path = os.path.join(app.static_folder, values["filename"])
+            values["v"] = int(os.stat(path).st_mtime)
+        except OSError:
+            pass          # missing file: let the 404 be the visible problem
 
     # --- Error pages ---
     @app.errorhandler(404)
