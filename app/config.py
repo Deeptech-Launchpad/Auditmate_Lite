@@ -9,7 +9,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+
+# override=True is deliberate. python-dotenv otherwise leaves any variable
+# that already exists in the environment alone, so on a shared server a
+# neighbouring project's exported SMTP_USER or GEMINI_API_KEY would silently
+# win over this app's own .env - sending client mail from the wrong account
+# and billing the wrong API key. .env is this app's single source of truth.
+load_dotenv(BASE_DIR / ".env", override=True)
 
 
 def _as_bool(value: str, default: bool = False) -> bool:
