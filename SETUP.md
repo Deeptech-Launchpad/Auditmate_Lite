@@ -200,10 +200,50 @@ flask run
 |---|---|
 | `flask run` | Start the app on http://127.0.0.1:5000 |
 | `flask init-db` | Create tables (safe to re-run) |
+| `flask sync-schema` | Show columns the models have that the database lacks |
+| `flask sync-schema --apply` | Add them. Run after any `git pull` that changes models |
 | `flask seed-demo` | Load demo customers and a worked engagement |
 | `flask create-admin` | Create a real auditor login (prompts for name/email/password) |
 | `flask reset-db` | **Deletes everything** and recreates empty tables |
 | `python worker.py` | Background extraction worker (only if `JOBS_INLINE=0`) |
+
+---
+
+## Setting the project up on another machine
+
+The repository is at
+`https://github.com/Deeptech-Launchpad/Auditmate_Lite.git`.
+
+```powershell
+git clone https://github.com/Deeptech-Launchpad/Auditmate_Lite.git "Auditmate lite"
+cd "Auditmate lite"
+py -3.12 -m venv .venv
+.\.venv\Scriptsctivate
+pip install -r requirements.txt
+```
+
+`.env` is deliberately not in the repository - it holds the database
+password, the mail password and the API keys. Copy `.env.example` to `.env`
+and fill it in by hand, then:
+
+```powershell
+flask init-db
+flask create-admin
+flask run
+```
+
+## Pulling an update into an existing install
+
+```powershell
+git pull
+pip install -r requirements.txt
+flask sync-schema --apply
+flask run
+```
+
+`init-db` creates missing tables but never alters an existing one, so a
+release that adds a **column** needs `sync-schema` as well. Skipping it
+shows up as `UndefinedColumn` on the first page that touches the new field.
 
 ---
 
