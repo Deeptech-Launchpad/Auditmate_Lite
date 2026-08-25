@@ -142,11 +142,15 @@ nano .env
 Fill in:
 
 ```ini
+FLASK_DEBUG=0
 SECRET_KEY=<paste the output of the command below>
-DATABASE_URL=postgresql+psycopg://auditmate:a-long-random-password@localhost:5432/auditmate
+DATABASE_URL=postgresql+psycopg://auditmate_user:<password>@localhost:<port>/auditmate_db
 
-MAIL_USERNAME=<the Gmail account that sends review links>
-MAIL_PASSWORD=<the Gmail app password>
+STORAGE_ROOT=/opt/auditmate/app/storage
+
+SMTP_USER=<the Gmail account that sends review links>
+SMTP_PASSWORD=<its 16-character Gmail app password>
+IMAP_HOST=imap.gmail.com
 
 AI_PROVIDER=gemini
 GEMINI_API_KEY=<your key>
@@ -155,6 +159,7 @@ GEMINI_API_KEY=<your key>
 XERO_CLIENT_ID=
 XERO_CLIENT_SECRET=
 XERO_DEMO_MODE=true
+XERO_REDIRECT_URI=https://<your-domain>/integrations/xero/callback
 
 TOKEN_ENCRYPTION_KEY=<paste the output of the second command below>
 ```
