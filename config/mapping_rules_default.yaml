@@ -170,3 +170,56 @@
 - {pattern: "computer",             statement: balance_sheet, line: ppe, priority: 8}
 - {pattern: "furniture",            statement: balance_sheet, line: ppe, priority: 8}
 - {pattern: "asset ",               statement: balance_sheet, line: ppe, priority: 20}
+
+# --------------------------------------------- Singapore SME account names ---
+# Wording seen on real engagements that the rules above did not reach, so the
+# accounts arrived unmapped and contributed to no statement. Each is narrow
+# enough to mean only one thing, and priority is set low where a broader rule
+# above would otherwise claim it first - "Bank Fees" is a charge, not cash,
+# and "Salaries and wages payable" is an accrual, not salary cost.
+- {pattern: "contractor",           statement: profit_and_loss, line: manpower_supply, priority: 8}
+- {pattern: "subcontractor",        statement: profit_and_loss, line: manpower_supply, priority: 7}
+- {pattern: "sub-contractor",       statement: profit_and_loss, line: manpower_supply, priority: 7}
+- {pattern: "consultanc",           statement: profit_and_loss, line: consulting_fee, priority: 10}
+- {pattern: "auditor",              statement: profit_and_loss, line: accounting_charges, priority: 6}
+- {pattern: "audit and tax",        statement: profit_and_loss, line: accounting_charges, priority: 5}
+- {pattern: "tax fee",              statement: profit_and_loss, line: accounting_charges, priority: 8}
+- {pattern: "bank fee",             statement: profit_and_loss, line: bank_charges, priority: 4}
+- {pattern: "levy",                 statement: profit_and_loss, line: mom_application_fee, priority: 8}
+- {pattern: "mom fee",              statement: profit_and_loss, line: mom_application_fee, priority: 6}
+- {pattern: "foreign worker",       statement: profit_and_loss, line: mom_application_fee, priority: 6}
+- {pattern: "software",             statement: profit_and_loss, line: other_expenses, priority: 14}
+- {pattern: "repairs",              statement: profit_and_loss, line: other_expenses, priority: 14}
+- {pattern: "maintenance",          statement: profit_and_loss, line: other_expenses, priority: 15}
+- {pattern: "transport",            statement: profit_and_loss, line: other_expenses, priority: 14}
+- {pattern: "refreshment",          statement: profit_and_loss, line: other_expenses, priority: 14}
+- {pattern: "food expense",         statement: profit_and_loss, line: other_expenses, priority: 14}
+- {pattern: "rental of equipment",  statement: profit_and_loss, line: other_expenses, priority: 10}
+
+# A bank account is usually named after the bank, sometimes with the account
+# number attached - "UOB - 3001" reaches none of the words above.
+- {pattern: "uob",                  statement: balance_sheet, line: cash_and_equivalents, priority: 12}
+- {pattern: "dbs",                  statement: balance_sheet, line: cash_and_equivalents, priority: 12}
+- {pattern: "ocbc",                 statement: balance_sheet, line: cash_and_equivalents, priority: 12}
+- {pattern: "maybank",              statement: balance_sheet, line: cash_and_equivalents, priority: 12}
+- {pattern: "hsbc",                 statement: balance_sheet, line: cash_and_equivalents, priority: 12}
+- {pattern: "citibank",             statement: balance_sheet, line: cash_and_equivalents, priority: 12}
+- {pattern: "standard chartered",   statement: balance_sheet, line: cash_and_equivalents, priority: 12}
+
+# Payable and deposit wording that the salary and rent rules would otherwise
+# take, because a payable is a liability and a deposit is an asset.
+- {pattern: "wages payable",        statement: balance_sheet, line: accruals, priority: 3, sign: -1}
+- {pattern: "salaries payable",     statement: balance_sheet, line: accruals, priority: 3, sign: -1}
+- {pattern: "salary payable",       statement: balance_sheet, line: accruals, priority: 3, sign: -1}
+- {pattern: "rental deposit",       statement: balance_sheet, line: prepayments, priority: 4}
+- {pattern: "rent deposit",         statement: balance_sheet, line: prepayments, priority: 4}
+- {pattern: "utility deposit",      statement: balance_sheet, line: prepayments, priority: 4}
+- {pattern: "loan from third part",  statement: balance_sheet, line: trade_payables, priority: 4, sign: -1}
+- {pattern: "loan from 3rd part",   statement: balance_sheet, line: trade_payables, priority: 4, sign: -1}
+- {pattern: "loan given to employee", statement: balance_sheet, line: prepayments, priority: 4}
+
+# "Computer Expenses" is spending, not a computer; the asset rule above would
+# otherwise capitalise it. Same idea for GST shown on a profit and loss.
+- {pattern: "computer expense",     statement: profit_and_loss, line: other_expenses, priority: 6}
+- {pattern: "gst (p&l)",            statement: profit_and_loss, line: gst_payables_expense, priority: 4}
+- {pattern: "gst expense",          statement: profit_and_loss, line: gst_payables_expense, priority: 5}
