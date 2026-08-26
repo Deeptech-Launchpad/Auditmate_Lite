@@ -54,9 +54,13 @@ def builder(fy_id):
 
     report = report_service.ensure_report(financial_year)
 
+    # A closed engagement renders the finished document, not an editor.
+    editable = not financial_year.is_closed
+
     return render_template("reports/builder.html",
                            report=report, fy=financial_year,
-                           payloads=_assemble(report, chips=True),
+                           editable=editable,
+                           payloads=_assemble(report, chips=editable),
                            customer=financial_year.customer,
                            final_version=financial_year.final_version,
                            tb_approved_at=financial_year.tb_approved_at,
@@ -277,6 +281,81 @@ def reorder(report_id):
     return jsonify({"ok": True})
 
 
+@bp.route("/fy/<int:fy_id>/finalise", methods=["POST"])
+@login_required
+def finalise(fy_id):
+    """Sign the report off and close the engagement.
+
+    This is the last act on a file: the report is issued, so the engagement
+    stops being work in progress. It locks the report against further
+    editing for the same reason the trial balance locks on approval - a
+    document that has been issued and then quietly edited is worse than no
+    version control at all.
+
+    Reversible by design (see `reopen`). An engagement closed by mistake
+    should not need someone in the database.
+    """
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+
+    if financial_year.is_closed:
+        flash("This engagement is already closed.", "warning")
+        return redirect(url_for("reports.builder", fy_id=fy_id))
+
+    if not financial_year.tb_is_approved:
+        flash("Approve the trial balance first - the report is built from "
+              "it, so it cannot be signed off before the figures are.",
+              "error")
+        return redirect(url_for("trial_balance.index", fy_id=fy_id))
+
+    report = financial_year.report
+    if report is None:
+        flash("Generate the audit report before closing the engagement.",
+              "error")
+        return redirect(url_for("reports.builder", fy_id=fy_id))
+
+    note = (request.form.get("note") or "").strip() or None
+
+    report.status = "final"
+    if report.generated_at is None:
+        report.generated_at = datetime.utcnow()
+        report.generated_by = current_user.id
+
+    financial_year.status = "closed"
+    financial_year.closed_at = datetime.utcnow()
+    financial_year.closed_by = current_user.id
+    financial_year.closed_note = note
+
+    record("financial_year", financial_year.id, "close",
+           after={"status": "closed", "note": note}, commit=True)
+
+    flash(f"{financial_year.customer.name} {financial_year.year_label} is "
+          f"closed. The report is locked; reopen it if it needs changing.",
+          "success")
+    return redirect(url_for("reports.builder", fy_id=fy_id))
+
+
+@bp.route("/fy/<int:fy_id>/reopen", methods=["POST"])
+@login_required
+def reopen(fy_id):
+    """Put a closed engagement back into work."""
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+
+    if not financial_year.is_closed:
+        flash("That engagement is not closed.", "warning")
+        return redirect(url_for("reports.builder", fy_id=fy_id))
+
+    financial_year.status = "report_generated"
+    financial_year.closed_at = None
+    financial_year.closed_by = None
+    financial_year.closed_note = None
+
+    record("financial_year", financial_year.id, "reopen",
+           after={"status": "report_generated"}, commit=True)
+
+    flash("Engagement reopened. The report is editable again.", "success")
+    return redirect(url_for("reports.builder", fy_id=fy_id))
+
+
 @bp.route("/<int:report_id>/preview")
 @login_required
 def preview(report_id):
@@ -322,7 +401,11 @@ def export(report_id):
     report.generated_by = current_user.id
 
     financial_year = report.financial_year
-    if financial_year.status == "approved":
+    # Only move forward. A closed engagement stays closed, and an engagement
+    # still working through customer review is not dragged past that by an
+    # export - but one that has simply skipped the statements-version chain
+    # should not be stuck at "In Progress" forever either.
+    if financial_year.status in ("in_progress", "statements_shared", "approved"):
         financial_year.status = "report_generated"
 
     record("audit_report", report.id, "export_pdf")

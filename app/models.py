@@ -199,6 +199,13 @@ class FinancialYear(db.Model):
     approved_by_name = db.Column(db.String(160))
     approval_note = db.Column(db.Text)
 
+    # Closing is the last act of an engagement: the report has been issued
+    # and the file is done. Recorded rather than merely flagged, because an
+    # audit file's own history is part of the evidence.
+    closed_at = db.Column(db.DateTime)
+    closed_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    closed_note = db.Column(db.Text)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -313,6 +320,26 @@ class FinancialYear(db.Model):
     @property
     def is_approved(self):
         return self.status in ("approved", "report_generated", "closed")
+
+    @property
+    def is_closed(self):
+        return self.status == "closed"
+
+    @property
+    def report(self):
+        """The engagement's audit report, if one has been started."""
+        return self.reports[0] if self.reports else None
+
+    @property
+    def can_close(self):
+        """Whether the engagement is in a state that can be signed off.
+
+        The bar is the approved trial balance and an existing report - the
+        two things the file cannot be finished without. It is deliberately
+        not the full customer-approval chain, because firms differ on
+        whether that happens inside the system or by email.
+        """
+        return bool(self.tb_is_approved and self.reports and not self.is_closed)
 
     @property
     def documents_pending_review(self):

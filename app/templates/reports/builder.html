@@ -21,8 +21,41 @@
        class="btn btn-primary">
       {{ '⬇ Export PDF' if pdf_available else '⎙ Print / Save as PDF' }}
     </a>
+    {% if fy.is_closed %}
+      <form method="post" style="display:inline"
+            action="{{ url_for('reports.reopen', fy_id=fy.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn">Reopen engagement</button>
+      </form>
+    {% elif fy.can_close %}
+      <form method="post" style="display:inline"
+            action="{{ url_for('reports.finalise', fy_id=fy.id) }}"
+            onsubmit="return confirm('Close this engagement? The report is locked against further editing. You can reopen it if something needs changing.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-success">
+          ✓ Approve &amp; close engagement
+        </button>
+      </form>
+    {% endif %}
   </div>
 </div>
+
+{% if fy.is_closed %}
+<div class="notice ok">
+  <span>&#10003;</span>
+  <div>
+    <strong>Engagement closed{% if fy.closed_at %} on
+      {{ fy.closed_at|datefmt('%d %b %Y') }}{% endif %}.</strong>
+    The audit report is issued and locked, and this engagement no longer
+    appears on the dashboard as work in progress.
+    {% if fy.closed_note %}<br><em>{{ fy.closed_note }}</em>{% endif %}
+    <br>
+    You can still preview and export the report. To change anything, reopen
+    the engagement first &mdash; an issued report that is quietly edited is
+    worse than no version control at all.
+  </div>
+</div>
+{% endif %}
 
 <div class="notice">
   <span>&#8505;</span>
@@ -71,9 +104,11 @@
       <div id="section-list" data-report-id="{{ report.id }}">
         {% for section in report.sections %}
         <div class="section-item {{ '' if section.is_enabled else 'disabled' }}"
-             draggable="true" data-section-id="{{ section.id }}">
+             draggable="{{ 'true' if editable else 'false' }}"
+             data-section-id="{{ section.id }}">
           <span class="handle">⠿</span>
           <input type="checkbox" class="toggle" {% if section.is_enabled %}checked{% endif %}
+                 {% if not editable %}disabled{% endif %}
                  data-section-id="{{ section.id }}">
           <span class="stitle">
             {{ section.title }}
@@ -127,11 +162,9 @@
           <span class="legend-tip">Click any figure to edit it &middot;
             click &#9432; to see the accounts behind it</span>
         </div>
-        <div class="rpt-mini is-editing" id="live-report">
+        <div class="rpt-mini{{ ' is-editing' if editable }}" id="live-report">
           <div class="rpt-doc">
-            {% with editable = true %}
-              {% include "reports/_document.html" %}
-            {% endwith %}
+            {% include "reports/_document.html" %}
           </div>
         </div>
       </div>

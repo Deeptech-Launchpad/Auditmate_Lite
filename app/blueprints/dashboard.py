@@ -28,10 +28,13 @@ def index():
                        .order_by(Document.uploaded_at.desc())
                        .limit(6).all())
 
+    # Everything still open. Listing by what an engagement is NOT means
+    # exporting a PDF no longer makes a live engagement disappear from the
+    # dashboard - closing it is what takes it off, which is the whole point
+    # of having a closed state.
     active_years = (FinancialYear.query
                     .join(Customer)
-                    .filter(FinancialYear.status.in_(
-                        ["in_progress", "statements_shared", "approved"]))
+                    .filter(FinancialYear.status != "closed")
                     .order_by(FinancialYear.updated_at.desc())
                     .limit(8).all())
 
