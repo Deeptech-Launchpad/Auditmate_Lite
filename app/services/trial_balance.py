@@ -36,6 +36,24 @@ ZERO = Decimal("0.00")
 # Rows the auditor owns. A rebuild leaves these alone.
 PROTECTED_SOURCES = {"manual", "adjustment"}
 
+# An extracted label is TEXT and can be any length; an account name is
+# VARCHAR(255). A ledger detail sheet carries whole scope-of-work narrations
+# as descriptions, so the gap is not theoretical - one of them aborted a
+# build with a database error and no explanation.
+NAME_LIMIT = 255
+
+
+def _fit_name(name: str) -> str:
+    """Shorten an account name to what the column can hold.
+
+    Visibly, so a truncated name reads as truncated rather than as an odd
+    account. Nothing is lost: the full text stays on the extracted row the
+    account was built from, which is what provenance links back to.
+    """
+    if len(name) <= NAME_LIMIT:
+        return name
+    return name[:NAME_LIMIT - 1].rstrip() + "…"
+
 
 # --------------------------------------------------------------------------
 # Building
@@ -112,7 +130,13 @@ def build(financial_year_id: int, user_id=None) -> dict:
     for item in _source_rows(financial_year_id):
         name = (item.label or "").strip() or "(unnamed account)"
         code = (item.account_code or "").strip()
+
+        # Merge on the full label, not the shortened one. Two different
+        # descriptions can share their first 255 characters, and adding
+        # their figures together because of that would be a wrong number,
+        # not a cosmetic problem.
         key = (code, name.lower())
+        name = _fit_name(name)
 
         debit, credit = _amount_pair(item)
 
@@ -197,7 +221,7 @@ def add_account(financial_year_id, account_name, debit=None, credit=None,
     account = TrialBalanceAccount(
         financial_year_id=financial_year_id,
         account_code=(account_code or "").strip() or None,
-        account_name=account_name.strip(),
+        account_name=_fit_name(account_name.strip()),
         standard_key=standard_key or (rule["line_key"] if rule else None),
         statement_type=rule["statement_type"] if rule else None,
         debit=Decimal(str(debit)) if debit not in (None, "") else ZERO,
