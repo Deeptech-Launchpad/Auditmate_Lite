@@ -56,11 +56,20 @@ def check_document(document, accounts, customer_id):
     an account the client shows and we have never heard of is exactly the
     kind of omission this is for.
     """
+    # Two ways to find our side of a line. By statement line first, which is
+    # what a client's wording should resolve to. Then by the account's own
+    # name, because an account that has not been mapped yet still exists -
+    # and reporting it as missing would send an auditor hunting for a figure
+    # that is sitting in front of them.
     ours = {}
+    unmapped_names = {}
     for account in accounts:
-        if not account.standard_key:
-            continue
-        ours[account.standard_key] = ours.get(account.standard_key, ZERO) + _net(account)
+        name = (account.account_name or "").strip().lower()
+        if account.standard_key:
+            ours[account.standard_key] = (ours.get(account.standard_key, ZERO)
+                                          + _net(account))
+        elif name:
+            unmapped_names[name] = unmapped_names.get(name, ZERO) + _net(account)
 
     rows = (ExtractedLineItem.query
             .filter_by(document_id=document.id)
@@ -79,6 +88,18 @@ def check_document(document, accounts, customer_id):
 
         rule = match_label(label, customer_id)
         key = rule["line_key"] if rule else None
+
+        if key is None or key not in ours:
+            # Before calling it missing, look for an account of the same name
+            # that simply has no statement line yet.
+            theirs_name = label.lower()
+            if theirs_name in unmapped_names:
+                difference = abs(unmapped_names[theirs_name]) - abs(theirs)
+                findings.append({
+                    "label": label, "theirs": theirs,
+                    "ours": unmapped_names[theirs_name],
+                    "difference": difference, "status": "unmapped_account"})
+                continue
 
         if key is None:
             findings.append({
@@ -135,6 +156,8 @@ def check(financial_year):
             "agrees": sum(1 for f in findings if f["status"] == "agrees"),
             "differs": sum(1 for f in findings if f["status"] == "differs"),
             "missing": sum(1 for f in findings if f["status"] == "missing"),
+            "needs_mapping": sum(1 for f in findings
+                                 if f["status"] == "unmapped_account"),
             "unmatched": sum(1 for f in findings if f["status"] == "unmatched"),
         })
 
@@ -146,5 +169,6 @@ def check(financial_year):
         "agrees": sum(d["agrees"] for d in documents),
         "differs": sum(d["differs"] for d in documents),
         "missing": sum(d["missing"] for d in documents),
+        "needs_mapping": sum(d["needs_mapping"] for d in documents),
         "unmatched": sum(d["unmatched"] for d in documents),
     }

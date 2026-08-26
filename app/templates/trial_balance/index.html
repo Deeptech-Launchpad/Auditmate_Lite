@@ -166,12 +166,16 @@
         <strong>Client's figure</strong> is what the client printed.
         <strong>Our trial balance</strong> is what Auditmate computed.
         <strong>Missing from ours</strong> means the client shows that line
-        and our trial balance has no account for it at all.
+        and our trial balance has no account for it at all — either the source
+        document never had it, or it was not read. <strong>We have it, not
+        mapped</strong> means the account is in our trial balance but has no
+        statement line yet, so map it below.
       </p>
     </div>
     <div class="nowrap">
       <span class="pill pill-green">{{ checks.agrees }} agree</span>
       {% if checks.differs %}<span class="pill pill-amber">{{ checks.differs }} differ</span>{% endif %}
+      {% if checks.needs_mapping %}<span class="pill pill-amber">{{ checks.needs_mapping }} need mapping</span>{% endif %}
       {% if checks.missing %}<span class="pill pill-red">{{ checks.missing }} missing</span>{% endif %}
     </div>
   </div>
@@ -210,6 +214,8 @@
             <td class="nowrap">
               {% if f.status == 'agrees' %}
                 <span class="pill pill-green">✓ agrees</span>
+              {% elif f.status == 'unmapped_account' %}
+                <span class="pill pill-amber">we have it, not mapped</span>
               {% elif f.status == 'missing' %}
                 <span class="pill pill-red">missing from ours</span>
               {% else %}
