@@ -162,6 +162,12 @@
         the same year, so adding them would count it twice. Their figures are
         compared with ours instead.
       </p>
+      <p class="muted small">
+        <strong>Client's figure</strong> is what the client printed.
+        <strong>Our trial balance</strong> is what Auditmate computed.
+        <strong>Missing from ours</strong> means the client shows that line
+        and our trial balance has no account for it at all.
+      </p>
     </div>
     <div class="nowrap">
       <span class="pill pill-green">{{ checks.agrees }} agree</span>
@@ -183,9 +189,9 @@
       <table>
         <thead>
           <tr>
-            <th>Client's line</th>
-            <th class="right">Client says</th>
-            <th class="right">We computed</th>
+            <th>Line on the client's document</th>
+            <th class="right">Client's figure</th>
+            <th class="right">Our trial balance</th>
             <th class="right">Difference</th>
             <th></th>
           </tr>
@@ -205,7 +211,7 @@
               {% if f.status == 'agrees' %}
                 <span class="pill pill-green">✓ agrees</span>
               {% elif f.status == 'missing' %}
-                <span class="pill pill-red">not in the trial balance</span>
+                <span class="pill pill-red">missing from ours</span>
               {% else %}
                 <span class="pill pill-amber">differs</span>
               {% endif %}
