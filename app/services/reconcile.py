@@ -19,8 +19,8 @@ only visible symptom was an unexplained difference of 50,790.22.
 import logging
 from decimal import Decimal
 
-from ..extensions import db
 from ..models import ExtractedLineItem, TrialBalanceAccount
+from .classify import classify
 from .extraction.base import looks_like_total_label
 from .mapping import match_label
 
@@ -76,7 +76,17 @@ def check_document(document, accounts, customer_id):
             .filter(ExtractedLineItem.status != "discarded")
             .all())
 
-    findings = []
+    # Add the client's rows up per statement line before comparing anything.
+    #
+    # A printed statement gives one line per account, but a general ledger
+    # gives thousands of transactions - and each of those maps to the same
+    # line. Compared one at a time, a single payment of 4.00 to a supplier
+    # was held against a Cost of Services balance of 1,431,726.71 and
+    # reported as a difference of 1,431,722.71, over and over for 2,339 rows.
+    # The comparison an auditor wants is the ledger's total for a line
+    # against ours.
+    by_key, by_name, unmatched = {}, {}, 0
+
     for item in rows:
         label = (item.label or "").strip()
         if not label or looks_like_total_label(label):
@@ -89,23 +99,31 @@ def check_document(document, accounts, customer_id):
         rule = match_label(label, customer_id)
         key = rule["line_key"] if rule else None
 
-        if key is None or key not in ours:
-            # Before calling it missing, look for an account of the same name
-            # that simply has no statement line yet.
-            theirs_name = label.lower()
-            if theirs_name in unmapped_names:
-                difference = abs(unmapped_names[theirs_name]) - abs(theirs)
-                findings.append({
-                    "label": label, "theirs": theirs,
-                    "ours": unmapped_names[theirs_name],
-                    "difference": difference, "status": "unmapped_account"})
-                continue
-
-        if key is None:
-            findings.append({
-                "label": label, "theirs": theirs, "ours": None,
-                "difference": None, "status": "unmatched"})
+        if key is not None:
+            bucket = by_key.setdefault(key, {"total": ZERO, "labels": set()})
+        elif label.lower() in unmapped_names:
+            bucket = by_name.setdefault(label.lower(),
+                                        {"total": ZERO, "labels": set()})
+        else:
+            unmatched += 1
             continue
+
+        bucket["total"] += theirs
+        bucket["labels"].add(label)
+
+    findings = []
+
+    def _shown(bucket, fallback):
+        """What to call a line the client wrote several ways."""
+        labels = bucket["labels"]
+        if len(labels) == 1:
+            return next(iter(labels))
+        return f"{fallback} ({len(labels)} lines)"
+
+    for key, bucket in by_key.items():
+        theirs = bucket["total"]
+        entry = classify(key)
+        label = _shown(bucket, entry["label"] if entry else key)
 
         if key not in ours:
             findings.append({
@@ -121,7 +139,15 @@ def check_document(document, accounts, customer_id):
             "difference": difference,
             "status": "agrees" if abs(difference) <= TOLERANCE else "differs"})
 
-    return findings
+    for name, bucket in by_name.items():
+        theirs = bucket["total"]
+        difference = abs(unmapped_names[name]) - abs(theirs)
+        findings.append({
+            "label": _shown(bucket, name), "theirs": theirs,
+            "ours": unmapped_names[name], "difference": difference,
+            "status": "unmapped_account"})
+
+    return findings, unmatched
 
 
 def check(financial_year):
@@ -143,12 +169,13 @@ def check(financial_year):
 
     documents = []
     for document in evidence:
-        findings = check_document(document, accounts,
-                                  financial_year.customer_id)
+        findings, unmatched = check_document(document, accounts,
+                                             financial_year.customer_id)
         if not findings:
             continue
         documents.append({
             "document": document,
+            "unmatched": unmatched,
             "findings": sorted(
                 findings,
                 key=lambda f: (f["status"] == "agrees",
@@ -158,7 +185,6 @@ def check(financial_year):
             "missing": sum(1 for f in findings if f["status"] == "missing"),
             "needs_mapping": sum(1 for f in findings
                                  if f["status"] == "unmapped_account"),
-            "unmatched": sum(1 for f in findings if f["status"] == "unmatched"),
         })
 
     if not documents:
