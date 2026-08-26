@@ -33,7 +33,24 @@ def handler(job_type):
 @handler("extract_document")
 def _handle_extract(payload):
     from .extraction import extract_document
-    return extract_document(payload["document_id"])
+    document_id = payload["document_id"]
+    try:
+        return extract_document(document_id)
+    except Exception:                              # noqa: BLE001
+        # extract_document commits "processing" before it starts reading, so
+        # a crash after that point leaves the document in a state Analyse
+        # does not pick up again - the file goes quiet and can never be
+        # retried. Record the failure so it can.
+        db.session.rollback()
+        from ..models import Document
+        document = db.session.get(Document, document_id)
+        if document is not None and document.extraction_status == "processing":
+            document.extraction_status = "failed"
+            document.extraction_error = (
+                "Reading the file failed part-way through. Try Re-extract; "
+                "if it keeps failing the file may be too large or corrupt.")
+            db.session.commit()
+        raise
 
 
 def enqueue(job_type: str, payload: dict) -> dict:

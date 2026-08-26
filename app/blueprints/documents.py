@@ -8,7 +8,8 @@ from flask import (Blueprint, abort, current_app, flash, jsonify, redirect,
 from flask_login import current_user, login_required
 
 from ..extensions import db
-from ..models import Document, ExtractedLineItem, FinancialYear
+from ..models import (Document, ExtractedLineItem, FinancialYear,
+                      TrialBalanceAccount)
 from ..services import storage
 from ..services.audit import record
 from ..services.extraction.base import reconcile_trial_balance
@@ -140,7 +141,18 @@ def analyse(fy_id):
         query = query.filter_by(id=only_id)
     else:
         # Everything not already read successfully.
-        query = query.filter(Document.extraction_status.in_(["queued", "failed"]))
+        retryable = ["queued", "failed"]
+
+        # Inline extraction runs inside the request that started it, so a
+        # document still marked "processing" by the time a later request
+        # arrives is not in flight - it is stranded. That happens when the
+        # process died mid-read (a large scanned PDF can outrun gunicorn's
+        # timeout), and "processing" was already committed. Without this the
+        # file disappears from Analyse and can never be read again.
+        if current_app.config.get("JOBS_INLINE", True):
+            retryable.append("processing")
+
+        query = query.filter(Document.extraction_status.in_(retryable))
 
     documents = query.all()
 
@@ -459,6 +471,27 @@ def delete(document_id):
               f"balance. Reopen it with Unverify before deleting it.", "error")
         return redirect(url_for("documents.index", fy_id=fy_id))
 
+    # A document that was verified once may already have put accounts into
+    # the trial balance, and those rows point back at it. Two things follow.
+    contributed = (TrialBalanceAccount.query
+                   .filter_by(source_document_id=document.id))
+    contributed_count = contributed.count()
+
+    # An approved trial balance is the single source of truth for every
+    # printed figure. Taking rows out of one is exactly what that forbids.
+    if contributed_count and document.financial_year.tb_is_approved:
+        flash(f"“{filename}” contributed {contributed_count} account(s) to an "
+              f"approved trial balance. Reopen the trial balance before "
+              f"deleting it.", "error")
+        return redirect(url_for("documents.index", fy_id=fy_id))
+
+    # Otherwise take its accounts out with it. They are source-derived and
+    # come back on the next build; leaving them would strand rows pointing
+    # at a document that no longer exists, which the database refuses.
+    if contributed_count:
+        contributed.delete(synchronize_session=False)
+        db.session.flush()
+
     # Remove the file from disk too, not just the row.
     if not document.storage_path.startswith("("):
         try:
@@ -471,7 +504,12 @@ def delete(document_id):
     record("document", document_id, "delete", before={"filename": filename})
     db.session.commit()
 
-    flash(f"Deleted “{filename}”.", "success")
+    if contributed_count:
+        flash(f"Deleted “{filename}” and the {contributed_count} account(s) it "
+              f"put into the trial balance. Rebuild the trial balance.",
+              "success")
+    else:
+        flash(f"Deleted “{filename}”.", "success")
     return redirect(url_for("documents.index", fy_id=fy_id))
 
 
