@@ -10,6 +10,7 @@ from flask_login import current_user, login_required
 
 from ..extensions import db
 from ..models import FinancialYear, TrialBalanceAccount
+from ..services import reconcile
 from ..services import trial_balance as tb_service
 from ..services.statements import line_keys_for, load_templates
 
@@ -47,12 +48,17 @@ def index(fy_id):
     verified_docs = sum(1 for d in financial_year.documents
                         if d.review_status == "verified")
 
+    sources, evidence = tb_service.choose_sources(financial_year.documents)
+
     return render_template("trial_balance/index.html",
                            fy=financial_year,
                            customer=financial_year.customer,
                            accounts=accounts,
                            totals=financial_year.tb_totals,
                            verified_docs=verified_docs,
+                           sources=sources,
+                           evidence=evidence,
+                           checks=reconcile.check(financial_year),
                            line_options=_statement_line_options(),
                            # An empty Code column is noise; show it only when
                            # the client's chart of accounts actually uses one.
@@ -78,9 +84,13 @@ def build(fy_id):
         flash(result.get("error", "Could not build the trial balance."), "error")
         return redirect(url_for("trial_balance.index", fy_id=fy_id))
 
-    message = (f"Trial balance built: {result['accounts']} accounts, "
-               f"debits {result['debit']:,.2f} vs credits "
+    message = (f"Trial balance built from "
+               f"{', '.join(result['built_from'])}: {result['accounts']} "
+               f"accounts, debits {result['debit']:,.2f} vs credits "
                f"{result['credit']:,.2f}.")
+    if result["checked_against"]:
+        message += (f" {len(result['checked_against'])} other document(s) "
+                    f"kept back to check it against.")
     if not result["balanced"]:
         flash(message + f" Out by {result['difference']:,.2f} — check the "
                         f"source documents.", "warning")

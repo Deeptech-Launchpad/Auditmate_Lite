@@ -23,8 +23,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from ..extensions import db
-from ..models import (Document, ExtractedLineItem, FinancialYear,
-                      TrialBalanceAccount)
+from ..models import (TB_SOURCE_PAIRED, TB_SOURCE_PRECEDENCE,
+                      ExtractedLineItem, FinancialYear, TrialBalanceAccount)
 from .audit import record
 from .classify import is_credit_balance
 from .extraction.base import looks_like_total_label
@@ -84,16 +84,45 @@ def _amount_pair(item, standard_key=None):
     return debit, credit
 
 
-def _source_rows(financial_year_id):
-    """Every verified extracted row that should enter the trial balance.
+def choose_sources(documents):
+    """Which verified documents build the accounts, and which only check them.
 
-    Only verified documents count - an unchecked figure must never reach the
-    trial balance, for the same reason it must never reach a statement.
+    Returns (sources, evidence). A client sends several documents describing
+    the same year and they overlap, so exactly one kind builds: the best that
+    was supplied. Everything else is evidence.
     """
+    verified = [d for d in documents if d.review_status == "verified"]
+
+    # A Xero pull is a trial balance by another name and outranks a file.
+    pulled = [d for d in verified if d.file_type == "xero"]
+    if pulled:
+        return pulled, [d for d in verified if d not in pulled]
+
+    present = {(d.category or "other") for d in verified}
+    for category in TB_SOURCE_PRECEDENCE:
+        if category not in present:
+            continue
+        # The balance sheet and the profit and loss are two halves of one
+        # source; taking one without the other would build half a year.
+        wanted = ({category} | (TB_SOURCE_PAIRED & present)
+                  if category in TB_SOURCE_PAIRED else {category})
+        sources = [d for d in verified if (d.category or "other") in wanted]
+        return sources, [d for d in verified if d not in sources]
+
+    return [], verified
+
+
+def _source_rows(financial_year_id, sources):
+    """Every extracted row from the chosen source documents.
+
+    Only verified documents reach here - an unchecked figure must never enter
+    the trial balance, for the same reason it must never reach a statement.
+    """
+    if not sources:
+        return []
+
     rows = (db.session.query(ExtractedLineItem)
-            .join(Document, ExtractedLineItem.document_id == Document.id)
-            .filter(Document.financial_year_id == financial_year_id)
-            .filter(Document.review_status == "verified")
+            .filter(ExtractedLineItem.document_id.in_([d.id for d in sources]))
             .filter(ExtractedLineItem.status != "discarded")
             .all())
 
@@ -111,6 +140,14 @@ def build(financial_year_id: int, user_id=None) -> dict:
         return {"ok": False,
                 "error": "This trial balance is approved and locked. Reopen "
                          "it before rebuilding."}
+
+    sources, evidence = choose_sources(financial_year.documents)
+    if not sources:
+        return {"ok": False,
+                "error": "None of the verified documents can build a trial "
+                         "balance. Upload and verify a trial balance, a "
+                         "general ledger, or both a balance sheet and a "
+                         "profit and loss - then build again."}
 
     # Remember mappings the AUDITOR assigned, so a rebuild doesn't undo them.
     #
@@ -140,7 +177,7 @@ def build(financial_year_id: int, user_id=None) -> dict:
     channels = {d.id: ("xero" if d.file_type == "xero" else "upload")
                 for d in financial_year.documents}
 
-    for item in _source_rows(financial_year_id):
+    for item in _source_rows(financial_year_id, sources):
         name = (item.label or "").strip() or "(unnamed account)"
         code = (item.account_code or "").strip()
 
@@ -215,7 +252,9 @@ def build(financial_year_id: int, user_id=None) -> dict:
              financial_year_id, totals["accounts"], totals["unmapped"],
              totals["balanced"])
 
-    return {"ok": True, **totals}
+    return {"ok": True, **totals,
+            "built_from": [d.original_filename for d in sources],
+            "checked_against": [d.original_filename for d in evidence]}
 
 
 # --------------------------------------------------------------------------

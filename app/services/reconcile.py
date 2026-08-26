@@ -1,0 +1,150 @@
+"""Checking the trial balance against the documents it was NOT built from.
+
+A client sends several documents describing the same year. Exactly one of
+them builds the accounts - see trial_balance.choose_sources - because adding
+overlapping documents together counts the same money twice. But the ones held
+back are not waste: they are the client's own statement of what the figures
+should be, and comparing them against what we computed is the single most
+useful check in the file.
+
+It is also rule 4 made real. A total from the client is for checking against;
+a total in the report is computed by us. Two figures that agree are evidence.
+One figure used twice is not.
+
+The check that matters most is the one that finds nothing in the trial
+balance at all: a real engagement had a balance sheet stating cash in bank of
+163,753.90 against a trial balance with no bank account whatsoever, and the
+only visible symptom was an unexplained difference of 50,790.22.
+"""
+import logging
+from decimal import Decimal
+
+from ..extensions import db
+from ..models import ExtractedLineItem, TrialBalanceAccount
+from .extraction.base import looks_like_total_label
+from .mapping import match_label
+
+log = logging.getLogger(__name__)
+
+ZERO = Decimal("0.00")
+
+# What counts as agreement. Statements are usually presented to the dollar
+# while a trial balance carries cents, so insisting on an exact match would
+# report rounding as a finding and bury the real ones.
+TOLERANCE = Decimal("1.00")
+
+
+def _net(account) -> Decimal:
+    """An account's balance as one signed figure, debit positive."""
+    return (account.debit or ZERO) - (account.credit or ZERO)
+
+
+def _evidence_amount(item) -> Decimal:
+    """One evidence row as a signed figure, on the same footing as _net."""
+    if item.debit is not None or item.credit is not None:
+        return Decimal(str(item.debit or 0)) - Decimal(str(item.credit or 0))
+    if item.amount is not None:
+        return Decimal(str(item.amount))
+    return ZERO
+
+
+def check_document(document, accounts, customer_id):
+    """Compare one evidence document against the built accounts.
+
+    Every row is matched to a statement line, and the client's figure for that
+    line is compared with ours. Rows that map to nothing are reported too -
+    an account the client shows and we have never heard of is exactly the
+    kind of omission this is for.
+    """
+    ours = {}
+    for account in accounts:
+        if not account.standard_key:
+            continue
+        ours[account.standard_key] = ours.get(account.standard_key, ZERO) + _net(account)
+
+    rows = (ExtractedLineItem.query
+            .filter_by(document_id=document.id)
+            .filter(ExtractedLineItem.status != "discarded")
+            .all())
+
+    findings = []
+    for item in rows:
+        label = (item.label or "").strip()
+        if not label or looks_like_total_label(label):
+            continue
+
+        theirs = _evidence_amount(item)
+        if theirs == ZERO:
+            continue                      # a heading, or a line with no figure
+
+        rule = match_label(label, customer_id)
+        key = rule["line_key"] if rule else None
+
+        if key is None:
+            findings.append({
+                "label": label, "theirs": theirs, "ours": None,
+                "difference": None, "status": "unmatched"})
+            continue
+
+        if key not in ours:
+            findings.append({
+                "label": label, "theirs": theirs, "ours": None,
+                "difference": theirs, "status": "missing"})
+            continue
+
+        # A statement prints revenue and liabilities as positive numbers while
+        # the trial balance holds them as credits, so compare magnitudes.
+        difference = abs(ours[key]) - abs(theirs)
+        findings.append({
+            "label": label, "theirs": theirs, "ours": ours[key],
+            "difference": difference,
+            "status": "agrees" if abs(difference) <= TOLERANCE else "differs"})
+
+    return findings
+
+
+def check(financial_year):
+    """Every evidence document checked against the trial balance.
+
+    Returns None when there is nothing to say - no accounts yet, or every
+    verified document was used to build them.
+    """
+    from .trial_balance import choose_sources
+
+    accounts = (TrialBalanceAccount.query
+                .filter_by(financial_year_id=financial_year.id).all())
+    if not accounts:
+        return None
+
+    _sources, evidence = choose_sources(financial_year.documents)
+    if not evidence:
+        return None
+
+    documents = []
+    for document in evidence:
+        findings = check_document(document, accounts,
+                                  financial_year.customer_id)
+        if not findings:
+            continue
+        documents.append({
+            "document": document,
+            "findings": sorted(
+                findings,
+                key=lambda f: (f["status"] == "agrees",
+                               -abs(f["difference"] or f["theirs"]))),
+            "agrees": sum(1 for f in findings if f["status"] == "agrees"),
+            "differs": sum(1 for f in findings if f["status"] == "differs"),
+            "missing": sum(1 for f in findings if f["status"] == "missing"),
+            "unmatched": sum(1 for f in findings if f["status"] == "unmatched"),
+        })
+
+    if not documents:
+        return None
+
+    return {
+        "documents": documents,
+        "agrees": sum(d["agrees"] for d in documents),
+        "differs": sum(d["differs"] for d in documents),
+        "missing": sum(d["missing"] for d in documents),
+        "unmatched": sum(d["unmatched"] for d in documents),
+    }

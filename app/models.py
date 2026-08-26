@@ -53,6 +53,30 @@ DOCUMENT_CATEGORIES = [
     ("other", "Other"),
 ]
 
+# Which documents the accounts are built FROM, best first.
+#
+# A client sends several documents describing the same year, and they overlap:
+# a general ledger, the profit and loss summarising it, and a balance sheet
+# summarising it again all state the same money. Adding them together counts
+# that money two or three times - one real engagement came out at 21.8m of
+# debits against 10.9m of credits on a company turning over about 3.5m.
+#
+# So exactly one of them builds the accounts: the best that was supplied.
+# Everything else is held back as evidence to check the result against, which
+# is what a client's own totals are for.
+TB_SOURCE_PRECEDENCE = [
+    "trial_balance",      # says what every account holds. Nothing beats it.
+    "general_ledger",     # every transaction; the balances follow from them.
+    "balance_sheet",      # with the P&L, a trial balance split over two pages
+    "profit_and_loss",
+]
+
+# Balance sheet and profit and loss are two halves of one source: one carries
+# the assets, liabilities and equity, the other the income and expenses. Taken
+# together they cover every account exactly once, so they are used together or
+# not at all.
+TB_SOURCE_PAIRED = {"balance_sheet", "profit_and_loss"}
+
 STATEMENT_TYPES = [
     ("trial_balance", "Trial Balance"),
     ("profit_and_loss", "Statement of Comprehensive Income"),

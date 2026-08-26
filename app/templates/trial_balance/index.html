@@ -149,6 +149,77 @@
   {% endif %}
 {% endif %}
 
+{# The documents this trial balance was NOT built from. They describe the
+   same year, so adding them in would count the same money twice - but the
+   client's own figure for a line is the best check there is on ours. #}
+{% if checks %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>Checked against the client's own figures</h2>
+      <p class="muted small">
+        These documents were not used to build the accounts — they describe
+        the same year, so adding them would count it twice. Their figures are
+        compared with ours instead.
+      </p>
+    </div>
+    <div class="nowrap">
+      <span class="pill pill-green">{{ checks.agrees }} agree</span>
+      {% if checks.differs %}<span class="pill pill-amber">{{ checks.differs }} differ</span>{% endif %}
+      {% if checks.missing %}<span class="pill pill-red">{{ checks.missing }} missing</span>{% endif %}
+    </div>
+  </div>
+
+  {% for entry in checks.documents %}
+  <div style="padding:10px 16px">
+    <div class="muted small" style="margin-bottom:6px">
+      {{ entry.document.original_filename }}
+      · {{ entry.document.category_label }}
+      {% if entry.unmatched %}
+        · {{ entry.unmatched }} line(s) matched no statement line
+      {% endif %}
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Client's line</th>
+            <th class="right">Client says</th>
+            <th class="right">We computed</th>
+            <th class="right">Difference</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in entry.findings if f.status != 'unmatched' %}
+          <tr>
+            <td>{{ f.label }}</td>
+            <td class="right nowrap">{{ f.theirs|abs|money }}</td>
+            <td class="right nowrap">
+              {% if f.ours is none %}—{% else %}{{ f.ours|abs|money }}{% endif %}
+            </td>
+            <td class="right nowrap">
+              {% if f.difference is none %}—{% else %}{{ f.difference|money }}{% endif %}
+            </td>
+            <td class="nowrap">
+              {% if f.status == 'agrees' %}
+                <span class="pill pill-green">✓ agrees</span>
+              {% elif f.status == 'missing' %}
+                <span class="pill pill-red">not in the trial balance</span>
+              {% else %}
+                <span class="pill pill-amber">differs</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="card">
   <div class="card-head">
     <h2>
