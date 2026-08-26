@@ -12,7 +12,7 @@
 <div class="page-head">
   <div>
     <h1>Documents</h1>
-    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }} · {{ documents|length }} file(s)</p>
+    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }} · {{ total_documents }} file(s)</p>
   </div>
   <div class="page-actions">
     <a href="{{ url_for('statements.index', fy_id=fy.id) }}" class="btn">Statements →</a>
@@ -188,9 +188,16 @@
 {% endif %}
 
 <div class="card">
+  {#
+    The filters are dead controls until something has been uploaded, so they
+    are disabled rather than offered. Note this keys off the UNFILTERED
+    count: disabling them on an empty filtered list would leave an auditor
+    unable to clear a filter that matched nothing.
+  #}
   <form class="toolbar" method="get">
     <label class="muted small">Category</label>
-    <select name="category" onchange="this.form.submit()">
+    <select name="category" onchange="this.form.submit()"
+            {% if not total_documents %}disabled{% endif %}>
       <option value="">All</option>
       {% for key, label in DOCUMENT_CATEGORIES %}
         <option value="{{ key }}" {% if category == key %}selected{% endif %}>{{ label }}</option>
@@ -198,14 +205,20 @@
     </select>
 
     <label class="muted small">Review status</label>
-    <select name="status" onchange="this.form.submit()">
+    <select name="status" onchange="this.form.submit()"
+            {% if not total_documents %}disabled{% endif %}>
       <option value="">All</option>
       {% for key, label in [('pending','Pending'),('in_review','In review'),('verified','Verified')] %}
         <option value="{{ key }}" {% if status == key %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
 
-    {% if category or status %}
+    {% if not total_documents %}
+      <span class="muted small">Filters become available once a document is
+        uploaded.</span>
+    {% elif category or status %}
+      <span class="muted small">Showing {{ documents|length }} of
+        {{ total_documents }}</span>
       <a href="{{ url_for('documents.index', fy_id=fy.id) }}" class="btn btn-sm">Clear filters</a>
     {% endif %}
   </form>

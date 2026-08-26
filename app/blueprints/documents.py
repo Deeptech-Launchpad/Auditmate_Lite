@@ -101,11 +101,18 @@ def index(fy_id):
 
     documents = query.order_by(Document.uploaded_at.desc()).all()
 
+    # The unfiltered count, so the page can tell "this engagement has no
+    # documents" from "no document matches this filter". Disabling the
+    # filters on the filtered list would trap an auditor whose filter
+    # happened to match nothing.
+    total_documents = Document.query.filter_by(financial_year_id=fy_id).count()
+
     from ..services import xero as xero_service
 
     return render_template("documents/index.html",
                            fy=financial_year, customer=financial_year.customer,
                            documents=documents,
+                           total_documents=total_documents,
                            category=category, status=status,
                            # This page is where an auditor answers "how do I
                            # get the figures in", so both channels - files
