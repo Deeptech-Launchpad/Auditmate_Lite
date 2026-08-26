@@ -57,13 +57,21 @@
         You can close round {{ open_round.version_no }} below to tidy the
         history &mdash; it will not disturb the approval.
       {% endif %}
-      The next step is the audit report.
+      {% set report = fy.reports|first %}
+      {% if report and report.generated_at %}
+        The audit report was generated on
+        {{ report.generated_at|datefmt('%d %b %Y') }}.
+      {% elif report %}
+        The audit report is drafted &mdash; open it to edit and export.
+      {% else %}
+        The next step is the audit report.
+      {% endif %}
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
         <a href="{{ url_for('statements.index', fy_id=fy.id) }}" class="btn btn-sm">
           4. Statements
         </a>
         <a href="{{ url_for('reports.builder', fy_id=fy.id) }}" class="btn btn-sm btn-primary">
-          5. Audit Report &rarr;
+          {{ '5. Open the audit report' if report else '5. Audit Report' }} &rarr;
         </a>
       </div>
     </div>
@@ -193,6 +201,30 @@
             </div>
             {% endif %}
 
+            {#
+              The onward step depends on where the engagement actually is.
+              This block used to say "approve the trial balance" whichever
+              way, so a round confirmed after approval told the auditor to
+              redo a step already done - and offered a green button for it.
+            #}
+            {% if fy.tb_is_approved %}
+            <div class="notice ok" style="margin:14px 0">
+              <span>✓</span>
+              <div>
+                <strong>Already approved.</strong> The trial balance was
+                approved on
+                {{ fy.tb_approved_at|datefmt('%d %b %Y') if fy.tb_approved_at
+                   else 'an earlier date' }}
+                and the statements were generated from it. This round is
+                history — closing it changes nothing.
+              </div>
+            </div>
+
+            <a href="{{ url_for('reports.builder', fy_id=fy.id) }}"
+               class="btn btn-primary">
+              5. Audit Report →
+            </a>
+            {% else %}
             <div class="notice" style="margin:14px 0">
               <span>→</span>
               <div>
@@ -206,6 +238,7 @@
                class="btn btn-success">
               ✓ Go to the trial balance and approve
             </a>
+            {% endif %}
           </div>
         </div>
         {% else %}
