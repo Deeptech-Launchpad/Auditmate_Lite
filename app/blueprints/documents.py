@@ -441,9 +441,23 @@ def unverify(document_id):
 @bp.route("/<int:document_id>/delete", methods=["POST"])
 @login_required
 def delete(document_id):
+    """Remove a document, but only while it is still unverified.
+
+    A verified document's rows feed the trial balance and through it every
+    printed figure. Deleting one would take those figures away without any
+    trace of where they went, so the way back is deliberate: unverify the
+    document first, which is itself refused once the trial balance is
+    approved. The button is hidden in that state; this guard is what makes
+    it true for a request that arrives without one.
+    """
     document = _load_document(document_id)
     fy_id = document.financial_year_id
     filename = document.original_filename
+
+    if document.review_status == "verified":
+        flash(f"“{filename}” is verified and its figures feed the trial "
+              f"balance. Reopen it with Unverify before deleting it.", "error")
+        return redirect(url_for("documents.index", fy_id=fy_id))
 
     # Remove the file from disk too, not just the row.
     if not document.storage_path.startswith("("):

@@ -311,6 +311,19 @@
                    class="btn btn-sm {{ 'btn-primary' if doc.review_status != 'verified' }}">
                   {{ 'View' if doc.review_status == 'verified' else 'Review' }}
                 </a>
+                {# Removing a document is only offered before it is verified.
+                   Once verified its figures feed the trial balance, and
+                   deleting it would pull them out from underneath the
+                   statements - reopen it with Unverify first. #}
+                {% if doc.review_status != 'verified' %}
+                  <form method="post" style="display:inline"
+                        action="{{ url_for('documents.delete', document_id=doc.id) }}"
+                        onsubmit="return confirm('Delete “{{ doc.original_filename }}”? The file and everything read from it are removed. This cannot be undone.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-danger"
+                            title="Delete this document">Delete</button>
+                  </form>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
