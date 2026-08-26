@@ -62,9 +62,22 @@ LINE_LABELS = {
 }
 
 
+# Groups whose accounts normally carry a credit balance. A printed statement
+# has a single amount column and no sides - revenue, payables and share
+# capital are all shown as positive numbers - so this is what decides which
+# side such a figure belongs on.
+CREDIT_BALANCE_GROUPS = {
+    "revenue",
+    "equity",
+    "current_liabilities",
+    "non_current_liabilities",
+    "liabilities_total",
+}
+
+
 @functools.lru_cache(maxsize=1)
 def _index():
-    """standard_key -> {fs, category, label}, built once from the templates."""
+    """standard_key -> {fs, category, label, group}, built from the templates."""
     index = {}
     for statement_type, spec in load_templates().items():
         if statement_type == "trial_balance":
@@ -81,8 +94,21 @@ def _index():
                 "category": LINE_LABELS.get(
                     key, GROUP_LABELS.get(line.get("group"), "Other")),
                 "label": line.get("label", key),
+                "group": line.get("group"),
             })
     return index
+
+
+def is_credit_balance(standard_key) -> bool:
+    """Whether a mapped account normally sits on the credit side.
+
+    Taken from the statement templates rather than from a mapping rule's
+    `sign`, because a learned rule is written with sign=1 whatever the
+    account is, and several seed rules omit it. The template's group is the
+    one place that is always right.
+    """
+    entry = _index().get(standard_key or "")
+    return bool(entry and entry.get("group") in CREDIT_BALANCE_GROUPS)
 
 
 def classify(standard_key):

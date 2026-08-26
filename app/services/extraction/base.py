@@ -180,7 +180,28 @@ TOTAL_LABELS = {"total", "totals", "grand total", "sub total", "subtotal",
                 "closing balance", "opening bal.", "closing bal.",
                 "bal b/f", "bal c/f", "brought forward", "carried forward",
                 "b/f", "c/f", "balance brought forward",
-                "balance carried forward", "net movement", "difference"}
+                "balance carried forward", "net movement", "difference",
+                # A printed Profit & Loss or Balance Sheet carries computed
+                # subtotals between its accounts. They are results, not
+                # accounts, and importing one counts its accounts a second
+                # time: a real engagement took in Gross Profit, Net Profit
+                # and Net Assets as if each were a balance.
+                #
+                # "Current Year Earnings" is the year's result wearing an
+                # equity account's name. Take a Profit & Loss and a Balance
+                # Sheet together and the profit arrives twice - once as
+                # revenue less expenses, once as this line - which leaves the
+                # trial balance short by exactly one year's profit. Retained
+                # Earnings is NOT here: that is the opening balance, a real
+                # account, and dropping it would leave equity short.
+                "current year earnings", "current period earnings",
+                "current year profit", "profit and loss account",
+                "gross profit", "gross loss", "net profit", "net loss",
+                "net income", "operating profit", "operating loss",
+                "net assets", "net liabilities", "net current assets",
+                "profit before tax", "profit after tax",
+                "profit before taxation", "profit after taxation",
+                "earnings before tax", "ebit", "ebitda"}
 
 
 def looks_like_total_label(label) -> bool:
@@ -194,8 +215,13 @@ def looks_like_total_label(label) -> bool:
     text = (str(label or "")).strip().lower().rstrip(":").strip()
     if not text:
         return False
-    return text in TOTAL_LABELS or text.startswith(("total ", "sub total ",
-                                                    "subtotal "))
+    return text in TOTAL_LABELS or text.startswith((
+        "total ", "sub total ", "subtotal ",
+        # "Profit for the year", "Net profit/(loss)", "Loss before tax" and
+        # the rest of the ways a statement writes its own result.
+        "profit for the", "loss for the", "profit before", "profit after",
+        "loss before", "loss after", "net profit", "net loss", "gross profit",
+        "gross loss", "net assets", "net current assets"))
 
 
 def looks_like_header(cells: list) -> bool:

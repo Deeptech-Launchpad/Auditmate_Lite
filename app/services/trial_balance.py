@@ -26,6 +26,7 @@ from ..extensions import db
 from ..models import (Document, ExtractedLineItem, FinancialYear,
                       TrialBalanceAccount)
 from .audit import record
+from .classify import is_credit_balance
 from .extraction.base import looks_like_total_label
 from .mapping import match_label
 
@@ -59,14 +60,26 @@ def _fit_name(name: str) -> str:
 # Building
 # --------------------------------------------------------------------------
 
-def _amount_pair(item):
-    """Reduce an extracted row to (debit, credit)."""
+def _amount_pair(item, standard_key=None):
+    """Reduce an extracted row to (debit, credit).
+
+    A workbook trial balance has its own debit and credit columns and those
+    are used as given. A printed Profit & Loss or Balance Sheet does not: it
+    has one amount column and no sides, and revenue, payables and share
+    capital are all printed as positive numbers. Treating every one of them
+    as a debit put 3.5m of sales on the wrong side of a real engagement and
+    left the trial balance out by millions. Which side an account belongs on
+    follows from the statement line it maps to.
+    """
     debit = Decimal(str(item.debit)) if item.debit is not None else ZERO
     credit = Decimal(str(item.credit)) if item.credit is not None else ZERO
 
     if debit == ZERO and credit == ZERO and item.amount is not None:
         amount = Decimal(str(item.amount))
-        debit, credit = (amount, ZERO) if amount >= 0 else (ZERO, -amount)
+        on_credit = is_credit_balance(standard_key)
+        if amount < 0:                    # a bracketed figure means the other side
+            amount, on_credit = -amount, not on_credit
+        return (ZERO, amount) if on_credit else (amount, ZERO)
 
     return debit, credit
 
@@ -138,17 +151,9 @@ def build(financial_year_id: int, user_id=None) -> dict:
         key = (code, name.lower())
         name = _fit_name(name)
 
-        debit, credit = _amount_pair(item)
-
-        if key in merged:
-            # Same account arriving from two documents: add, don't duplicate.
-            existing = merged[key]
-            existing.debit = (existing.debit or ZERO) + debit
-            existing.credit = (existing.credit or ZERO) + credit
-            existing.confidence = min(existing.confidence or 1.0,
-                                      item.confidence or 1.0)
-            continue
-
+        # The mapping is resolved before the amount, because a figure from a
+        # printed statement has no side of its own and the line it maps to is
+        # what decides one.
         standard_key = remembered.get(key)
         statement_type = None
         if not standard_key:
@@ -160,6 +165,17 @@ def build(financial_year_id: int, user_id=None) -> dict:
                 # presentation. The trial balance stores the raw debit and
                 # credit, so the sign is applied later, when statements are
                 # built - never here.
+
+        debit, credit = _amount_pair(item, standard_key)
+
+        if key in merged:
+            # Same account arriving from two documents: add, don't duplicate.
+            existing = merged[key]
+            existing.debit = (existing.debit or ZERO) + debit
+            existing.credit = (existing.credit or ZERO) + credit
+            existing.confidence = min(existing.confidence or 1.0,
+                                      item.confidence or 1.0)
+            continue
 
         account = TrialBalanceAccount(
             financial_year_id=financial_year_id,
