@@ -77,12 +77,20 @@ class Config:
         "http://localhost:5000/integrations/xero/callback").strip()
 
     # Read-only. Auditmate can never write to a client's books.
-    #   offline_access            - required to get a refresh token at all
-    #   accounting.reports.read   - the Trial Balance report
-    #   accounting.settings.read  - the chart of accounts (codes and types)
+    #   offline_access   - required to get a refresh token at all
+    #   ...trialbalance.read - the Trial Balance report, and only that report
+    #   ...settings.read     - the chart of accounts (codes and types)
+    #
+    # Xero has split the old blanket accounting.reports.read into one scope
+    # per report - banksummary, profitandloss, trialbalance and the rest.
+    # Asking for the retired name is refused outright with invalid_scope,
+    # which reads as a broken app registration and is not. Naming the single
+    # report we read is also the honest request: the consent screen an audit
+    # client sees now says trial balance, not "your reports".
     XERO_SCOPES = os.getenv(
         "XERO_SCOPES",
-        "offline_access accounting.reports.read accounting.settings.read"
+        "offline_access accounting.reports.trialbalance.read "
+        "accounting.settings.read"
     ).strip()
 
     XERO_ENABLED = bool(XERO_CLIENT_ID and XERO_CLIENT_SECRET)
