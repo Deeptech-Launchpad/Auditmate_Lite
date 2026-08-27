@@ -240,3 +240,10 @@
 # GST standing on a balance sheet is money owed to IRAS. Priority is set well
 # below "gst payable" and "gst (p&l)" so those keep their sharper meaning.
 - {pattern: "gst",                  statement: balance_sheet, line: trade_payables, priority: 25, sign: -1}
+
+# Everyday words for staff pay that the salary/wages patterns do not contain.
+- {pattern: "payroll",              statement: profit_and_loss, line: staff_salaries, priority: 10}
+- {pattern: "staff cost",           statement: profit_and_loss, line: staff_salaries, priority: 12}
+- {pattern: "employment cost",      statement: profit_and_loss, line: staff_salaries, priority: 12}
+- {pattern: "personnel cost",       statement: profit_and_loss, line: staff_salaries, priority: 12}
+- {pattern: "remuneration",         statement: profit_and_loss, line: staff_salaries, priority: 18}
