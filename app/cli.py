@@ -3,6 +3,7 @@ import random
 from datetime import date, datetime, timedelta
 
 import click
+from flask import current_app
 from flask.cli import with_appcontext
 from sqlalchemy import text
 
