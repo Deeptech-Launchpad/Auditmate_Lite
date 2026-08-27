@@ -180,6 +180,20 @@
     </div>
   </div>
 
+  {# A ledger, a bank statement or an invoice records what happened during
+     the year rather than what each account holds at the end of it, so it
+     cannot be held against the accounts line for line. Named here so it is
+     plainly kept rather than quietly ignored. #}
+  {% if checks.held_back %}
+  <div style="padding:10px 16px" class="muted small">
+    Held as evidence, not compared line by line — these record transactions
+    during the year rather than balances at the year end:
+    {% for d in checks.held_back %}
+      <strong>{{ d.original_filename }}</strong> ({{ d.category_label }}){{ ", " if not loop.last }}
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% for entry in checks.documents %}
   <div style="padding:10px 16px">
     <div class="muted small" style="margin-bottom:6px">

@@ -35,6 +35,21 @@ ZERO = Decimal("0.00")
 # report rounding as a finding and bury the real ones.
 TOLERANCE = Decimal("1.00")
 
+# Documents whose lines can be compared with a trial balance line for line.
+#
+# These state BALANCES: one figure per account, as at the year end. A general
+# ledger, a bank statement or an invoice states MOVEMENTS instead - what
+# happened during the year - and the two differ by every opening balance, so
+# the comparison is meaningless even when both documents are perfectly
+# correct. On a real engagement the ledger produced sixteen differences and
+# three phantom omissions, none of them findings, next to 2,308 lines that
+# matched nothing at all because they were named after suppliers. Real
+# findings do not survive that much noise.
+#
+# The others are still held back and still available as evidence; they are
+# simply not held up against the accounts as though they said the same thing.
+COMPARABLE_CATEGORIES = {"trial_balance", "balance_sheet", "profit_and_loss"}
+
 
 def _net(account) -> Decimal:
     """An account's balance as one signed figure, debit positive."""
@@ -174,8 +189,12 @@ def check(financial_year):
     if not evidence:
         return None
 
+    comparable = [d for d in evidence
+                  if (d.category or "other") in COMPARABLE_CATEGORIES]
+    held_back = [d for d in evidence if d not in comparable]
+
     documents = []
-    for document in evidence:
+    for document in comparable:
         findings, unmatched = check_document(document, accounts,
                                              financial_year.customer_id)
         if not findings:
@@ -194,11 +213,12 @@ def check(financial_year):
                                  if f["status"] == "unmapped_account"),
         })
 
-    if not documents:
+    if not documents and not held_back:
         return None
 
     return {
         "documents": documents,
+        "held_back": held_back,
         "agrees": sum(d["agrees"] for d in documents),
         "differs": sum(d["differs"] for d in documents),
         "missing": sum(d["missing"] for d in documents),
