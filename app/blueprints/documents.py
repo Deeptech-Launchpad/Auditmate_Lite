@@ -8,10 +8,11 @@ from flask import (Blueprint, abort, current_app, flash, jsonify, redirect,
 from flask_login import current_user, login_required
 
 from ..extensions import db
-from ..models import (Document, ExtractedLineItem, FinancialYear,
-                      TrialBalanceAccount)
+from ..models import (DOCUMENT_CATEGORIES, Document, ExtractedLineItem,
+                      FinancialYear, TrialBalanceAccount)
 from ..services import storage
 from ..services.audit import record
+from ..services.categorise import detect_category
 from ..services.extraction.base import reconcile_trial_balance
 from ..services.jobs import enqueue
 
@@ -30,7 +31,12 @@ def upload(fy_id):
 
     if request.method == "POST":
         files = request.files.getlist("files")
-        category = request.form.get("category") or "other"
+        # "auto" reads each file's own name. A client sends the P&L, the
+        # balance sheet and the ledger in one go, and one dropdown cannot
+        # describe three documents - so without this they all arrive as
+        # "other" and the trial balance builder, which decides what to build
+        # FROM by category, finds nothing it recognises.
+        chosen = request.form.get("category") or "auto"
 
         if not files or all(not f.filename for f in files):
             flash("Choose at least one file to upload.", "error")
@@ -55,7 +61,8 @@ def upload(fy_id):
 
             document = Document(
                 financial_year_id=financial_year.id,
-                category=category,
+                category=(detect_category(file_storage.filename)
+                          if chosen == "auto" else chosen),
                 uploaded_by=current_user.id,
                 extraction_status="queued",
                 review_status="pending",
@@ -448,6 +455,52 @@ def unverify(document_id):
     flash(f"“{document.original_filename}” reopened for editing. Rebuild the "
           f"trial balance after you have finished correcting it.", "success")
     return redirect(url_for("documents.review", document_id=document.id))
+
+
+@bp.route("/<int:document_id>/category", methods=["POST"])
+@login_required
+def recategorise(document_id):
+    """Correct what a document is filed as.
+
+    Needed because the category is not cosmetic: it decides which document
+    the accounts are built FROM, and an engagement whose documents all say
+    "other" reports that it has nothing to build from while showing the
+    auditor a profit and loss and a balance sheet. Without this the only
+    remedy is to delete every file and upload it again.
+
+    Refused once the trial balance is approved, for the same reason deleting
+    is: the statements and the audit report are generated from an approved
+    trial balance, and changing which document built it afterwards would move
+    figures that have already been reported.
+    """
+    document = db.session.get(Document, document_id) or abort(404)
+    financial_year = document.financial_year
+    fy_id = financial_year.id
+    category = request.form.get("category") or "other"
+
+    valid = {key for key, _label in DOCUMENT_CATEGORIES}
+    if category not in valid:
+        flash("That is not a document category.", "error")
+        return redirect(url_for("documents.index", fy_id=fy_id))
+
+    if financial_year.tb_is_approved:
+        flash("The trial balance is approved. Reopen it before changing what "
+              "a document is filed as.", "error")
+        return redirect(url_for("documents.index", fy_id=fy_id))
+
+    if category == document.category:
+        return redirect(url_for("documents.index", fy_id=fy_id))
+
+    before = document.category
+    document.category = category
+    record("document", document.id, "recategorise",
+           before={"category": before}, after={"category": category})
+    db.session.commit()
+
+    flash(f"“{document.original_filename}” is now filed as "
+          f"{document.category_label}. Build the trial balance again for it "
+          f"to take effect.", "success")
+    return redirect(url_for("documents.index", fy_id=fy_id))
 
 
 @bp.route("/<int:document_id>/delete", methods=["POST"])

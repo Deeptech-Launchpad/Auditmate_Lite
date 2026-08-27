@@ -42,12 +42,15 @@
       <div class="field" style="max-width:340px;margin-bottom:18px">
         <label for="category">Document category</label>
         <select id="category" name="category" required>
+          <option value="auto" selected>Detect from file name</option>
           {% for key, label in DOCUMENT_CATEGORIES %}
-            <option value="{{ key }}" {% if key == 'trial_balance' %}selected{% endif %}>{{ label }}</option>
+            <option value="{{ key }}">{{ label }}</option>
           {% endfor %}
         </select>
-        <span class="help">Applies to every file in this batch — upload different
-          categories separately</span>
+        <span class="help">Detecting reads each file separately, so a P&amp;L, a
+          balance sheet and a ledger can go up together. Anything it cannot
+          name is filed as Other for you to set. Choosing a category instead
+          applies it to every file in the batch.</span>
       </div>
 
       <div class="dropzone" id="dropzone">

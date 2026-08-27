@@ -250,7 +250,26 @@
                   </span>
                 </div>
               </td>
-              <td class="small">{{ doc.category_label }}</td>
+              <td class="small">
+                {% if fy.tb_is_approved %}
+                  {{ doc.category_label }}
+                {% else %}
+                  {# Editable because the category is not a label: it decides
+                     which document the accounts are built FROM. A file sitting
+                     as "Other" is invisible to the builder. #}
+                  <form method="post" class="inline"
+                        action="{{ url_for('documents.recategorise', document_id=doc.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="category" onchange="this.form.submit()"
+                            class="small" style="max-width:190px">
+                      {% for key, label in DOCUMENT_CATEGORIES %}
+                        <option value="{{ key }}"
+                                {% if doc.category == key %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </form>
+                {% endif %}
+              </td>
               <td>
                 {% if doc.ai_used %}
                   <span class="ai-badge">✦ AI</span>
