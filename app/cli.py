@@ -20,6 +20,7 @@ def register_cli(app):
     app.cli.add_command(check_email)
     app.cli.add_command(check_ai)
     app.cli.add_command(check_xero)
+    app.cli.add_command(xero_report)
     app.cli.add_command(setup_production)
 
 
@@ -549,6 +550,97 @@ def check_xero():
                    f"{connection.tenant_name or '(no organisation chosen)'} "
                    f"[{state}]")
 
+
+
+@click.command("xero-report")
+@click.argument("customer_id", type=int)
+@click.argument("as_at")
+@click.option("--raw", is_flag=True, help="Print Xero's JSON verbatim.")
+@with_appcontext
+def xero_report(customer_id, as_at, raw):
+    """Show Xero's trial balance report as Xero returns it.
+
+    AS_AT is a year end, YYYY-MM-DD.
+
+    Its purpose is the question a parsed figure cannot answer: which column
+    did that number come from. Xero's trial balance carries a movement pair
+    and a year-to-date pair side by side, and a report read from the wrong
+    pair still balances perfectly while being wrong - the same shape of
+    mistake as a prior-year column added into the current year. This prints
+    the column headings, so the choice is made by looking rather than by
+    assuming.
+    """
+    import json
+    from datetime import date as _date
+    from .models import Connection
+    from .services import xero as xero_service
+
+    try:
+        year_end = _date.fromisoformat(as_at)
+    except ValueError:
+        raise click.ClickException("Give the date as YYYY-MM-DD.")
+
+    connection = Connection.query.filter_by(customer_id=customer_id,
+                                            provider="xero").first()
+    if connection is None:
+        raise click.ClickException(
+            f"Customer {customer_id} has no Xero connection. Connect first.")
+
+    click.echo(f"Organisation: {connection.tenant_name or '(none chosen)'}")
+    click.echo(f"As at:        {year_end}")
+    click.echo("")
+
+    payload = xero_service.raw_trial_balance(connection, year_end)
+
+    if raw:
+        click.echo(json.dumps(payload, indent=2))
+        return
+
+    reports = payload.get("Reports") or []
+    if not reports:
+        click.echo("Xero returned no report at all.")
+        click.echo("Run again with --raw to see what came back.")
+        return
+
+    report = reports[0]
+    click.echo(f"Report:  {report.get('ReportName')}")
+    click.echo(f"Titles:  {report.get('ReportTitles')}")
+    click.echo(f"Date:    {report.get('ReportDate')}")
+    click.echo("")
+
+    body = report.get("Rows") or []
+    header = next((r for r in body if r.get("RowType") == "Header"), None)
+    if header:
+        columns = [(c.get("Value") or "").strip()
+                   for c in (header.get("Cells") or [])]
+        click.echo("Columns, in order:")
+        for index, column in enumerate(columns):
+            click.echo(f"  [{index}] {column or '(blank)'}")
+        click.echo("")
+        click.echo("  We read [1] and [2]. If those are a period movement and")
+        click.echo("  the year-to-date pair sits further right, we are")
+        click.echo("  reading the wrong columns.")
+        click.echo("")
+
+    shown = 0
+    for section in body:
+        if section.get("RowType") != "Section":
+            continue
+        title = (section.get("Title") or "").strip()
+        click.echo(f"Section: {title or '(untitled)'}")
+        for row in (section.get("Rows") or []):
+            cells = [(c.get("Value") or "").strip()
+                     for c in (row.get("Cells") or [])]
+            click.echo(f"  {row.get('RowType'):11} {cells}")
+            shown += 1
+            if shown >= 40:
+                click.echo("  ... more rows not shown")
+                return
+
+    if shown == 0:
+        click.echo("The report came back with no account rows.")
+        click.echo("Either the organisation holds nothing at that date, or")
+        click.echo("the year end is outside the range Xero has data for.")
 
 @click.command("setup-production")
 @click.option("--email", default="jey@deeptechskills.com", show_default=True)

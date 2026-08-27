@@ -247,25 +247,38 @@ def fetch_trial_balance(connection: Connection, as_at) -> list:
         raise XeroError("No Xero organisation has been chosen for this "
                         "customer yet.")
 
-    if demo_mode():
-        payload = _demo_trial_balance()
-    else:
-        response = requests.get(
-            f"{API_BASE}/Reports/TrialBalance",
-            headers={
-                "Authorization": f"Bearer {_access_token(connection)}",
-                "Xero-tenant-id": connection.tenant_id,
-                "Accept": "application/json",
-            },
-            params={"date": as_at.strftime("%Y-%m-%d")},
-            timeout=TIMEOUT,
-        )
-        if response.status_code != 200:
-            raise XeroError(_explain(response, "Could not read the trial "
-                                               "balance from Xero"))
-        payload = response.json()
+    return parse_trial_balance(raw_trial_balance(connection, as_at))
 
-    return parse_trial_balance(payload)
+
+def raw_trial_balance(connection: Connection, as_at) -> dict:
+    """Xero's trial balance report exactly as Xero returns it.
+
+    Split out from fetch_trial_balance so the xero-report command can show
+    the report before anything interprets it. When a pull comes back empty or
+    wrong, the useful question is what Xero actually sent, and a parsed
+    result cannot answer that.
+    """
+    if not connection.tenant_id:
+        raise XeroError("No Xero organisation has been chosen for this "
+                        "customer yet.")
+
+    if demo_mode():
+        return _demo_trial_balance()
+
+    response = requests.get(
+        f"{API_BASE}/Reports/TrialBalance",
+        headers={
+            "Authorization": f"Bearer {_access_token(connection)}",
+            "Xero-tenant-id": connection.tenant_id,
+            "Accept": "application/json",
+        },
+        params={"date": as_at.strftime("%Y-%m-%d")},
+        timeout=TIMEOUT,
+    )
+    if response.status_code != 200:
+        raise XeroError(_explain(response, "Could not read the trial "
+                                           "balance from Xero"))
+    return response.json()
 
 
 def parse_trial_balance(payload: dict) -> list:
