@@ -87,7 +87,7 @@ def authorize_url(state: str) -> str:
     The auditor's Xero password is typed on Xero's own page. Auditmate never
     sees it, and never stores it.
     """
-    from urllib.parse import urlencode
+    from urllib.parse import quote, urlencode
 
     params = {
         "response_type": "code",
@@ -98,7 +98,12 @@ def authorize_url(state: str) -> str:
         # actually made, rather than one forged by another site.
         "state": state,
     }
-    return f"{AUTHORIZE_URL}?{urlencode(params)}"
+    # quote_via=quote, so the spaces between scopes become %20 and not the +
+    # that urlencode uses by default. A + is only a space by the convention of
+    # HTML form posts; Xero does not apply it here, and reads the whole scope
+    # list as one unrecognised scope name. The symptom is an invalid_scope
+    # error page with every individual scope perfectly valid.
+    return f"{AUTHORIZE_URL}?{urlencode(params, quote_via=quote)}"
 
 
 def new_state() -> str:
