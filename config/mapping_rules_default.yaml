@@ -223,3 +223,20 @@
 - {pattern: "computer expense",     statement: profit_and_loss, line: other_expenses, priority: 6}
 - {pattern: "gst (p&l)",            statement: profit_and_loss, line: gst_payables_expense, priority: 4}
 - {pattern: "gst expense",          statement: profit_and_loss, line: gst_payables_expense, priority: 5}
+
+# The last eight from the Dynamic Electrical FY2024 trial balance. Each agreed
+# with the client's own statement to the cent and still reached no line, so it
+# would have printed in nothing.
+- {pattern: "staff amenit",         statement: profit_and_loss, line: other_expenses, priority: 12}
+- {pattern: "power, water",         statement: profit_and_loss, line: other_expenses, priority: 12}
+- {pattern: "water & gas",          statement: profit_and_loss, line: other_expenses, priority: 12}
+- {pattern: "stationery",           statement: profit_and_loss, line: other_expenses, priority: 12}
+- {pattern: "printing",             statement: profit_and_loss, line: other_expenses, priority: 13}
+- {pattern: "office expense",       statement: profit_and_loss, line: other_expenses, priority: 10}
+- {pattern: "bookkeeping",          statement: profit_and_loss, line: accounting_charges, priority: 6}
+- {pattern: "site inspection",      statement: profit_and_loss, line: other_expenses, priority: 12}
+- {pattern: "medical",              statement: profit_and_loss, line: other_expenses, priority: 14}
+
+# GST standing on a balance sheet is money owed to IRAS. Priority is set well
+# below "gst payable" and "gst (p&l)" so those keep their sharper meaning.
+- {pattern: "gst",                  statement: balance_sheet, line: trade_payables, priority: 25, sign: -1}
