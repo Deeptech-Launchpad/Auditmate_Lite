@@ -10,6 +10,7 @@ result is good enough or whether Claude should take a second pass.
 import csv as csv_module
 import io
 import logging
+import re
 from pathlib import Path
 
 from .base import (ExtractedRow, ExtractionResult, clean_label,
@@ -22,6 +23,13 @@ log = logging.getLogger(__name__)
 # Column detection — shared by every tabular parser
 # --------------------------------------------------------------------------
 
+# A column headed with a year, or with a date carrying one, is the prior-year
+# comparative every accounting package prints beside the current figures.
+_YEAR = re.compile(r"\b(19|20)\d{2}\b")
+COMPARATIVE_WORDS = ("prior year", "previous year", "last year", "comparative",
+                     "prior period", "previous period", "prior yr")
+
+
 def _identify_columns(header_cells):
     """Work out which column holds what, from a header row.
 
@@ -29,7 +37,7 @@ def _identify_columns(header_cells):
     Falls back to positional guessing when headers are unhelpful.
     """
     mapping = {"label": None, "debit": None, "credit": None,
-               "amount": None, "code": None}
+               "amount": None, "code": None, "comparative": set()}
 
     for idx, cell in enumerate(header_cells):
         text = str(cell or "").strip().lower()
@@ -61,6 +69,19 @@ def _identify_columns(header_cells):
     if mapping["debit"] is not None and mapping["credit"] is not None:
         mapping["amount"] = None
 
+    # Anything left over headed with a year or a date is last year's column,
+    # printed beside this one to compare against. A header that names its own
+    # side - "DEBIT - YEAR TO DATE" - was claimed above and never reaches
+    # here, so only genuinely unclaimed columns can be marked.
+    for idx, cell in enumerate(header_cells):
+        if idx in (mapping["label"], mapping["debit"], mapping["credit"],
+                   mapping["amount"], mapping["code"]):
+            continue
+        text = str(cell or "").strip().lower()
+        if text and (_YEAR.search(text)
+                     or any(w in text for w in COMPARATIVE_WORDS)):
+            mapping["comparative"].add(idx)
+
     return mapping
 
 
@@ -91,8 +112,18 @@ def _row_from_cells(cells, cols, source_ref):
     # No mapped numeric columns? Take the last parseable number on the row —
     # in practice that's the balance column in most exports.
     if debit is None and credit is None and amount is None:
-        for cell in reversed(cells):
-            value = parse_amount(cell)
+        # Never fall back onto last year's column: it is the rightmost number
+        # on the row, so "last number wins" lands on it precisely when this
+        # year's cell is blank, and reports a prior-year balance as current.
+        # An account code is not an amount either - "4230" is a numeric cell
+        # and would be taken as $4,230 on any row with nothing else to find.
+        skip = set(cols.get("comparative") or set())
+        skip.update(i for i in (cols.get("code"), cols.get("label"))
+                    if i is not None)
+        for idx in range(len(cells) - 1, -1, -1):
+            if idx in skip:
+                continue
+            value = parse_amount(cells[idx])
             if value is not None:
                 amount = value
                 break

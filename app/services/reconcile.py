@@ -19,6 +19,8 @@ only visible symptom was an unexplained difference of 50,790.22.
 import logging
 from decimal import Decimal
 
+from sqlalchemy import or_
+
 from ..models import ExtractedLineItem, TrialBalanceAccount
 from .classify import classify
 from .extraction.base import looks_like_total_label
@@ -74,6 +76,11 @@ def check_document(document, accounts, customer_id):
     rows = (ExtractedLineItem.query
             .filter_by(document_id=document.id)
             .filter(ExtractedLineItem.status != "discarded")
+            # Compare like with like: the client's figure for THIS year. Their
+            # prior-year column would otherwise be added to it and every line
+            # would differ by last year's balance.
+            .filter(or_(ExtractedLineItem.period.is_(None),
+                        ExtractedLineItem.period != "previous"))
             .all())
 
     # Add the client's rows up per statement line before comparing anything.

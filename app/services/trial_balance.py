@@ -124,6 +124,17 @@ def _source_rows(financial_year_id, sources):
     rows = (db.session.query(ExtractedLineItem)
             .filter(ExtractedLineItem.document_id.in_([d.id for d in sources]))
             .filter(ExtractedLineItem.status != "discarded")
+            # Last year's column is there to compare against, not to add in.
+            #
+            # A trial balance is printed with the prior year beside the
+            # current one, and extraction marks those rows "previous" - but
+            # nothing read the mark, so both years were merged under the same
+            # account name and added together. On a real engagement Sales
+            # became 1,705,815.99 + 1,871,355.00 = 3,577,170.99 and a trial
+            # balance that footed exactly at 2,419,992.52 was reported out by
+            # 4,259,958.00.
+            .filter(db.or_(ExtractedLineItem.period.is_(None),
+                           ExtractedLineItem.period != "previous"))
             .all())
 
     # A source document's own total row would double every figure.
