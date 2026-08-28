@@ -147,7 +147,8 @@
           {% endif %}
           <form method="post"
                 action="{{ url_for('integrations.disconnect', customer_id=customer.id) }}"
-                onsubmit="return confirm('Disconnect {{ customer.name }} from Xero?');">
+                data-confirm="Disconnect {{ customer.name }} from Xero?"
+                onsubmit="return confirm(this.dataset.confirm);">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="return_to" value="{{ request.path }}">
             <button type="submit" class="btn btn-sm">Disconnect</button>
@@ -337,7 +338,8 @@
                 {% if doc.review_status != 'verified' %}
                   <form method="post" style="display:inline"
                         action="{{ url_for('documents.delete', document_id=doc.id) }}"
-                        onsubmit="return confirm('Delete “{{ doc.original_filename }}”? The file and everything read from it are removed. This cannot be undone.');">
+                        data-confirm="Delete “{{ doc.original_filename }}”? The file and everything read from it are removed. This cannot be undone."
+                        onsubmit="return confirm(this.dataset.confirm);">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-sm btn-danger"
                             title="Delete this document">Delete</button>
