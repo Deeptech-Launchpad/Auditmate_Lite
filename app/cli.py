@@ -617,9 +617,10 @@ def xero_report(customer_id, as_at, raw):
         for index, column in enumerate(columns):
             click.echo(f"  [{index}] {column or '(blank)'}")
         click.echo("")
-        click.echo("  We read [1] and [2]. If those are a period movement and")
-        click.echo("  the year-to-date pair sits further right, we are")
-        click.echo("  reading the wrong columns.")
+        debit_at, credit_at, how = xero_service.choose_columns(report)
+        click.echo(f"  Reading [{debit_at}] and [{credit_at}]: {how}")
+        click.echo("  Year-to-date is what an audit needs. A period movement")
+        click.echo("  would still balance to the penny and still be wrong.")
         click.echo("")
 
     shown = 0

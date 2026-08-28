@@ -139,6 +139,14 @@ def extract_document(document_id: int) -> dict:
             status="auto",
         ))
 
+    # What the document is, read from what is now inside it. Runs here
+    # because this is the first moment the rows exist - and a file name only
+    # ever guessed. An auditor's own choice is left alone.
+    identified = identified_reason = None
+    if result.rows:
+        from ..identify import identify_document
+        identified, identified_reason, _changed = identify_document(document)
+
     document.extraction_status = "extracted" if result.rows else "failed"
     document.extraction_engine = engine_used
     document.extraction_confidence = result.confidence
@@ -161,4 +169,6 @@ def extract_document(document_id: int) -> dict:
         "confidence": round(result.confidence, 3),
         "flagged": sum(1 for r in result.rows if r.needs_review),
         "balance": balance,
+        "category": identified,
+        "category_reason": identified_reason,
     }

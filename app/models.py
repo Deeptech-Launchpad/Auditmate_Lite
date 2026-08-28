@@ -66,10 +66,30 @@ DOCUMENT_CATEGORIES = [
 # is what a client's own totals are for.
 TB_SOURCE_PRECEDENCE = [
     "trial_balance",      # says what every account holds. Nothing beats it.
-    "general_ledger",     # every transaction; the balances follow from them.
     "balance_sheet",      # with the P&L, a trial balance split over two pages
     "profit_and_loss",
+    "general_ledger",     # last resort. See below.
 ]
+
+# The general ledger used to rank second, above the balance sheet and the
+# profit and loss. It is now last, because it is the worst of the four for
+# this job on two counts.
+#
+# It states MOVEMENTS, not balances. A ledger says what happened during the
+# year; a trial balance says what each account holds at the end of it. The
+# difference is every account's opening balance, and unless the export
+# carries those, every balance sheet account comes out understated - while
+# still balancing.
+#
+# And its rows are named after suppliers, not accounts: "Ang Mo Kio Hardware
+# Pte Ltd - invoice 4471", never "Cost of Services". Those names map to
+# nothing. On one engagement 2,308 of 2,339 ledger rows matched no account
+# at all, and the accounts built from it were hundreds of unmapped supplier
+# names.
+#
+# The balance sheet and the profit and loss are already what a trial balance
+# is: one line per account, at the year end, in account names, complete
+# between them.
 
 # Balance sheet and profit and loss are two halves of one source: one carries
 # the assets, liabilities and equity, the other the income and expenses. Taken
@@ -392,6 +412,14 @@ class Document(db.Model):
     size_bytes = db.Column(db.BigInteger)
     sha256 = db.Column(db.String(64), index=True)
     category = db.Column(db.String(40), default="other")
+    # Where the category came from: filename | content | manual.
+    #
+    # Recorded because the category is not a label - it decides which
+    # document the accounts are built FROM - so the auditor has to be able
+    # to see whether a person chose it or the app guessed, and a guess must
+    # never overwrite a choice.
+    category_source = db.Column(db.String(20))
+    category_reason = db.Column(db.String(255))
     page_count = db.Column(db.Integer)
 
     # queued | processing | extracted | failed

@@ -269,6 +269,15 @@
                       {% endfor %}
                     </select>
                   </form>
+                  {# How it was decided. A guess the auditor cannot see is a
+                     guess the auditor cannot correct. #}
+                  {% if doc.category_source == 'content' %}
+                    <span class="muted small" title="{{ doc.category_reason }}">read from the file</span>
+                  {% elif doc.category_source == 'filename' %}
+                    <span class="muted small">from the file name</span>
+                  {% elif doc.category_source == 'manual' %}
+                    <span class="muted small">you set this</span>
+                  {% endif %}
                 {% endif %}
               </td>
               <td>

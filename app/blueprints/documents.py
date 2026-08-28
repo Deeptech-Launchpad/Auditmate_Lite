@@ -63,6 +63,7 @@ def upload(fy_id):
                 financial_year_id=financial_year.id,
                 category=(detect_category(file_storage.filename)
                           if chosen == "auto" else chosen),
+                category_source="filename" if chosen == "auto" else "manual",
                 uploaded_by=current_user.id,
                 extraction_status="queued",
                 review_status="pending",
@@ -493,6 +494,10 @@ def recategorise(document_id):
 
     before = document.category
     document.category = category
+    # A person decided. Nothing automatic overwrites this afterwards -
+    # not the file name, and not a later re-read of the contents.
+    document.category_source = "manual"
+    document.category_reason = None
     record("document", document.id, "recategorise",
            before={"category": before}, after={"category": category})
     db.session.commit()

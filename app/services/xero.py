@@ -281,13 +281,54 @@ def raw_trial_balance(connection: Connection, as_at) -> dict:
     return response.json()
 
 
+def choose_columns(report: dict):
+    """Which two cells hold the year-end balances, read from the headings.
+
+    Xero's trial balance carries two pairs of figures side by side: the
+    movement for the period, and the year-to-date position. Taking the first
+    pair by position gives the movement - and a trial balance built from
+    movements balances to the penny while being wrong, which is exactly the
+    prior-year mistake in another costume. Nothing in the totals shows it.
+
+    So read the headings and take the year-to-date pair when it is there.
+    For a balance sheet account that is the closing balance; for an income
+    or expense account it is the year's total. Together that is a trial
+    balance at the year end, which is what an audit needs.
+
+    Returns (debit_index, credit_index, how) - `how` naming the columns
+    chosen, so flask xero-report can show the choice rather than assert it.
+    """
+    header = next((r for r in (report.get("Rows") or [])
+                   if r.get("RowType") == "Header"), None)
+    if not header:
+        return 1, 2, "no headings in the report - took columns 1 and 2"
+
+    labels = [(c.get("Value") or "").strip() for c in (header.get("Cells") or [])]
+    lowered = [l.lower() for l in labels]
+
+    def pick(word):
+        found = [i for i, l in enumerate(lowered) if word in l]
+        if not found:
+            return None
+        # Year-to-date wins over the period column wherever both exist.
+        ytd = [i for i in found
+               if "ytd" in lowered[i] or "year to date" in lowered[i]]
+        return ytd[0] if ytd else found[0]
+
+    debit, credit = pick("debit"), pick("credit")
+    if debit is None or credit is None:
+        return 1, 2, (f"headings {labels} name no debit/credit pair - "
+                      f"took columns 1 and 2")
+
+    return debit, credit, f"{labels[debit]!r} and {labels[credit]!r}"
+
+
 def parse_trial_balance(payload: dict) -> list:
     """Flatten Xero's report structure into account rows.
 
     Xero returns a report as nested Rows: a header row, then Section rows
-    each holding the account rows. Cells are positional - account, debit,
-    credit, then year-to-date columns - so the account name is read from the
-    first cell and the two figures from the next two.
+    each holding the account rows. The account name is the first cell; the
+    two figures are whichever columns choose_columns settled on.
 
     Written defensively: a report shape that does not match is skipped rather
     than guessed at, because a guessed trial balance is worse than none.
@@ -297,13 +338,18 @@ def parse_trial_balance(payload: dict) -> list:
     if not reports:
         return rows
 
+    debit_at, credit_at, how = choose_columns(reports[0])
+    log.info("Xero trial balance: reading %s", how)
+    widest = max(debit_at, credit_at)
+
     for section in (reports[0].get("Rows") or []):
         if section.get("RowType") != "Section":
             continue
 
         for row in (section.get("Rows") or []):
             cells = row.get("Cells") or []
-            if row.get("RowType") not in ("Row", "SummaryRow") or len(cells) < 3:
+            if (row.get("RowType") not in ("Row", "SummaryRow")
+                    or len(cells) <= widest):
                 continue
             # Section totals are not accounts.
             if row.get("RowType") == "SummaryRow":
@@ -313,8 +359,8 @@ def parse_trial_balance(payload: dict) -> list:
             if not name:
                 continue
 
-            debit = _to_decimal(cells[1].get("Value"))
-            credit = _to_decimal(cells[2].get("Value"))
+            debit = _to_decimal(cells[debit_at].get("Value"))
+            credit = _to_decimal(cells[credit_at].get("Value"))
             if debit == 0 and credit == 0:
                 continue          # nil accounts add nothing to a trial balance
 
