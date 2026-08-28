@@ -252,31 +252,42 @@
                 </div>
               </td>
               <td class="small">
-                {% if fy.tb_is_approved %}
-                  {{ doc.category_label }}
+                {# The category as text. It only becomes a control when the
+                   auditor asks for one - a row of live dropdowns invites a
+                   misclick, and this field decides which document the
+                   accounts are built FROM. #}
+                <span class="strong">{{ doc.category_label }}</span>
+
+                {% if doc.file_type == 'xero' %}
+                  {# Nothing to choose. A Xero pull IS a trial balance; there
+                     is no file and no judgement to make. Offering a category
+                     here would let someone file it as a bank statement and
+                     take the accounts away from the builder entirely. #}
+                  <div class="muted small">straight from Xero</div>
                 {% else %}
-                  {# Editable because the category is not a label: it decides
-                     which document the accounts are built FROM. A file sitting
-                     as "Other" is invisible to the builder. #}
-                  <form method="post" class="inline"
-                        action="{{ url_for('documents.recategorise', document_id=doc.id) }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <select name="category" onchange="this.form.submit()"
-                            class="small" style="max-width:190px">
-                      {% for key, label in DOCUMENT_CATEGORIES %}
-                        <option value="{{ key }}"
-                                {% if doc.category == key %}selected{% endif %}>{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </form>
-                  {# How it was decided. A guess the auditor cannot see is a
-                     guess the auditor cannot correct. #}
                   {% if doc.category_source == 'content' %}
-                    <span class="muted small" title="{{ doc.category_reason }}">read from the file</span>
+                    <div class="muted small" title="{{ doc.category_reason }}">read from the file</div>
                   {% elif doc.category_source == 'filename' %}
-                    <span class="muted small">from the file name</span>
+                    <div class="muted small">from the file name</div>
                   {% elif doc.category_source == 'manual' %}
-                    <span class="muted small">you set this</span>
+                    <div class="muted small">you set this</div>
+                  {% endif %}
+
+                  {% if not fy.tb_is_approved %}
+                    <a href="#" class="small change-category"
+                       data-doc-id="{{ doc.id }}">Change</a>
+                    <form method="post" class="category-form" id="cat-{{ doc.id }}"
+                          style="display:none;margin-top:6px"
+                          action="{{ url_for('documents.recategorise', document_id=doc.id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <select name="category" class="small" style="max-width:190px">
+                        {% for key, label in DOCUMENT_CATEGORIES %}
+                          <option value="{{ key }}"
+                                  {% if doc.category == key %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                      <button type="submit" class="btn btn-sm">Save</button>
+                    </form>
                   {% endif %}
                 {% endif %}
               </td>
@@ -372,4 +383,23 @@
     {% endif %}
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // The category shows as text until the auditor asks to change it. Kept out
+  // of the row's default state on purpose: this field decides which document
+  // the accounts are built FROM, so it should take a deliberate click.
+  document.querySelectorAll('.change-category').forEach(function (link) {
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      var form = document.getElementById('cat-' + this.dataset.docId);
+      if (!form) { return; }
+      form.style.display = 'block';
+      this.style.display = 'none';
+      var select = form.querySelector('select');
+      if (select) { select.focus(); }
+    });
+  });
+</script>
 {% endblock %}
