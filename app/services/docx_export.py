@@ -41,6 +41,10 @@ BLOCKS = {"p", "div", "li", "tr", "section", "article", "header", "footer"}
 # Deciding by content is the only signal available once the CSS is gone.
 NUMERIC = re.compile(r"^[\s(]*-?[\d,]+\.?\d*[\s)%]*$")
 
+# What a <br> becomes between the reader and the writer. It has to survive
+# _flush, which otherwise discards anything that is only whitespace.
+LINE_BREAK = "\n"
+
 
 class _Reader(HTMLParser):
     """Turn the report's HTML into a flat list of instructions.
@@ -66,9 +70,29 @@ class _Reader(HTMLParser):
     # -- text collection --------------------------------------------------
 
     def _flush(self):
-        runs = [r for r in self._text if r[0].strip()]
+        # A <br> arrives as a LINE_BREAK run. Filtering on strip() alone drops
+        # it, which silently joined two directors' names into one on the first
+        # page of the accounts - so keep it, and drop only real whitespace.
+        runs = [r for r in self._text
+                if r[0].strip() or r[0] == LINE_BREAK]
         self._text = []
-        return runs
+
+        # A break at either end of a block is spacing, not content.
+        while runs and runs[0][0] == LINE_BREAK:
+            runs.pop(0)
+        while runs and runs[-1][0] == LINE_BREAK:
+            runs.pop()
+        # The run after a break starts a new line, so its leading space is
+        # left over from the HTML's indentation rather than being content.
+        for index in range(1, len(runs)):
+            if runs[index - 1][0] == LINE_BREAK:
+                runs[index] = (runs[index][0].lstrip(),
+                               runs[index][1], runs[index][2])
+
+        if runs:
+            runs[0] = (runs[0][0].lstrip(), runs[0][1], runs[0][2])
+            runs[-1] = (runs[-1][0].rstrip(), runs[-1][1], runs[-1][2])
+        return [r for r in runs if r[0]]
 
     def _emit_block(self):
         runs = self._flush()
@@ -105,7 +129,7 @@ class _Reader(HTMLParser):
         elif tag in ("i", "em"):
             self._italic += 1
         elif tag == "br":
-            self._text.append(("\n", False, False))
+            self._text.append((LINE_BREAK, False, False))
         elif tag in HEADINGS:
             self._emit_block()
             self._heading = HEADINGS[tag]
@@ -168,6 +192,9 @@ class _Reader(HTMLParser):
 
 def _write_runs(paragraph, runs):
     for text, bold, italic in runs:
+        if text == LINE_BREAK:
+            paragraph.add_run().add_break()
+            continue
         run = paragraph.add_run(text)
         run.bold = bold
         run.italic = italic

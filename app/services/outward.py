@@ -27,6 +27,7 @@ a balance sheet or a profit and loss.
 import logging
 from decimal import Decimal
 
+from ..extensions import db
 from ..models import FinancialYear, TrialBalanceAccount
 from .classify import classify
 from .extraction.base import looks_like_total_label
@@ -183,12 +184,28 @@ def evidence_checks(financial_year):
 
 
 def previous_year(financial_year):
-    """The engagement immediately before this one, for the same client."""
+    """The engagement immediately before this one, for the same client.
+
+    An explicit link wins. FinancialYear.previous_year_id is set by whoever
+    created the engagement and says which year this one follows - which is
+    the answer, not an inference from dates. Only when it is absent does the
+    most recent earlier year end stand in, and a year with no end date
+    cannot be ordered at all so it is left out rather than guessed at.
+    """
+    if financial_year.previous_year_id:
+        linked = db.session.get(FinancialYear, financial_year.previous_year_id)
+        if linked is not None:
+            return linked
+
+    if financial_year.end_date is None:
+        return None
+
     return (FinancialYear.query
             .filter(FinancialYear.customer_id == financial_year.customer_id,
                     FinancialYear.id != financial_year.id,
-                    FinancialYear.year_end < financial_year.year_end)
-            .order_by(FinancialYear.year_end.desc())
+                    FinancialYear.end_date.isnot(None),
+                    FinancialYear.end_date < financial_year.end_date)
+            .order_by(FinancialYear.end_date.desc())
             .first())
 
 

@@ -23,9 +23,10 @@ of them will be.
 """
 import logging
 
-from ..models import AccountMapping, FinancialYear, TrialBalanceAccount
+from ..models import AccountMapping, TrialBalanceAccount
 from .classify import classify
 from .mapping import match_label
+from .outward import previous_year
 
 log = logging.getLogger(__name__)
 
@@ -45,19 +46,9 @@ ORIGIN_LABELS = {
 }
 
 
-def _previous_year(financial_year):
-    """The engagement immediately before this one for the same client."""
-    return (FinancialYear.query
-            .filter(FinancialYear.customer_id == financial_year.customer_id,
-                    FinancialYear.id != financial_year.id,
-                    FinancialYear.year_end < financial_year.year_end)
-            .order_by(FinancialYear.year_end.desc())
-            .first())
-
-
 def _last_year_map(financial_year):
     """account name (lowered) -> the line it was mapped to last year."""
-    previous = _previous_year(financial_year)
+    previous = previous_year(financial_year)
     if previous is None:
         return {}, None
 
