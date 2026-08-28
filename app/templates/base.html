@@ -47,9 +47,13 @@
          href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">
         <span class="icon">▤</span> 2. Trial Balance
       </a>
-      <a class="nav-item {% if request.endpoint == 'trial_balance.review' %}active{% endif %}"
-         href="{{ url_for('trial_balance.review', fy_id=fy.id) }}">
-        <span class="icon">✉</span> 3. Customer Review
+      {# Customer Review is deliberately not a step. The firm's position:
+         "The SME client is not an accountant and will not log in to approve
+         accounts." The route and its templates still exist and still work -
+         nothing was deleted - it is simply no longer part of the flow. #}
+      <a class="nav-item {% if request.endpoint == 'trial_balance.mapping' %}active{% endif %}"
+         href="{{ url_for('trial_balance.mapping', fy_id=fy.id) }}">
+        <span class="icon">⇄</span> 3. Mapping
       </a>
       <a class="nav-item {% if request.blueprint == 'statements'
                              and request.endpoint != 'statements.versions' %}active{% endif %}"
@@ -58,7 +62,7 @@
       </a>
       <a class="nav-item {% if request.blueprint == 'reports' %}active{% endif %}"
          href="{{ url_for('reports.builder', fy_id=fy.id) }}">
-        <span class="icon">▧</span> 5. Audit Report
+        <span class="icon">▧</span> 5. Financial Statements
       </a>
       {% endif %}
 

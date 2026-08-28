@@ -147,6 +147,8 @@ def ensure_report(financial_year) -> AuditReport:
     if report is not None:
         return report
 
+    present = _accounts_present(financial_year)
+
     report = AuditReport(
         financial_year_id=financial_year.id,
         title=f"Financial Statements — {financial_year.year_label}",
@@ -161,7 +163,7 @@ def ensure_report(financial_year) -> AuditReport:
             title=spec.get("title", spec["key"]),
             section_type=spec.get("type", "free_text"),
             sort_order=order,
-            is_enabled=bool(spec.get("default_enabled", False)),
+            is_enabled=_enabled_for(spec, present),
             content_html=spec.get("content", ""),
             data_binding={"statement_type": spec["statement_type"]}
             if spec.get("statement_type") else None,
@@ -169,6 +171,53 @@ def ensure_report(financial_year) -> AuditReport:
 
     db.session.commit()
     return report
+
+
+# A note that explains a figure belongs in the accounts only when the figure
+# is there. A company with no bank loan should not receive a borrowings note
+# carrying template wording about interest rates and covenants - that is a
+# statement about the company, and it is not true.
+#
+# Notes that are pure wording - the accounting policies, the critical
+# estimates, the standards not yet adopted - are not in this table. Nothing
+# in a trial balance decides whether they belong, so they keep whatever
+# default_enabled says and a person chooses.
+NOTE_ACCOUNTS = {
+    "note_04_revenue": ["revenue"],
+    "note_05_profit_before_tax": ["revenue", "operating_expenses"],
+    "note_06_income_tax": ["tax_expense", "tax_payable"],
+    "note_07_trade_receivables": ["trade_receivables"],
+    "note_08_deposits_other_receivables": ["prepayments", "other_receivables",
+                                           "deposits"],
+    "note_09_cash": ["cash_and_equivalents"],
+    "note_10_share_capital": ["share_capital", "working_capital"],
+    "note_11_other_payables": ["trade_payables", "accruals", "other_payables"],
+}
+
+
+def _accounts_present(financial_year):
+    """Every statement line this engagement's trial balance actually holds."""
+    from ..models import TrialBalanceAccount
+
+    rows = (TrialBalanceAccount.query
+            .filter_by(financial_year_id=financial_year.id)
+            .filter(TrialBalanceAccount.standard_key.isnot(None))
+            .all())
+    return {r.standard_key for r in rows
+            if (r.debit or 0) or (r.credit or 0)}
+
+
+def _enabled_for(spec, present):
+    """Whether a section starts ticked.
+
+    A note tied to accounts is ticked when the trial balance carries any of
+    them, and left off when it does not. Everything else falls back to the
+    template's own default, which is what a person then adjusts.
+    """
+    keys = NOTE_ACCOUNTS.get(spec["key"])
+    if keys is None:
+        return bool(spec.get("default_enabled", False))
+    return any(key in present for key in keys)
 
 
 @functools.lru_cache(maxsize=1)

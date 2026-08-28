@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Account Mapping · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">Trial Balance</a>
+  <span class="sep">/</span>
+  <span class="current">Mapping</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Account Mapping</h1>
+    <p class="subtitle">
+      {{ customer.name }} · {{ fy.year_label }}
+      {% if review %}· {{ review.total }} account{{ '' if review.total == 1 else 's' }}{% endif %}
+      {% if fy.tb_is_approved %}· <span class="pill pill-green">✓ Approved</span>{% endif %}
+    </p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn">← Trial Balance</a>
+  </div>
+</div>
+
+{% if not review %}
+  <div class="card">
+    <div class="card-body empty">
+      <h3>No trial balance yet</h3>
+      <p class="muted">Pull it from Xero or build it from the documents first.
+        There is nothing to map until there are accounts.</p>
+      <a href="{{ url_for('documents.index', fy_id=fy.id) }}" class="btn btn-primary">Go to Documents</a>
+    </div>
+  </div>
+{% else %}
+
+  {# The count that matters. An unmapped account reaches no statement at all,
+     so a new bank account or a new liability would simply be absent, with
+     nothing announcing it. #}
+  {% if review.unmapped %}
+    <div class="alert alert-error">
+      <strong>{{ review.unmapped }} account{{ '' if review.unmapped == 1 else 's' }}
+      not mapped.</strong>
+      An unmapped account appears in no financial statement. Until every one
+      of these has a line, the statements are incomplete.
+    </div>
+  {% else %}
+    <div class="alert alert-success">
+      Every account is mapped to a statement line.
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-body">
+      <div class="toolbar" style="justify-content:space-between">
+        <div class="stack-h" style="gap:18px">
+          <span class="muted small">
+            <strong>{{ review.counts.unmapped }}</strong> not mapped
+          </span>
+          <span class="muted small">
+            <strong>{{ review.counts.suggested }}</strong> suggested by a rule
+          </span>
+          <span class="muted small">
+            <strong>{{ review.counts.carried }}</strong> carried from last year
+          </span>
+          <span class="muted small">
+            <strong>{{ review.counts.manual }}</strong> you mapped
+          </span>
+        </div>
+        {% if review.has_suggestions and not fy.tb_is_approved %}
+          <form method="post"
+                action="{{ url_for('trial_balance.apply_mapping_suggestions', fy_id=fy.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary btn-sm">
+              Apply all suggestions
+            </button>
+          </form>
+        {% endif %}
+      </div>
+
+      {% if review.previous %}
+        <p class="muted small" style="margin-top:10px">
+          Comparing against {{ review.previous.year_label }}. An account that
+          moves to a different statement line between years makes the
+          comparative column stop being comparable.
+        </p>
+      {% else %}
+        <p class="muted small" style="margin-top:10px">
+          First year for this client, so nothing is carried forward. Every
+          decision made here is remembered and applied automatically next year.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="table-wrap" style="overflow-x:auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Client's account</th>
+            <th class="num">Balance</th>
+            <th>Financial statement line</th>
+            <th>Where this came from</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in review.rows %}
+            {% set account = row.account %}
+            <tr class="{{ 'row-warn' if row.origin == 'unmapped' }}">
+              <td>
+                <div class="stack">
+                  <span class="strong">{{ account.account_name }}</span>
+                  {% if account.account_code %}
+                    <span class="muted small mono">{{ account.account_code }}</span>
+                  {% endif %}
+                </div>
+              </td>
+              <td class="num mono">
+                {% if account.debit %}{{ '{:,.2f}'.format(account.debit) }} Dr
+                {% elif account.credit %}{{ '{:,.2f}'.format(account.credit) }} Cr
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                {% if fy.tb_is_approved %}
+                  {{ row.line_label or '—' }}
+                {% else %}
+                  <select class="map-select" data-account-id="{{ account.id }}"
+                          style="max-width:280px">
+                    <option value="">— not mapped —</option>
+                    {% for group in line_options %}
+                      <optgroup label="{{ group.statement }}">
+                        {% for line in group.lines %}
+                          <option value="{{ line.key }}"
+                            {% if account.standard_key == line.key %}selected{% endif %}>
+                            {{ line.label }}
+                          </option>
+                        {% endfor %}
+                      </optgroup>
+                    {% endfor %}
+                  </select>
+                {% endif %}
+              </td>
+              <td class="small">
+                {% if row.origin == 'unmapped' and row.suggestion %}
+                  <span class="pill pill-amber">Suggested</span>
+                  <div class="muted small">
+                    {{ row.suggestion_label }} — from {{ row.suggestion_from }}
+                  </div>
+                {% elif row.origin == 'unmapped' %}
+                  <span class="pill pill-red">Nothing matches</span>
+                  <div class="muted small">No rule and no prior year. You decide.</div>
+                {% elif row.origin == 'carried' %}
+                  <span class="pill pill-green">Carried forward</span>
+                {% elif row.origin == 'manual' %}
+                  <span class="pill">You mapped this</span>
+                {% else %}
+                  <span class="pill pill-amber">Rule library</span>
+                  <div class="muted small">A generic guess. Worth a glance.</div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if review and not fy.tb_is_approved %}
+<script>
+  // Saves through the same endpoint the trial balance grid uses, so a
+  // mapping made here is remembered against the customer exactly as one
+  // made there is - and applies itself next year.
+  document.querySelectorAll('.map-select').forEach(function (select) {
+    select.addEventListener('change', function () {
+      var id = this.dataset.accountId;
+      var previous = this.dataset.previous || '';
+      var self = this;
+      fetch('/trial-balance/api/account/' + id, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': window.CSRF_TOKEN
+        },
+        body: JSON.stringify({ standard_key: self.value || null })
+      }).then(function (response) {
+        if (!response.ok) { throw new Error('save failed'); }
+        return response.json();
+      }).then(function () {
+        self.dataset.previous = self.value;
+        var cell = self.closest('tr').lastElementChild;
+        cell.innerHTML = '<span class="pill">You mapped this</span>';
+        self.closest('tr').classList.remove('row-warn');
+      }).catch(function () {
+        self.value = previous;
+        alert('That mapping could not be saved. Nothing was changed.');
+      });
+    });
+  });
+</script>
+{% endif %}
+{% endblock %}

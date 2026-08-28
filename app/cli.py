@@ -21,6 +21,7 @@ def register_cli(app):
     app.cli.add_command(check_ai)
     app.cli.add_command(check_xero)
     app.cli.add_command(xero_report)
+    app.cli.add_command(check_beta)
     app.cli.add_command(setup_production)
 
 
@@ -642,6 +643,84 @@ def xero_report(customer_id, as_at, raw):
         click.echo("The report came back with no account rows.")
         click.echo("Either the organisation holds nothing at that date, or")
         click.echo("the year end is outside the range Xero has data for.")
+
+
+@click.command("check-beta")
+@click.argument("fy_id", type=int)
+@with_appcontext
+def check_beta(fy_id):
+    """Exercise the preparation build against one engagement.
+
+    Runs the mapping review, the outward checks and the readiness check and
+    prints what each found. A screen can hide a service that quietly returns
+    nothing; this cannot.
+    """
+    from .models import FinancialYear
+    from .services import mapping_review, outward, readiness
+
+    financial_year = db.session.get(FinancialYear, fy_id)
+    if financial_year is None:
+        raise click.ClickException(f"No financial year {fy_id}.")
+
+    click.echo(f"{financial_year.customer.name} - {financial_year.year_label}")
+    click.echo("")
+
+    # --- mapping ---------------------------------------------------------
+    click.echo("MAPPING")
+    review = mapping_review.review(financial_year)
+    if review is None:
+        click.echo("  no trial balance yet - nothing to map")
+    else:
+        c = review["counts"]
+        click.echo(f"  {review['total']} account(s): "
+                   f"{c['unmapped']} unmapped, {c['suggested']} suggested, "
+                   f"{c['carried']} carried, {c['manual']} manual")
+        if review["previous"]:
+            click.echo(f"  carrying forward from "
+                       f"{review['previous'].year_label}")
+        for row in review["rows"][:8]:
+            line = row["line_label"] or row["suggestion_label"] or "-"
+            click.echo(f"    {row['account'].account_name[:34]:34} "
+                       f"{line[:26]:26} {row['origin']}")
+        if review["total"] > 8:
+            click.echo(f"    ... {review['total'] - 8} more")
+
+    # --- outward checks --------------------------------------------------
+    click.echo("")
+    click.echo("CHECKED AGAINST OTHER EVIDENCE")
+    checks = outward.check(financial_year)
+    if checks is None:
+        click.echo("  nothing to check against yet")
+    else:
+        click.echo(f"  {checks['agrees']} agree, {checks['differs']} differ, "
+                   f"{checks['missing']} missing")
+        for f in checks["evidence"]:
+            ours = "-" if f["ours"] is None else f"{f['ours']:,.2f}"
+            click.echo(f"    {f['kind'][:24]:24} {f['line'][:24]:24} "
+                       f"theirs {f['theirs']:>14,.2f}  ours {ours:>14}  "
+                       f"{f['status']}")
+        movement = checks["movement"]
+        if movement is None:
+            click.echo("    no previous year in the app - no comparatives")
+        else:
+            click.echo(f"    vs {movement['previous'].year_label}: "
+                       f"{movement['unchanged']} unchanged, "
+                       f"{movement['moved']} moved, {movement['new']} new, "
+                       f"{movement['gone']} gone")
+            for r in movement["flagged"][:6]:
+                click.echo(f"      {r['label'][:34]:34} {r['note']}")
+
+    # --- readiness -------------------------------------------------------
+    click.echo("")
+    click.echo("WHAT IS MISSING")
+    ready = readiness.check(financial_year)
+    click.echo(f"  {ready['have']} of {ready['total']} in place")
+    for item in ready["missing"]:
+        click.echo(f"    MISSING  {item['serves']}")
+        click.echo(f"             needs: {item['needs']}")
+
+    click.echo("")
+    click.echo("Nothing above was written. This only reads.")
 
 @click.command("setup-production")
 @click.option("--email", default="jey@deeptechskills.com", show_default=True)

@@ -42,6 +42,10 @@ DOCUMENT_CATEGORIES = [
     ("balance_sheet", "Balance Sheet"),
     ("profit_and_loss", "Profit & Loss / Income Statement"),
     ("general_ledger", "General Ledger"),
+    # Last year's finished accounts. Not evidence like the others - it is
+    # also required DATA: the prior-year column of every statement comes
+    # from it, and so does last year's mapping.
+    ("signed_accounts", "Signed Accounts (prior year)"),
     ("bank_statement", "Bank Statement"),
     ("vendor_invoice", "Vendor Invoice"),
     ("customer_invoice", "Customer Invoice"),

@@ -52,6 +52,11 @@ RULES = [
         r"\bbalance sheet\b", r"\bbalancesheet\b",
         r"\bstatement of financial position\b",
     ]),
+    ("signed_accounts", [
+        r"\bsigned accounts\b", r"\bfinancial statements\b",
+        r"\bunaudited financial statements\b", r"\baudited accounts\b",
+        r"\bstatutory accounts\b", r"\bannual report\b",
+    ]),
     ("bank_statement", [
         r"\bbank statement\b", r"\bbank stmt\b", r"\bstatement of account\b",
     ]),

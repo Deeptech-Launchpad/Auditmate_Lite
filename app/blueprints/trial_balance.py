@@ -10,7 +10,7 @@ from flask_login import current_user, login_required
 
 from ..extensions import db
 from ..models import FinancialYear, TrialBalanceAccount
-from ..services import reconcile
+from ..services import mapping_review, outward, reconcile
 from ..services import trial_balance as tb_service
 from ..services.statements import line_keys_for, load_templates
 
@@ -59,10 +59,52 @@ def index(fy_id):
                            sources=sources,
                            evidence=evidence,
                            checks=reconcile.check(financial_year),
+                           outward=outward.check(financial_year),
+                           mapping=mapping_review.review(financial_year),
                            line_options=_statement_line_options(),
                            # An empty Code column is noise; show it only when
                            # the client's chart of accounts actually uses one.
                            has_codes=any(a.account_code for a in accounts))
+
+
+@bp.route("/fy/<int:fy_id>/mapping")
+@login_required
+def mapping(fy_id):
+    """Every account against the statement line it maps to.
+
+    Separate from the trial balance grid because it is a different job. The
+    grid is about figures - do they balance. This is about meaning - what is
+    each account, and the answer has to hold for years rather than for this
+    engagement.
+    """
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+    return render_template("trial_balance/mapping.html",
+                           fy=financial_year,
+                           customer=financial_year.customer,
+                           review=mapping_review.review(financial_year),
+                           line_options=_statement_line_options())
+
+
+@bp.route("/fy/<int:fy_id>/mapping/apply", methods=["POST"])
+@login_required
+def apply_mapping_suggestions(fy_id):
+    """Accept every suggestion sitting against an unmapped account."""
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+
+    if financial_year.tb_is_approved:
+        flash("The trial balance is approved. Reopen it to change mappings.",
+              "error")
+        return redirect(url_for("trial_balance.mapping", fy_id=fy_id))
+
+    applied = mapping_review.apply_suggestions(financial_year,
+                                               user_id=current_user.id)
+    if applied:
+        flash(f"Mapped {applied} account(s) from the suggestions. Check them "
+              f"- a suggestion is a starting point, not a decision.", "success")
+    else:
+        flash("Nothing to apply: every unmapped account needs a person.",
+              "info")
+    return redirect(url_for("trial_balance.mapping", fy_id=fy_id))
 
 
 @bp.route("/fy/<int:fy_id>/build", methods=["POST"])

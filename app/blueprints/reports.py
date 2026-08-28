@@ -9,7 +9,7 @@ from flask_login import current_user, login_required
 from ..extensions import db
 from ..models import (AuditReport, AuditReportSection, FinancialYear,
                       ReportFigureOverride, StatementLine)
-from ..services import provenance as provenance_service
+from ..services import provenance as provenance_service, readiness
 from ..services import reports as report_service
 from ..services import statements as statement_service
 from ..services.audit import record
@@ -64,6 +64,7 @@ def builder(fy_id):
                            customer=financial_year.customer,
                            final_version=financial_year.final_version,
                            tb_approved_at=financial_year.tb_approved_at,
+                           readiness=readiness.check(financial_year),
                            pdf_available=report_service.weasyprint_available())
 
 
@@ -367,6 +368,55 @@ def preview(report_id):
                            customer=report.financial_year.customer,
                            payloads=_assemble(report),
                            for_pdf=False)
+
+
+@bp.route("/<int:report_id>/export/word")
+@login_required
+def export_word(report_id):
+    """The unaudited financial statements as an editable Word document.
+
+    This is the deliverable. The firm finishes it by hand - changing a
+    figure, rewriting a note, adding one that was never in the list - which
+    is exactly why it is a .docx and not a PDF.
+
+    It converts the same HTML the preview renders, so what is on screen and
+    what lands in Word cannot drift apart.
+    """
+    from ..services import docx_export
+
+    report = db.session.get(AuditReport, report_id) or abort(404)
+    financial_year = report.financial_year
+
+    html = render_template("reports/preview.html",
+                           report=report,
+                           fy=financial_year,
+                           customer=financial_year.customer,
+                           payloads=_assemble(report),
+                           for_pdf=True)
+
+    try:
+        data = docx_export.build(html)
+    except Exception as exc:                        # noqa: BLE001
+        flash(f"Word export failed: {exc}", "error")
+        return redirect(url_for("reports.preview", report_id=report.id))
+
+    report.status = "final"
+    report.generated_at = datetime.utcnow()
+    report.generated_by = current_user.id
+    if financial_year.status in ("in_progress", "statements_shared", "approved"):
+        financial_year.status = "report_generated"
+
+    record("audit_report", report.id, "export_word")
+    db.session.commit()
+
+    filename = (f"{financial_year.customer.name}_{financial_year.year_label}"
+                f"_Unaudited_Financial_Statements.docx").replace(" ", "_")
+
+    return send_file(
+        io.BytesIO(data),
+        mimetype=("application/vnd.openxmlformats-officedocument"
+                  ".wordprocessingml.document"),
+        as_attachment=True, download_name=filename)
 
 
 @bp.route("/<int:report_id>/export")

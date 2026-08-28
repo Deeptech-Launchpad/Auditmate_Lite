@@ -11,15 +11,19 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Audit Report Builder</h1>
+    <h1>Financial Statements</h1>
     <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
   </div>
   <div class="page-actions">
     <a href="{{ url_for('reports.preview', report_id=report.id) }}"
        class="btn" target="_blank">Preview full report</a>
+    {# Word first, and primary. It is the deliverable: the preparer finishes
+       it by hand, which a PDF cannot be. #}
+    <a href="{{ url_for('reports.export_word', report_id=report.id) }}"
+       class="btn btn-primary">⬇ Download Word</a>
     <a href="{{ url_for('reports.export', report_id=report.id) }}"
-       class="btn btn-primary">
-      {{ '⬇ Export PDF' if pdf_available else '⎙ Print / Save as PDF' }}
+       class="btn">
+      {{ '⬇ PDF' if pdf_available else '⎙ Print / Save as PDF' }}
     </a>
     {% if fy.is_closed %}
       <form method="post" style="display:inline"
@@ -92,6 +96,43 @@
     <p class="muted small">Reconciling the trial balance against the report&hellip;</p>
   </div>
 </div>
+
+{% if readiness and readiness.missing %}
+  <div class="card" style="margin-bottom:16px;border-left:3px solid #c47f0a">
+    <div class="card-head">
+      <h2>{{ readiness.missing|length }} thing(s) missing</h2>
+      <span class="hint">{{ readiness.have }} of {{ readiness.total }} in place</span>
+    </div>
+    <div class="card-body">
+      <p class="muted small" style="margin-top:0">
+        You can still generate. These are the parts that will come out blank,
+        and what would fill them.
+      </p>
+      <table class="table">
+        <thead>
+          <tr><th>Affects</th><th>Needs</th><th>How to get it</th></tr>
+        </thead>
+        <tbody>
+          {% for item in readiness.missing %}
+            <tr>
+              <td class="small"><span class="strong">{{ item.serves }}</span></td>
+              <td class="small">{{ item.needs }}</td>
+              <td class="small muted">
+                {{ item.get }}
+                <div class="muted small" style="margin-top:4px">{{ item.why }}</div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% elif readiness %}
+  <div class="alert alert-success">
+    Everything the statements need is in place — all
+    {{ readiness.total }} checks.
+  </div>
+{% endif %}
 
 <div class="report-layout">
 
