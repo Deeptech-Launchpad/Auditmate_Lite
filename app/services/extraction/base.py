@@ -34,6 +34,7 @@ class ExtractedRow:
     debit: Optional[Decimal] = None
     credit: Optional[Decimal] = None
     account_code: Optional[str] = None
+    account_type: Optional[str] = None
     period: str = "current"
     raw_label: str = ""
     raw_values: list = field(default_factory=list)

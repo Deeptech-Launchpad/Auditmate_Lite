@@ -37,7 +37,8 @@ def _identify_columns(header_cells):
     Falls back to positional guessing when headers are unhelpful.
     """
     mapping = {"label": None, "debit": None, "credit": None,
-               "amount": None, "code": None, "comparative": set()}
+               "amount": None, "code": None, "type": None,
+               "comparative": set()}
 
     for idx, cell in enumerate(header_cells):
         text = str(cell or "").strip().lower()
@@ -54,6 +55,12 @@ def _identify_columns(header_cells):
         elif mapping["code"] is None and any(
                 w in text for w in ("code", "a/c", "acct", "account no", "gl")):
             mapping["code"] = idx
+        # Tested before "label", because "account type" contains "account"
+        # and would otherwise be claimed as the name column.
+        elif mapping["type"] is None and text in (
+                "type", "account type", "acct type", "a/c type",
+                "class", "classification", "category"):
+            mapping["type"] = idx
         elif mapping["label"] is None and any(
                 w in text for w in ("particular", "description", "account",
                                     "name", "narration", "item")):
@@ -118,7 +125,8 @@ def _row_from_cells(cells, cols, source_ref):
         # An account code is not an amount either - "4230" is a numeric cell
         # and would be taken as $4,230 on any row with nothing else to find.
         skip = set(cols.get("comparative") or set())
-        skip.update(i for i in (cols.get("code"), cols.get("label"))
+        skip.update(i for i in (cols.get("code"), cols.get("label"),
+                                cols.get("type"))
                     if i is not None)
         for idx in range(len(cells) - 1, -1, -1):
             if idx in skip:
@@ -131,6 +139,10 @@ def _row_from_cells(cells, cols, source_ref):
     code = None
     if cols.get("code") is not None and cols["code"] < len(cells):
         code = str(cells[cols["code"]] or "").strip() or None
+
+    account_type = None
+    if cols.get("type") is not None and cols["type"] < len(cells):
+        account_type = str(cells[cols["type"]] or "").strip()[:60] or None
 
     # A row with no figure at all is a heading, a title-block line or a
     # spacer - not a line item. Emitting those was filling the review grid
@@ -147,6 +159,7 @@ def _row_from_cells(cells, cols, source_ref):
         debit=debit,
         credit=credit,
         account_code=code,
+        account_type=account_type,
         raw_values=[str(c) if c is not None else "" for c in cells],
         source_ref=source_ref,
     )

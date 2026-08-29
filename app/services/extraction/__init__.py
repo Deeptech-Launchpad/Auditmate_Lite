@@ -129,6 +129,7 @@ def extract_document(document_id: int) -> dict:
             raw_values=row.raw_values,
             label=row.label,
             account_code=row.account_code,
+            account_type=row.account_type,
             amount=row.amount,
             debit=row.debit,
             credit=row.credit,

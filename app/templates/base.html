@@ -91,40 +91,17 @@
 
       <div style="display:flex;align-items:center;gap:14px">
         {#
-          Type to filter, rather than a plain select. A firm with a hundred
-          engagements cannot scroll to the one it wants, and the customer's
-          name is the thing an auditor knows - so the list narrows as they
-          type it.
-        #}
-        {% if nav_engagements %}
-        <div class="engagement-picker" id="engagement-picker"
-             title="Switch engagement">
-          <span class="picker-label">Engagement</span>
-          <input type="text" id="engagement-search" autocomplete="off"
-                 role="combobox" aria-expanded="false"
-                 aria-controls="engagement-list"
-                 placeholder="{% if fy is defined and fy %}{{ fy.customer.name|truncate(26) }} · {{ fy.year_label }}{% else %}Type a customer or year…{% endif %}"
-                 value="">
-          <span class="picker-caret">&#9662;</span>
-          <ul class="engagement-list" id="engagement-list" role="listbox" hidden>
-            {% for engagement in nav_engagements %}
-              <li role="option"
-                  data-url="{{ url_for('customers.workspace',
-                                       customer_id=engagement.customer_id,
-                                       fy_id=engagement.id) }}"
-                  data-search="{{ (engagement.customer.name ~ ' ' ~ engagement.year_label)|lower }}"
-                  {% if fy is defined and fy and fy.id == engagement.id %}
-                    class="current" aria-selected="true"
-                  {% endif %}>
-                <span class="eng-name">{{ engagement.customer.name|truncate(30) }}</span>
-                <span class="eng-year">{{ engagement.year_label }}</span>
-              </li>
-            {% endfor %}
-            <li class="no-match" hidden>No engagement matches that.</li>
-          </ul>
-        </div>
-        {% endif %}
+          The Engagement picker stood here. The firm asked for it gone:
+          "It is not needed and it is confusing... The Customers screen
+          already does the job better - it lists every client with the name,
+          UEN, entity type, contact and number of financial years, with a
+          search box and an Open button on each row. You can see what is
+          there instead of guessing at it."
 
+          Choosing a client goes through Customers, and the year is picked
+          once inside the client. The sidebar still names the engagement you
+          are in, which is the part that was doing useful work.
+        #}
         {% if AI_ENABLED %}
           <span class="ai-badge">✦ AI on · {{ AI_PROVIDER_LABEL }}</span>
         {% else %}
@@ -157,7 +134,6 @@
 <script>
   window.CSRF_TOKEN = "{{ csrf_token() }}";
 </script>
-<script src="{{ url_for('static', filename='js/engagement-picker.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

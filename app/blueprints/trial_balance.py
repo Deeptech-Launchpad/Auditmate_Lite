@@ -63,6 +63,11 @@ def index(fy_id):
                            opening=prior_year.opening_check(financial_year),
                            mapping=mapping_review.review(financial_year),
                            line_options=_statement_line_options(),
+                           # Last year beside this year, in the grid itself.
+                           prior=outward.prior_by_account(financial_year),
+                           # The client's own account type, where the source
+                           # gave one. An empty column is noise.
+                           has_types=any(a.account_type for a in accounts),
                            # An empty Code column is noise; show it only when
                            # the client's chart of accounts actually uses one.
                            has_codes=any(a.account_code for a in accounts))

@@ -241,7 +241,8 @@ def fetch_trial_balance(connection: Connection, as_at) -> list:
     Returns rows shaped exactly like the document extractors produce, so the
     merge into the standard trial balance does not care where they came from:
 
-        {"account_code", "account_name", "debit", "credit", "external_id"}
+        {"account_code", "account_name", "account_type", "debit", "credit",
+         "external_id"}
     """
     if not connection.tenant_id:
         raise XeroError("No Xero organisation has been chosen for this "
@@ -346,6 +347,13 @@ def parse_trial_balance(payload: dict) -> list:
         if section.get("RowType") != "Section":
             continue
 
+        # Xero groups the trial balance under section headings - "Revenue",
+        # "Less Operating Expenses", "Assets" - and that heading is the
+        # client's own classification of every account beneath it. It is
+        # exactly the "type" column the firm asked for, and it was being
+        # thrown away with the rest of the section wrapper.
+        account_type = (section.get("Title") or "").strip()[:60] or None
+
         for row in (section.get("Rows") or []):
             cells = row.get("Cells") or []
             if (row.get("RowType") not in ("Row", "SummaryRow")
@@ -368,6 +376,7 @@ def parse_trial_balance(payload: dict) -> list:
                 "account_code": _attribute(cells[0], "accountCode")
                                 or _attribute(row, "accountCode"),
                 "account_name": name,
+                "account_type": account_type,
                 "debit": debit,
                 "credit": credit,
                 "external_id": _attribute(cells[0], "accountID")
@@ -679,6 +688,7 @@ def pull(financial_year, user_id=None, prior=False) -> dict:
             raw_label=row["account_name"],
             label=row["account_name"],
             account_code=row.get("account_code"),
+            account_type=row.get("account_type"),
             debit=row["debit"] or None,
             credit=row["credit"] or None,
             confidence=1.0,

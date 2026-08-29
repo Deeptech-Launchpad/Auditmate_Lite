@@ -159,9 +159,36 @@
             <button class="icon-btn edit-btn" data-section-id="{{ section.id }}"
                     title="Edit this section in the preview">✎</button>
           {% endif %}
+          {# Only a note added here can be deleted. A library section is
+             switched off instead - it is not this report's to remove. #}
+          {% if editable and section.section_key.startswith('custom_') %}
+            <button class="icon-btn no delete-section" data-section-id="{{ section.id }}"
+                    data-confirm="Delete the note &quot;{{ section.title }}&quot;? This cannot be undone."
+                    title="Delete this note">✕</button>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
+
+      {% if editable %}
+      {# The firm's point 6: a preparer must be able to add a note that is
+         not in the list. A subsequent event or a related party transaction
+         comes up on a real engagement more often than any template
+         anticipates, and without this it gets typed into the Word file
+         afterwards - so the app's copy and the delivered copy disagree from
+         that moment on. #}
+      <form id="add-section" class="add-section"
+            data-report-id="{{ report.id }}">
+        <input type="text" id="new-section-title" maxlength="255"
+               placeholder="Add a note that is not in the list…"
+               aria-label="Title of the new note">
+        <button type="submit" class="btn btn-sm">+ Add</button>
+      </form>
+      <p class="muted small" style="margin:8px 0 0">
+        It starts empty and switched on, at the end of the list. Drag it into
+        place, then click it in the preview to write it.
+      </p>
+      {% endif %}
     </div>
   </div>
 

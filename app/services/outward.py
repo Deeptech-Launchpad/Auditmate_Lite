@@ -303,3 +303,61 @@ def check(financial_year):
         "missing": sum(1 for f in evidence if f["status"] == "missing"),
         "agrees": sum(1 for f in evidence if f["status"] == "agrees"),
     }
+
+
+def prior_by_account(financial_year):
+    """Last year's balance for each of this year's accounts.
+
+    The firm's point 1: a trial balance exported from Xero or QuickBooks
+    already carries a prior year column, and rebuilding the accounts without
+    it throws away something the client has already paid for. The movement
+    panel compares statement LINES, which is a different question - a
+    preparer reading the grid wants the balance beside the account it belongs
+    to, not aggregated with everything else that maps to the same line.
+
+    Matched on (code, name) exactly as build() merges accounts, then on name
+    alone. Name alone is the useful fallback, because a client renumbering
+    their chart of accounts is common and renaming every account is not.
+    Returns {this year's account id: last year's net balance}.
+    """
+    previous = previous_year(financial_year)
+    if previous is None:
+        return None
+
+    last = (TrialBalanceAccount.query
+            .filter_by(financial_year_id=previous.id).all())
+    if not last:
+        return None
+
+    by_pair, by_name = {}, {}
+    for account in last:
+        code = (account.account_code or "").strip()
+        name = (account.account_name or "").strip().lower()
+        by_pair[(code, name)] = by_pair.get((code, name), ZERO) + _net(account)
+        # A name held by two different codes cannot be matched on name
+        # alone without guessing which one was meant, so it is withdrawn
+        # rather than resolved arbitrarily.
+        by_name[name] = (None if name in by_name and by_name[name] is None
+                         else (None if name in by_name
+                               else _net(account)))
+
+    balances = {}
+    for account in financial_year.tb_accounts:
+        code = (account.account_code or "").strip()
+        name = (account.account_name or "").strip().lower()
+        if (code, name) in by_pair:
+            balances[account.id] = by_pair[(code, name)]
+        elif by_name.get(name) is not None:
+            balances[account.id] = by_name[name]
+
+    return {
+        "year": previous,
+        "balances": balances,
+        # The net of what was matched. Nil means last year's accounts
+        # balanced AND every one of them found a counterpart this year; a
+        # figure means some of last year's accounts are not in this year's
+        # grid, which is worth seeing rather than hiding.
+        "total": sum(balances.values(), ZERO),
+        "matched": len(balances),
+        "of": len(last),
+    }

@@ -516,12 +516,22 @@
           <tr>
             {% if has_codes %}<th style="width:80px">Code</th>{% endif %}
             <th>Account</th>
+            {# The CLIENT's classification, not ours. Shown next to "Maps to"
+               so a preparer can see the two disagree - an account the books
+               call a liability sitting on an expense line is the kind of
+               thing point 1 of the firm's feedback is about. #}
+            {% if has_types %}<th style="width:150px">Type</th>{% endif %}
             <th style="width:170px">Category</th>
             <th style="width:110px">FS</th>
             <th style="width:230px">Maps to</th>
             <th style="width:115px" class="right">Dr.</th>
             <th style="width:115px" class="right">Cr.</th>
             <th style="width:120px" class="right">Total</th>
+            {# Last year, in the grid. Xero and QuickBooks both export this
+               column and the firm asked for it kept rather than discarded. #}
+            {% if prior %}
+              <th style="width:130px" class="right">{{ prior.year.year_label }}</th>
+            {% endif %}
             <th style="width:130px">Source</th>
             <th style="width:44px"></th>
           </tr>
@@ -539,6 +549,11 @@
               <input class="cell" data-field="account_name"
                      value="{{ account.account_name }}">
             </td>
+            {% if has_types %}
+            <td class="small muted" style="padding:8px 10px">
+              {{ account.account_type or '—' }}
+            </td>
+            {% endif %}
             {# Both derived from "Maps to" - never typed, and refreshed by
                the browser as soon as the mapping changes. #}
             <td class="small tb-category" style="padding:8px 10px">
@@ -580,6 +595,20 @@
             <td class="num right mono small tb-total" style="padding:8px 10px">
               {{ account.net|money }}
             </td>
+            {% if prior %}
+              {# Read only. This is what last year closed at; it is history,
+                 and editing it here would silently rewrite an engagement
+                 that has already been approved. #}
+              {% set was = prior.balances.get(account.id) %}
+              <td class="num right mono small tb-prior" style="padding:8px 10px"
+                  title="{% if was is none %}No matching account in {{ prior.year.year_label }}{% else %}{{ prior.year.year_label }} closing balance{% endif %}">
+                {% if was is none %}
+                  <span class="muted">new</span>
+                {% else %}
+                  {{ was|money }}
+                {% endif %}
+              </td>
+            {% endif %}
             <td style="padding:8px 6px">
               {# "Uploaded" plus the document's own category, so the auditor
                  knows which file to open to check the figure. #}
@@ -604,10 +633,20 @@
         </tbody>
         <tfoot>
           <tr class="grid-total">
-            <td colspan="{{ 5 if has_codes else 4 }}" class="right">Total</td>
+            {# Counted, not guessed: Account, Category, FS, Maps to, plus
+               Code and Type only when those columns are actually shown. A
+               hard-coded span put every total under the wrong heading the
+               moment a column was added. #}
+            {% set lead = 4 + (1 if has_codes else 0) + (1 if has_types else 0) %}
+            <td colspan="{{ lead }}" class="right">Total</td>
             <td class="num right mono" id="foot-debit">{{ totals.debit|money }}</td>
             <td class="num right mono" id="foot-credit">{{ totals.credit|money }}</td>
             <td class="num right mono" id="foot-total">{{ totals.difference|money(false) }}</td>
+            {% if prior %}
+            <td class="num right mono tb-prior"
+                title="Net of the {{ prior.matched }} of {{ prior.of }} accounts in {{ prior.year.year_label }} that match an account here. Nil means all of them do.">
+              {{ prior.total|money(false) }}</td>
+            {% endif %}
             <td colspan="2"></td>
           </tr>
         </tfoot>

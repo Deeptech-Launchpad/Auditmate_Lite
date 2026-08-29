@@ -500,6 +500,7 @@ class ExtractedLineItem(db.Model):
 
     label = db.Column(db.Text)
     account_code = db.Column(db.String(50))
+    account_type = db.Column(db.String(60))
     amount = db.Column(Numeric(18, 2))
     debit = db.Column(Numeric(18, 2))
     credit = db.Column(Numeric(18, 2))
@@ -791,6 +792,14 @@ class TrialBalanceAccount(db.Model):
 
     account_code = db.Column(db.String(50))
     account_name = db.Column(db.String(255), nullable=False)
+
+    # The CLIENT's own classification of the account - Xero's "Revenue",
+    # "Less Operating Expenses", or whatever a workbook's Type column says.
+    # Deliberately not ours: standard_key is Auditmate's answer to where the
+    # account belongs, and this is the client's. Seeing the two side by side
+    # is how a preparer notices that what the books call a liability has been
+    # mapped to an expense.
+    account_type = db.Column(db.String(60))
 
     # Auditmate's canonical account identifier. This is the statement line the
     # account rolls up to. Mapping happens HERE, once, rather than separately

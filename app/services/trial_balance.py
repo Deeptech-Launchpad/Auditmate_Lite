@@ -229,6 +229,7 @@ def build(financial_year_id: int, user_id=None) -> dict:
             financial_year_id=financial_year_id,
             account_code=code or None,
             account_name=name,
+            account_type=(item.account_type or None),
             standard_key=standard_key,
             statement_type=statement_type,
             debit=debit,

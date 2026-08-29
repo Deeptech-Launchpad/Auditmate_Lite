@@ -104,35 +104,10 @@ def create_app(config_object=Config):
             "now": datetime.utcnow(),
         }
 
-    @app.context_processor
-    def inject_nav_engagements():
-        """Open engagements for the sidebar.
-
-        Documents/Statements/Report are scoped to one customer + financial
-        year, so without this the workflow is only reachable by drilling
-        through Customers. This puts every open engagement one click away
-        from any page.
-        """
-        from flask_login import current_user
-        from .models import Customer, FinancialYear
-
-        engagements = []
-        try:
-            if current_user.is_authenticated:
-                # The picker filters as you type, so it needs the whole
-                # list rather than the six most recent. Capped so a firm
-                # with thousands of archived years cannot make every page
-                # slow; beyond the cap, Customers is the way in.
-                engagements = (FinancialYear.query
-                               .join(Customer)
-                               .filter(FinancialYear.status != "closed")
-                               .order_by(Customer.name.asc(),
-                                         FinancialYear.year_label.desc())
-                               .limit(300).all())
-        except Exception:            # no DB yet, or outside a request
-            pass
-
-        return {"nav_engagements": engagements}
+    # inject_nav_engagements stood here, feeding the Engagement picker in
+    # the top bar. The picker is gone at the firm's request - Customers is
+    # the way in - and a context processor that queries every open
+    # engagement on every page render is not worth keeping for nobody.
 
     @app.template_filter("money")
     def money(value, dash_on_zero=True):

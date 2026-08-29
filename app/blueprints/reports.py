@@ -265,6 +265,105 @@ def suggest(fy_id):
     return jsonify(provenance_service.suggest(fy_id, use_ai=use_ai))
 
 
+# Sections created here rather than from the section library. The key is
+# prefixed so a custom note can always be told apart from a template one -
+# it has no spec, so it must never be looked up in the library, and it is
+# the only kind of section that may be deleted.
+CUSTOM_PREFIX = "custom_"
+
+
+@bp.route("/api/report/<int:report_id>/section", methods=["POST"])
+@login_required
+def add_section(report_id):
+    """Add a note that is not in the library.
+
+    The firm's point 6: *"Inside the report the preparer can edit any note,
+    change any figure, or add a new note that is not in the list."* The first
+    two were built; this is the third.
+
+    A statutory set of accounts regularly needs a note no template
+    anticipated - a subsequent event, a related party transaction, a
+    contingent liability. Without this the preparer generates the Word file
+    and types the note into it by hand, which means the app's copy and the
+    delivered copy have said different things ever since.
+    """
+    report = db.session.get(AuditReport, report_id) or abort(404)
+    # The engagement, not report.status. Exporting the Word file sets the
+    # report final as a side effect, while the builder keeps offering its
+    # editing controls because its own gate is whether the engagement is
+    # closed. Gating on report.status here meant the buttons were on screen
+    # and the endpoint behind them said no.
+    if report.financial_year.is_closed:
+        return jsonify({"ok": False,
+                        "error": "This engagement is closed. Reopen it to "
+                                 "add a note."}), 400
+
+    payload = request.get_json(silent=True) or {}
+    title = (payload.get("title") or "").strip()
+    if not title:
+        return jsonify({"ok": False, "error": "Give the note a title."}), 400
+    title = title[:255]
+
+    # Placed last by default, which for a set of accounts means after the
+    # existing notes and before nothing - the preparer drags it where it
+    # belongs, the same as every other section.
+    last = max((s.sort_order or 0) for s in report.sections) if report.sections else 0
+
+    existing = {s.section_key for s in report.sections}
+    index = 1
+    while f"{CUSTOM_PREFIX}{index}" in existing:
+        index += 1
+
+    section = AuditReportSection(
+        report_id=report.id,
+        section_key=f"{CUSTOM_PREFIX}{index}",
+        title=title,
+        section_type="free_text",
+        sort_order=last + 1,
+        is_enabled=True,
+        # Deliberately not empty. An empty note renders as a heading with
+        # nothing under it and looks like a fault; a visible prompt says the
+        # note is waiting to be written.
+        content_html="<p>Write this note here.</p>",
+    )
+    db.session.add(section)
+    record("report_section", None, "add",
+           after={"report": report.id, "title": title})
+    db.session.commit()
+
+    return jsonify({"ok": True, "section_id": section.id})
+
+
+@bp.route("/api/section/<int:section_id>", methods=["DELETE"])
+@login_required
+def delete_section(section_id):
+    """Remove a note that was added here.
+
+    Only a custom one. A template section is switched off rather than
+    deleted - it belongs to the library, and deleting it would leave the
+    report unable to say what it is missing.
+    """
+    section = db.session.get(AuditReportSection, section_id) or abort(404)
+    if not (section.section_key or "").startswith(CUSTOM_PREFIX):
+        return jsonify({"ok": False,
+                        "error": "That is a library section. Switch it off "
+                                 "instead of deleting it."}), 400
+    if section.report.financial_year.is_closed:
+        return jsonify({"ok": False,
+                        "error": "This engagement is closed. Reopen it "
+                                 "first."}), 400
+
+    ReportFigureOverride.query.filter_by(
+        report_id=section.report_id,
+        section_key=section.section_key).delete(synchronize_session=False)
+
+    record("report_section", section.id, "delete",
+           before={"title": section.title})
+    db.session.delete(section)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 @bp.route("/api/report/<int:report_id>/reorder", methods=["POST"])
 @login_required
 def reorder(report_id):

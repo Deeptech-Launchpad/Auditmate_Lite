@@ -1081,3 +1081,14 @@ tr.row-doc-total input.cell { font-weight: 600; }
 /* Counts across the top of the mapping screen. They sat on a class that was
    never defined, so four separate facts rendered as one run-on sentence. */
 .count-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* Adding a note that the library does not have. */
+.add-section { display: flex; gap: 8px; margin-top: 12px; }
+.add-section input {
+  flex: 1 1 auto; min-width: 0; padding: 7px 10px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.add-section input:focus {
+  outline: none; border-color: var(--brand);
+}
+.section-item .delete-section { margin-left: 2px; }

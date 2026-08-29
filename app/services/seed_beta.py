@@ -91,6 +91,27 @@ CURRENT_TB = [
     ("4010", "Sales",               "revenue",            None, "620000.00"),
 ]
 
+# The client's OWN classification of each account, which is what a Xero
+# trial balance carries in its type column - Xero groups the report under
+# these headings and every account beneath one belongs to it.
+#
+# Worth having for Exp-7 in particular. The name says nothing and no rule
+# will ever place it, but the books call it an operating expense, and that
+# is a real hint for whoever has to map it.
+ACCOUNT_TYPES = {
+    "1": "Assets",
+    "2": "Liabilities",
+    "3": "Equity",
+    "4": "Revenue",
+    "5": "Less Cost of Sales",
+    "6": "Less Operating Expenses",
+}
+
+
+def _account_type(code):
+    return ACCOUNT_TYPES.get((code or "")[:1], "Less Operating Expenses")
+
+
 # Evidence. The bank and the payables listing agree; the receivables listing
 # does not, by 9,000 - which is the kind of difference an auditor is meant to
 # go and ask about.
@@ -183,7 +204,8 @@ def _tb_document(financial_year, filename, user_id, accounts):
     for index, (code, name, _key, debit, credit) in enumerate(accounts):
         db.session.add(ExtractedLineItem(
             document_id=document.id, row_index=index,
-            account_code=code, raw_label=name, label=name,
+            account_code=code, account_type=_account_type(code),
+            raw_label=name, label=name,
             debit=Decimal(debit) if debit else None,
             credit=Decimal(credit) if credit else None,
             confidence=1.0, needs_review=False, status="auto"))
@@ -258,6 +280,7 @@ def seed(user_id=None):
             db.session.add(TrialBalanceAccount(
                 financial_year_id=financial_year.id,
                 account_code=code, account_name=name,
+                account_type=_account_type(code),
                 standard_key=key,
                 statement_type=None,
                 debit=Decimal(debit) if debit else Decimal("0.00"),

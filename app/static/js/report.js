@@ -86,6 +86,64 @@
     }
   }
 
+  /* ------------------------------------------ add and delete a note ---- */
+  /*
+   * A note the library never anticipated - a subsequent event, a related
+   * party transaction, a contingent liability. The page reloads afterwards
+   * rather than building the row in JavaScript: the new section has to
+   * appear in the preview as well as the list, and one rendering path that
+   * is certainly right beats two that agree most of the time.
+   */
+
+  const addForm = document.getElementById('add-section');
+  if (addForm) {
+    addForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const field = document.getElementById('new-section-title');
+      const title = (field.value || '').trim();
+      if (!title) { field.focus(); return; }
+
+      const button = addForm.querySelector('button');
+      button.disabled = true;
+      try {
+        const response = await fetch(
+          `/reports/api/report/${addForm.dataset.reportId}/section`,
+          { method: 'POST', headers: csrfHeaders(),
+            body: JSON.stringify({ title }) });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+          window.alert(data.error || 'Could not add the note.');
+          button.disabled = false;
+          return;
+        }
+        window.location.reload();
+      } catch (err) {
+        window.alert('Could not add the note.');
+        button.disabled = false;
+      }
+    });
+  }
+
+  list.addEventListener('click', async event => {
+    const button = event.target.closest('.delete-section');
+    if (!button) return;
+    /* Read from a data attribute, never interpolated into the markup.
+       Autoescaping turns an apostrophe in a title into &#39;, which the HTML
+       parser decodes before the JavaScript is compiled - so a note called
+       "Director's loan" would have broken the script, or worse. */
+    if (!window.confirm(button.dataset.confirm || 'Delete this note?')) return;
+
+    const response = await fetch(
+      `/reports/api/section/${button.dataset.sectionId}`,
+      { method: 'DELETE', headers: csrfHeaders() });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      window.alert(data.error || 'Could not delete the note.');
+      return;
+    }
+    window.location.reload();
+  });
+
   /* ------------------------------------------------- in-place editing ---- */
   /*
    * The report itself is the editor. Narrative sections are contenteditable
