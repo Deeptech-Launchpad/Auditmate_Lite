@@ -130,10 +130,16 @@
     <div class="notice warn">
       <span>⚠</span>
       <div>
-        <strong>{{ totals.unmapped }} account(s) are not mapped to a statement line.</strong>
-        They balance, but they would contribute to no financial statement.
-        Set a line for each amber row below — your choice is remembered for
+        <strong>{{ totals.unmapped }} account{{ '' if totals.unmapped == 1 else 's' }}
+        not mapped to a statement line.</strong>
+        They balance, but they appear in no financial statement until they are
+        mapped. Set a line on each amber row below, or do them all together on
+        the Mapping screen — either way the choice is remembered for
         {{ customer.name }} next year.
+        <div style="margin-top:8px">
+          <a class="btn btn-sm" href="{{ url_for('trial_balance.mapping', fy_id=fy.id) }}">
+            Go to Mapping &rarr;</a>
+        </div>
       </div>
     </div>
     {% else %}
@@ -149,17 +155,10 @@
   {% endif %}
 {% endif %}
 
-{# Mapping, summarised. The screen itself is step 3; this is here because
-   an unmapped account reaches no statement at all, and the auditor should
-   not have to go looking to find that out. #}
-{% if mapping and mapping.unmapped %}
-<div class="alert alert-error">
-  <strong>{{ mapping.unmapped }} account{{ '' if mapping.unmapped == 1 else 's' }}
-  not mapped to a statement line.</strong>
-  They appear in no financial statement until they are.
-  <a href="{{ url_for('trial_balance.mapping', fy_id=fy.id) }}">Map them &rarr;</a>
-</div>
-{% endif %}
+{# The unmapped count used to be said twice - once in the notice above and
+   again here, in different words, one under the other. Two warnings about
+   one fact reads as two problems. The notice above carries it, and links
+   here. #}
 
 {# Does what the books hold still agree with what was signed?
    The strongest check there is, and invisible from inside this year: a tax
@@ -209,29 +208,42 @@
       <p class="muted small" style="margin-top:0">
         {{ opening.reference|capitalize }} against {{ opening.compared|join(', ') }}.
       </p>
-      <table class="table">
-        <thead>
-          <tr><th>Account</th><th class="num">Signed</th>
-              <th class="num">The books now</th><th class="num">Difference</th></tr>
-        </thead>
-        <tbody>
-          {% for r in opening.rows %}
-          <tr class="row-warn">
-            <td class="small">{{ r.label }}</td>
-            <td class="num mono">{% if r.reference is none %}—{% else %}{{ '{:,.2f}'.format(r.reference) }}{% endif %}</td>
-            <td class="num mono">{% if r.other is none %}—{% else %}{{ '{:,.2f}'.format(r.other) }}{% endif %}</td>
-            <td class="num mono">
-              {{ '{:,.2f}'.format(r.difference) }}
-              {% if r.status == 'missing' %}
-                <div class="muted small">In one source only.</div>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
     {% endif %}
   </div>
+
+  {% if opening.comparable and opening.rows %}
+  <div class="table-wrap">
+    <table class="data check-table">
+      <thead>
+        <tr><th>Account</th>
+            <th class="num">As signed</th>
+            <th class="num">The books now</th>
+            <th class="num">Out by</th>
+            <th>What it means</th></tr>
+      </thead>
+      <tbody>
+        {% for r in opening.rows %}
+        <tr class="row-warn">
+          <td class="strong">{{ r.label }}</td>
+          <td class="num">{{ r.reference|drcr }}</td>
+          <td class="num">{{ r.other|drcr }}</td>
+          {# A magnitude, with no side. The difference is a gap between two
+             figures, not a balance, so calling it a debit would be wrong. #}
+          <td class="num strong">{{ '{:,.2f}'.format(r.difference|abs) }}</td>
+          <td class="muted small">
+            {% if r.status == 'missing' %}
+              In one source only, not the other.
+            {% else %}
+              Last year was signed off at one figure and the books now hold
+              another. Somebody posted into a closed year.
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -255,31 +267,39 @@
   </div>
 
   {% if outward.evidence %}
-  <div class="table-wrap" style="overflow-x:auto">
-    <table class="table">
+  <div class="table-wrap">
+    <table class="data check-table">
       <thead>
         <tr>
           <th>Evidence</th><th>Statement line</th>
           <th class="num">Document says</th><th class="num">Trial balance</th>
-          <th class="num">Difference</th>
+          <th class="num">Out by</th>
         </tr>
       </thead>
       <tbody>
         {% for f in outward.evidence %}
         <tr class="{{ 'row-warn' if f.status != 'agrees' }}">
-          <td class="small">
+          <td>
             <span class="strong">{{ f.kind }}</span>
             <div class="muted small">{{ f.document.original_filename }}</div>
           </td>
-          <td class="small">{{ f.line }}</td>
-          <td class="num mono">{{ '{:,.2f}'.format(f.theirs) }}</td>
-          <td class="num mono">{% if f.ours is none %}—{% else %}{{ '{:,.2f}'.format(f.ours) }}{% endif %}</td>
-          <td class="num mono">
+          <td>{{ f.line }}</td>
+          {# The listing prints a plain positive figure; the trial balance
+             holds a payable as a credit. Shown as 89,220.00 against
+             89,220.00 Cr, the agreement is obvious. Shown as 89,220.00
+             against -89,220.00, it looked like a fault. #}
+          <td class="num">{{ '{:,.2f}'.format(f.theirs|abs) }}</td>
+          <td class="num">{{ f.ours|drcr }}</td>
+          <td class="num">
             {% if f.status == 'agrees' %}
               <span class="pill pill-green">agrees</span>
             {% else %}
-              {{ '{:,.2f}'.format(f.difference) }}
-              {% if f.note %}<div class="muted small">{{ f.note }}</div>{% endif %}
+              <span class="strong">{{ '{:,.2f}'.format(f.difference|abs) }}</span>
+              <div class="muted small">
+                {% if f.note %}{{ f.note }}
+                {% elif f.difference < 0 %}The listing is higher than the books.
+                {% else %}The books are higher than the listing.{% endif %}
+              </div>
             {% endif %}
           </td>
         </tr>
@@ -288,38 +308,58 @@
     </table>
   </div>
   {% endif %}
+</div>
+{% endif %}
 
-  {% if outward.movement %}
-  <div class="card-body">
-    <h3 style="margin-top:0">Against {{ outward.movement.previous.year_label }}</h3>
-    {% if outward.movement.flagged %}
-      <p class="muted small">
-        {{ outward.movement.unchanged }} unchanged ·
-        {{ outward.movement.moved }} moved sharply ·
-        {{ outward.movement.new }} new ·
-        {{ outward.movement.gone }} gone.
-        None of these is necessarily wrong. All are worth asking about.
+{# Last year against this year. Its own card: it answers a different
+   question from the evidence checks, and sharing one card with them ran two
+   tables together under a single heading with no boundary between them. #}
+{% if outward and outward.movement %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>Against {{ outward.movement.previous.year_label }}</h2>
+      <p class="muted small" style="margin:2px 0 0">
+        Every balance beside what it was a year ago. None of this is
+        necessarily wrong &mdash; all of it is worth asking about.
       </p>
-      <table class="table">
-        <thead>
-          <tr><th>Line</th><th class="num">{{ fy.year_label }}</th>
-              <th class="num">{{ outward.movement.previous.year_label }}</th>
-              <th>What stands out</th></tr>
-        </thead>
-        <tbody>
-          {% for r in outward.movement.flagged %}
-          <tr>
-            <td class="small">{{ r.label }}</td>
-            <td class="num mono">{% if r.this_year is none %}—{% else %}{{ '{:,.2f}'.format(r.this_year) }}{% endif %}</td>
-            <td class="num mono">{% if r.last_year is none %}—{% else %}{{ '{:,.2f}'.format(r.last_year) }}{% endif %}</td>
-            <td class="small muted">{{ r.note }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p class="muted small">Nothing stands out against last year.</p>
-    {% endif %}
+    </div>
+    <div>
+      {% if outward.movement.unchanged %}<span class="pill pill-amber">{{ outward.movement.unchanged }} unchanged</span>{% endif %}
+      {% if outward.movement.moved %}<span class="pill pill-amber">{{ outward.movement.moved }} moved sharply</span>{% endif %}
+      {% if outward.movement.new %}<span class="pill pill-blue">{{ outward.movement.new }} new</span>{% endif %}
+      {% if outward.movement.gone %}<span class="pill pill-blue">{{ outward.movement.gone }} gone</span>{% endif %}
+      {% if not outward.movement.flagged %}<span class="pill pill-green">Nothing stands out</span>{% endif %}
+    </div>
+  </div>
+
+  {% if outward.movement.flagged %}
+  <div class="table-wrap">
+    <table class="data check-table">
+      <thead>
+        <tr><th>Line</th>
+            <th class="num">{{ fy.year_label }}</th>
+            <th class="num">{{ outward.movement.previous.year_label }}</th>
+            <th>What stands out</th></tr>
+      </thead>
+      <tbody>
+        {% for r in outward.movement.flagged %}
+        <tr class="{{ 'row-warn' if r.status in ('unchanged', 'moved') }}">
+          <td class="strong">{{ r.label }}</td>
+          <td class="num">{{ r.this_year|drcr }}</td>
+          <td class="num">{{ r.last_year|drcr }}</td>
+          <td class="muted small">{{ r.note }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body">
+    <p class="muted small" style="margin:0">
+      Every balance moved about as much as a year of trading would explain,
+      and nothing appeared or vanished.
+    </p>
   </div>
   {% endif %}
 </div>
@@ -338,15 +378,22 @@
         the same year, so adding them would count it twice. Their figures are
         compared with ours instead.
       </p>
-      <p class="muted small">
-        <strong>Client's figure</strong> is what the client printed.
-        <strong>Our trial balance</strong> is what Auditmate computed.
-        <strong>Missing from ours</strong> means the client shows that line
-        and our trial balance has no account for it at all — either the source
-        document never had it, or it was not read. <strong>We have it, not
-        mapped</strong> means the account is in our trial balance but has no
-        statement line yet, so map it below.
-      </p>
+      {# Five lines of definitions sat here, above every engagement, read
+         once and then in the way forever. Folded away: still one click
+         from the person who needs it, invisible to the person who does
+         not. #}
+      <details class="legend">
+        <summary class="muted small">What the columns mean</summary>
+        <p class="muted small">
+          <strong>Client's figure</strong> is what the client printed.
+          <strong>Our trial balance</strong> is what Auditmate computed.
+          <strong>Missing from ours</strong> means the client shows that line
+          and our trial balance has no account for it at all — either the
+          source document never had it, or it was not read.
+          <strong>We have it, not mapped</strong> means the account is in our
+          trial balance but has no statement line yet, so map it below.
+        </p>
+      </details>
     </div>
     <div class="nowrap">
       <span class="pill pill-green">{{ checks.agrees }} agree</span>
@@ -379,14 +426,14 @@
         · {{ entry.unmatched }} line(s) matched no statement line
       {% endif %}
     </div>
-    <div style="overflow-x:auto">
-      <table>
+    <div class="table-wrap">
+      <table class="data check-table">
         <thead>
           <tr>
             <th>Line on the client's document</th>
-            <th class="right">Client's figure</th>
-            <th class="right">Our trial balance</th>
-            <th class="right">Difference</th>
+            <th class="num">Client's figure</th>
+            <th class="num">Our trial balance</th>
+            <th class="num">Difference</th>
             <th></th>
           </tr>
         </thead>

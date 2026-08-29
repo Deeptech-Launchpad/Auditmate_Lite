@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 
 from flask import Flask, render_template
+from markupsafe import Markup
 
 from .config import Config
 from .extensions import csrf, db, login_manager, migrate
@@ -147,6 +148,32 @@ def create_app(config_object=Config):
         if amount < 0:
             return f"({abs(amount):,.2f})"
         return f"{amount:,.2f}"
+
+    @app.template_filter("drcr")
+    def drcr(value, dash_on_zero=True):
+        """Format the way a trial balance is read: a magnitude and a side.
+
+        Internally every balance is held debit-positive, so a payable is a
+        negative number. Printing that raw put "89,220.00" from a supplier
+        listing beside "-89,220.00" from the trial balance and labelled the
+        pair "agrees", which reads as a contradiction and made a correct
+        check look broken.
+
+        An auditor does not read balances as signed numbers. They read them
+        as debits and credits, and 89,220.00 Cr against a creditors listing
+        of 89,220.00 needs no explaining.
+        """
+        if value is None:
+            return "—"
+        try:
+            amount = float(value)
+        except (TypeError, ValueError):
+            return "—"
+        if amount == 0:
+            return "—" if dash_on_zero else "0.00"
+        side = "Cr" if amount < 0 else "Dr"
+        return Markup('{:,.2f}<span class="side">{}</span>'.format(
+            abs(amount), side))
 
     @app.template_filter("stmt")
     def stmt(value, blank=""):

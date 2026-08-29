@@ -1038,3 +1038,42 @@ tr.row-doc-total input.cell { font-weight: 600; }
 .pw-toggle .slash { opacity: 0; transition: opacity .12s; }
 .pw-toggle.shown { color: var(--brand, #1e4d8c); }
 .pw-toggle.shown .slash { opacity: 1; }
+
+/* ------------------------------------------------- the checking panels */
+
+/* These tables sit inside a card and run its full width, so they carry no
+   border of their own - the card is the border. The first and last cells
+   line up with the card's heading above them; without this the columns
+   started 18px in from everything else on the page. */
+.check-table { width: 100%; }
+.check-table th:first-child,
+.check-table td:first-child { padding-left: 18px; }
+.check-table th:last-child,
+.check-table td:last-child  { padding-right: 18px; }
+
+/* The "what it means" column carries a sentence, not a figure. Left to
+   itself it takes whatever width is spare and the numbers bunch up on the
+   left of the table, which is what made these panels look unfinished. */
+.check-table td.muted.small,
+.check-table th:last-child { line-height: 1.45; }
+.check-table th.num, .check-table td.num { white-space: nowrap; }
+.check-table td.num { font-variant-numeric: tabular-nums; }
+
+/* Dr / Cr, set quietly after the figure. It is what tells the reader that
+   89,220.00 against a supplier listing of 89,220.00 agrees. */
+.side {
+  margin-left: 5px; font-size: 10.5px; font-weight: 600;
+  color: var(--text-faint); letter-spacing: .3px;
+}
+.check-table tr.row-warn td { background: var(--amber-light); }
+.check-table tr.row-warn td.num.strong { color: var(--amber); font-weight: 650; }
+
+/* A definition list that a reader needs once and then never again. Open to
+   whoever wants it, out of the way of everybody else. */
+.legend { margin-top: 6px; }
+.legend > summary {
+  cursor: pointer; display: inline-block; padding: 2px 0;
+  color: var(--brand); font-weight: 600;
+}
+.legend > summary::marker { color: var(--text-faint); }
+.legend p { margin: 6px 0 0; max-width: 70ch; }
