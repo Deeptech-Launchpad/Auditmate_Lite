@@ -552,7 +552,7 @@ def disconnect(connection: Connection) -> None:
 # Pulling into the engagement
 # --------------------------------------------------------------------------
 
-def pull(financial_year, user_id=None) -> dict:
+def pull(financial_year, user_id=None, prior=False) -> dict:
     """Fetch the trial balance and land it in the engagement.
 
     A pull becomes a Document, exactly as an upload does. That is deliberate:
@@ -573,7 +573,7 @@ def pull(financial_year, user_id=None) -> dict:
     if connection is None:
         return {"ok": False, "error": "This customer is not connected to Xero."}
 
-    if financial_year.tb_is_approved:
+    if financial_year.tb_is_approved and not prior:
         return {"ok": False,
                 "error": "The trial balance is approved and locked. Reopen it "
                          "before pulling new figures."}
@@ -583,6 +583,22 @@ def pull(financial_year, user_id=None) -> dict:
         return {"ok": False,
                 "error": "This financial year has no end date, so there is no "
                          "date to pull the trial balance as at."}
+
+    if prior:
+        # A year earlier, to the day. Xero holds the whole history, so last
+        # year's closing position costs one more request and no reading at
+        # all - which is worth far more than parsing it out of a PDF.
+        #
+        # Held apart from this year's pull in every way that matters: its own
+        # file_type, a category outside TB_SOURCE_PRECEDENCE so it can never
+        # build these accounts, and outside COMPARABLE_CATEGORIES so it is
+        # never held line by line against them. It describes a different year.
+        try:
+            as_at = as_at.replace(year=as_at.year - 1)
+        except ValueError:
+            # 29 February. The prior year has no such day; the day before is
+            # the year end that was actually reported.
+            as_at = as_at.replace(year=as_at.year - 1, day=28)
 
     try:
         rows = fetch_trial_balance(connection, as_at)
@@ -603,9 +619,10 @@ def pull(financial_year, user_id=None) -> dict:
 
     # A re-pull replaces the previous pull rather than adding a second copy.
     # Uploaded documents are untouched.
+    kind = "xero_prior" if prior else "xero"
     previous = (Document.query
                 .filter_by(financial_year_id=financial_year.id,
-                           file_type="xero")
+                           file_type=kind)
                 .all())
     replaced = len(previous)
 
@@ -629,15 +646,16 @@ def pull(financial_year, user_id=None) -> dict:
         db.session.flush()
 
     label = connection.tenant_name or "Xero"
+    prefix = "Prior year trial balance" if prior else "Trial Balance"
     document = Document(
         financial_year_id=financial_year.id,
-        original_filename=f"{label} - Trial Balance {as_at:%d %b %Y}",
-        stored_filename=f"xero__{connection.tenant_id}__{as_at:%Y%m%d}",
+        original_filename=f"{label} - {prefix} {as_at:%d %b %Y}",
+        stored_filename=f"{kind}__{connection.tenant_id}__{as_at:%Y%m%d}",
         storage_path="(pulled from Xero - no file on disk)",
-        file_type="xero",
+        file_type=kind,
         mime_type="application/json",
         size_bytes=0,
-        category="trial_balance",
+        category="prior_trial_balance" if prior else "trial_balance",
         extraction_status="extracted",
         extraction_engine="xero-api",
         extraction_confidence=1.0,
@@ -678,7 +696,11 @@ def pull(financial_year, user_id=None) -> dict:
     db.session.commit()
 
     # Fold the pull into the standard trial balance alongside any uploads.
-    build = tb_service.build(financial_year.id, user_id=user_id)
+    # A prior-year pull is not part of this year's accounts and must not
+    # touch them - it exists for the comparative column and the check against
+    # what was signed.
+    build = (None if prior
+             else tb_service.build(financial_year.id, user_id=user_id))
 
     log.info("Xero pull for FY %s: %s accounts as at %s",
              financial_year.id, len(rows), as_at)

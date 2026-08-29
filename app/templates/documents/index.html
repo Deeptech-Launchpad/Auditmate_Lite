@@ -145,6 +145,16 @@
               </button>
             </form>
           {% endif %}
+          {# Last year, from the same connection. Needed for the comparative
+             column and for checking that the books still agree with what was
+             signed - it never touches this year's figures. #}
+          <form method="post"
+                action="{{ url_for('integrations.pull_prior', fy_id=fy.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn">
+              &#11015; Also pull last year
+            </button>
+          </form>
           <form method="post"
                 action="{{ url_for('integrations.disconnect', customer_id=customer.id) }}"
                 data-confirm="Disconnect {{ customer.name }} from Xero?"

@@ -46,6 +46,12 @@ DOCUMENT_CATEGORIES = [
     # also required DATA: the prior-year column of every statement comes
     # from it, and so does last year's mapping.
     ("signed_accounts", "Signed Accounts (prior year)"),
+    # Xero's trial balance at LAST year's year end. Never builds this year's
+    # accounts - it is not in TB_SOURCE_PRECEDENCE - and is never compared
+    # line by line against them either, because it describes a different
+    # year. It exists for the comparative column and for the opening-balance
+    # check against what was signed.
+    ("prior_trial_balance", "Trial Balance (prior year)"),
     ("bank_statement", "Bank Statement"),
     ("vendor_invoice", "Vendor Invoice"),
     ("customer_invoice", "Customer Invoice"),

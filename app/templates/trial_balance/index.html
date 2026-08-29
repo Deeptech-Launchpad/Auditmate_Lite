@@ -161,6 +161,80 @@
 </div>
 {% endif %}
 
+{# Does what the books hold still agree with what was signed?
+   The strongest check there is, and invisible from inside this year: a tax
+   payable balance that had not moved in twelve months sat in accounts that
+   balanced perfectly. It needs two independent statements of last year's
+   close - Xero's history, and the signed accounts. #}
+{% if opening %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>Last year, checked against what was signed</h2>
+      <p class="muted small" style="margin:2px 0 0">
+        This year opens where last year closed. A difference means someone
+        posted into a year that was already signed off.
+      </p>
+    </div>
+    <div>
+      {% if not opening.comparable %}
+        <span class="pill pill-amber">Cannot check yet</span>
+      {% elif opening.rows %}
+        {% if opening.differs %}<span class="pill pill-red">{{ opening.differs }} differ</span>{% endif %}
+        {% if opening.missing %}<span class="pill pill-amber">{{ opening.missing }} missing</span>{% endif %}
+      {% else %}
+        <span class="pill pill-green">Agrees</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    {% if not opening.comparable %}
+      <p class="muted small" style="margin-top:0">
+        {% if opening.have %}
+          Only one source for last year:
+          {{ opening.have|join(', ') }}. Two are needed to compare &mdash; add
+          last year's signed accounts, or use <strong>Also pull last year</strong>
+          on the Documents page.
+        {% else %}
+          Nothing for last year yet. Upload last year's signed accounts, or use
+          <strong>Also pull last year</strong> on the Documents page.
+        {% endif %}
+      </p>
+    {% elif not opening.rows %}
+      <p class="muted small" style="margin-top:0">
+        Every balance sheet account agrees between
+        {{ opening.reference }} and {{ opening.compared|join(', ') }}.
+      </p>
+    {% else %}
+      <p class="muted small" style="margin-top:0">
+        {{ opening.reference|capitalize }} against {{ opening.compared|join(', ') }}.
+      </p>
+      <table class="table">
+        <thead>
+          <tr><th>Account</th><th class="num">Signed</th>
+              <th class="num">The books now</th><th class="num">Difference</th></tr>
+        </thead>
+        <tbody>
+          {% for r in opening.rows %}
+          <tr class="row-warn">
+            <td class="small">{{ r.label }}</td>
+            <td class="num mono">{% if r.reference is none %}—{% else %}{{ '{:,.2f}'.format(r.reference) }}{% endif %}</td>
+            <td class="num mono">{% if r.other is none %}—{% else %}{{ '{:,.2f}'.format(r.other) }}{% endif %}</td>
+            <td class="num mono">
+              {{ '{:,.2f}'.format(r.difference) }}
+              {% if r.status == 'missing' %}
+                <div class="muted small">In one source only.</div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 {# The checks that find real errors: the trial balance against documents
    that are not the trial balance, and against last year. Debits equalling
    credits was never information - the accounting system guarantees it. #}

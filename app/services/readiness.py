@@ -37,6 +37,19 @@ def _previous_year(financial_year):
     return previous_year(financial_year)
 
 
+def _prior_figures(financial_year):
+    """Whether last year's figures can be had at all, from any source.
+
+    Deliberately asks the resolver rather than testing for a document. A
+    signed accounts PDF that was uploaded but yielded nothing readable is
+    not last year's figures, and reporting it as present would send the
+    preparer to generate a set of accounts with a blank second column.
+    """
+    from .prior_year import balances
+    figures, _source = balances(financial_year)
+    return bool(figures)
+
+
 # Each requirement says what it serves, what would satisfy it, and - when it
 # is not met - what to go and get. The last of those is the whole point:
 # "missing" without "and here is what would fix it" is just a complaint.
@@ -45,15 +58,14 @@ REQUIREMENTS = [
         "key": "comparatives",
         "serves": "Every statement's prior-year column",
         "needs": "Last year's figures",
-        "get": ("Last year's signed accounts, uploaded and verified - or the "
-                "previous financial year set up in Auditmate with its trial "
-                "balance approved."),
+        "get": ("Any one of three: last year's signed accounts uploaded and "
+                "verified; \"Also pull last year\" on the Documents page if "
+                "the client is on Xero; or the previous financial year set up "
+                "in Auditmate with its trial balance approved."),
         "why": ("Without them there is no second column at all. This is not "
                 "a check that might flag a difference; the statements cannot "
                 "be issued without it."),
-        "test": lambda fy: (_previous_year(fy) is not None
-                            or _has_verified(fy, "signed_accounts",
-                                             "balance_sheet")),
+        "test": lambda fy: _prior_figures(fy),
     },
     {
         "key": "receivables_ageing",

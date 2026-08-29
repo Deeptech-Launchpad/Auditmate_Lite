@@ -195,6 +195,36 @@ def disconnect(customer_id):
 # Pull
 # --------------------------------------------------------------------------
 
+@bp.route("/xero/pull-prior/<int:fy_id>", methods=["POST"])
+@login_required
+def pull_prior(fy_id):
+    """Fetch LAST year's trial balance, a year to the day before this one.
+
+    Last year's closing balances are needed four times over - the comparative
+    column, the opening-balance check, the movement review and last year's
+    mapping - and two of those are data rather than checks: without them the
+    statements cannot be issued at all.
+
+    Xero holds the whole history, so this costs one request and involves no
+    reading. It does not replace last year's signed accounts: those say what
+    was REPORTED, while this says what the books hold today. Having both is
+    what makes the opening-balance check possible.
+    """
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+    back = url_for("documents.index", fy_id=fy_id)
+
+    result = xero_service.pull(financial_year, user_id=current_user.id,
+                               prior=True)
+    if not result.get("ok"):
+        flash(result.get("error", "The prior-year pull failed."), "error")
+        return redirect(back)
+
+    flash(f"Pulled {result.get('accounts', 0)} account(s) as at "
+          f"{result['as_at']:%d %b %Y}. These are last year's figures - they "
+          f"do not change this year's trial balance.", "success")
+    return redirect(back)
+
+
 @bp.route("/xero/pull/<int:fy_id>", methods=["POST"])
 @login_required
 def pull(fy_id):
