@@ -1077,3 +1077,7 @@ tr.row-doc-total input.cell { font-weight: 600; }
 }
 .legend > summary::marker { color: var(--text-faint); }
 .legend p { margin: 6px 0 0; max-width: 70ch; }
+
+/* Counts across the top of the mapping screen. They sat on a class that was
+   never defined, so four separate facts rendered as one run-on sentence. */
+.count-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

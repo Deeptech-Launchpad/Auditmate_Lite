@@ -55,19 +55,25 @@
   <div class="card">
     <div class="card-body">
       <div class="toolbar" style="justify-content:space-between">
-        <div class="stack-h" style="gap:18px">
-          <span class="muted small">
-            <strong>{{ review.counts.unmapped }}</strong> not mapped
-          </span>
-          <span class="muted small">
-            <strong>{{ review.counts.suggested }}</strong> suggested by a rule
-          </span>
-          <span class="muted small">
-            <strong>{{ review.counts.carried }}</strong> carried from last year
-          </span>
-          <span class="muted small">
-            <strong>{{ review.counts.manual }}</strong> you mapped
-          </span>
+        {# Four counts in a row of bare spans, on a class that was never
+           defined, so they ran together as one sentence: "0 not mapped 0
+           suggested by a rule 13 carried from last year 0 you mapped".
+           Each is a separate fact and now looks like one. A count of nil is
+           dropped rather than shown as a zero - four figures of which three
+           are zero is harder to read than the one that is not. #}
+        <div class="count-strip">
+          {% if review.counts.unmapped %}
+            <span class="pill pill-amber">{{ review.counts.unmapped }} not mapped</span>
+          {% endif %}
+          {% if review.counts.suggested %}
+            <span class="pill pill-blue">{{ review.counts.suggested }} suggested by a rule</span>
+          {% endif %}
+          {% if review.counts.carried %}
+            <span class="pill pill-green">{{ review.counts.carried }} carried from last year</span>
+          {% endif %}
+          {% if review.counts.manual %}
+            <span class="pill pill-grey">{{ review.counts.manual }} you mapped</span>
+          {% endif %}
         </div>
         {% if review.has_suggestions and not fy.tb_is_approved %}
           <form method="post"

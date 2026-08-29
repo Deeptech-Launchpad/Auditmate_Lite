@@ -67,7 +67,16 @@ def _origin(account, last_year, learned_patterns):
     if not account.standard_key:
         return "unmapped", None
 
-    if account.mapping_is_manual and name not in learned_patterns:
+    # A person's own decision, made on this engagement, outranks everything.
+    #
+    # This used to read `and name not in learned_patterns`, which could never
+    # be true: mapping an account writes the choice AND learns a rule for the
+    # client in the same breath, so the account's own name was in the learned
+    # set the instant it was mapped. "You mapped this" was therefore
+    # unreachable, and every manual choice fell through to "Carried from last
+    # year" - a claim that was simply false for an account like Exp-7, which
+    # last year had never heard of.
+    if account.mapping_is_manual:
         return "manual", None
 
     # Carried forward beats "suggested" wherever last year agrees, because
