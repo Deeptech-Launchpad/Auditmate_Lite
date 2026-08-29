@@ -188,6 +188,46 @@ def balances(financial_year):
     return {}, None
 
 
+# Sources that are a TRIAL BALANCE rather than a finished set of accounts.
+# The distinction matters for one account only, and it matters a lot.
+TRIAL_BALANCE_SOURCES = {"auditmate", "xero"}
+
+# Where the year's result lands once it is appropriated.
+RESULT_KEYS = ["retained_earnings", "accumulated_profit"]
+
+
+def _fold_result(totals):
+    """Move the year's result into retained earnings, as a balance sheet does.
+
+    A year-end trial balance shows retained earnings at its OPENING value,
+    with the year's profit still sitting across revenue and expenses. A
+    signed balance sheet shows it after appropriation - opening plus the
+    result. The two are both correct and they are not the same number.
+
+    Compared unadjusted, every engagement would report a difference on
+    retained earnings exactly the size of the year's profit, every time. A
+    check that cries wolf on a real client's largest equity balance is worse
+    than no check: it teaches the auditor to skip the panel.
+
+    Working in debit-positive terms, revenue is negative and expenses are
+    positive, so the P&L total IS the negated result - which is the sign
+    retained earnings already carries. Adding it is the whole adjustment.
+    """
+    adjusted = dict(totals)
+    result = ZERO
+    for key, amount in totals.items():
+        entry = classify(key)
+        if entry and entry.get("fs") == "P&L":
+            result += amount
+
+    if result == ZERO:
+        return adjusted
+
+    target = next((k for k in RESULT_KEYS if k in adjusted), RESULT_KEYS[0])
+    adjusted[target] = adjusted.get(target, ZERO) + result
+    return adjusted
+
+
 def opening_check(financial_year):
     """Do the books still agree with what was signed?
 
@@ -200,7 +240,11 @@ def opening_check(financial_year):
     Needs two independent sources. With only one there is nothing to compare,
     and saying so is more use than showing an empty table.
     """
-    available = sources(financial_year)
+    available = {
+        name: (_fold_result(figures) if name in TRIAL_BALANCE_SOURCES
+               else figures)
+        for name, figures in sources(financial_year).items()}
+
     if len(available) < 2:
         return {
             "comparable": False,

@@ -22,6 +22,7 @@ def register_cli(app):
     app.cli.add_command(check_xero)
     app.cli.add_command(xero_report)
     app.cli.add_command(check_beta)
+    app.cli.add_command(seed_beta)
     app.cli.add_command(setup_production)
 
 
@@ -656,7 +657,7 @@ def check_beta(fy_id):
     nothing; this cannot.
     """
     from .models import FinancialYear
-    from .services import mapping_review, outward, readiness
+    from .services import mapping_review, outward, prior_year, readiness
 
     financial_year = db.session.get(FinancialYear, fy_id)
     if financial_year is None:
@@ -710,6 +711,26 @@ def check_beta(fy_id):
             for r in movement["flagged"][:6]:
                 click.echo(f"      {r['label'][:34]:34} {r['note']}")
 
+    # --- last year, against what was signed ------------------------------
+    click.echo("")
+    click.echo("LAST YEAR, AGAINST WHAT WAS SIGNED")
+    opening = prior_year.opening_check(financial_year)
+    if not opening["comparable"]:
+        click.echo(f"  cannot compare - sources: "
+                   f"{', '.join(opening['have']) or 'none'}")
+        click.echo("  two independent statements of last year's close are "
+                   "needed")
+    else:
+        click.echo(f"  {opening['reference']} vs "
+                   f"{', '.join(opening['compared'])}")
+        if not opening["rows"]:
+            click.echo("  every balance sheet account agrees")
+        for r in opening["rows"]:
+            signed = "-" if r["reference"] is None else f"{r['reference']:,.2f}"
+            other = "-" if r["other"] is None else f"{r['other']:,.2f}"
+            click.echo(f"    {r['label'][:26]:26} signed {signed:>14}  "
+                       f"books {other:>14}  {r['status']}")
+
     # --- readiness -------------------------------------------------------
     click.echo("")
     click.echo("WHAT IS MISSING")
@@ -721,6 +742,53 @@ def check_beta(fy_id):
 
     click.echo("")
     click.echo("Nothing above was written. This only reads.")
+
+
+@click.command("seed-beta")
+@click.option("--remove", is_flag=True, help="Delete the seeded engagement.")
+@with_appcontext
+def seed_beta(remove):
+    """A two-year engagement that exercises the preparation build.
+
+    The existing demo client cannot show it: one year, no prior engagement,
+    no evidence documents, and a chart of accounts every rule matches - so
+    every new panel correctly reports that it has nothing to compare.
+    """
+    from .services import seed_beta as seeder
+    from .models import User
+
+    if remove:
+        if seeder.remove():
+            click.echo(f"Removed {seeder.CUSTOMER_NAME}.")
+        else:
+            click.echo(f"{seeder.CUSTOMER_NAME} is not there.")
+        return
+
+    user = User.query.order_by(User.id).first()
+    if user is None:
+        raise click.ClickException("No users yet. Run seed-demo or "
+                                   "create-admin first.")
+
+    try:
+        customer, prior, current = seeder.seed(user_id=user.id)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+
+    click.echo(f"Seeded {customer.name} (customer {customer.id})")
+    click.echo(f"  {prior.year_label}   customer {customer.id}, "
+               f"fy {prior.id} - approved, 12 accounts")
+    click.echo(f"  {current.year_label}   fy {current.id} - 13 accounts, "
+               f"4 documents")
+    click.echo("")
+    click.echo("What it is built to show:")
+    click.echo("  - Exp-7, which no rule can place and no prior year covers")
+    click.echo("  - accruals unchanged for twelve months, to the cent")
+    click.echo("  - signed accounts saying 15,000 where the books say 12,000")
+    click.echo("  - an aged receivables listing 9,000 above the trial balance")
+    click.echo("  - a bank statement and a payables listing that agree")
+    click.echo("")
+    click.echo(f"  flask check-beta {current.id}")
+    click.echo(f"  http://127.0.0.1:5000/trial-balance/fy/{current.id}")
 
 @click.command("setup-production")
 @click.option("--email", default="jey@deeptechskills.com", show_default=True)

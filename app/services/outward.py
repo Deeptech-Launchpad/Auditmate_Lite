@@ -47,6 +47,16 @@ TOLERANCE = Decimal("1.00")
 # over.
 LARGE_MOVEMENT = Decimal("0.50")      # 50%
 
+# Accounts where standing perfectly still is normal, not a question. Share
+# capital does not move unless shares were issued, and flagging it every year
+# is how a panel of real findings gets skipped.
+EXPECTED_STATIC = {"share_capital", "working_capital"}
+
+# And accounts where moving is the definition. Retained earnings changes by
+# the year's result; reporting that as a sharp movement says only that the
+# company traded.
+EXPECTED_TO_MOVE = {"retained_earnings", "accumulated_profit"}
+
 # Which evidence document should agree with which statement line.
 #
 # The right-hand side is a list because a client's chart of accounts splits
@@ -237,13 +247,22 @@ def movements(financial_year):
         elif this_year is None:
             status, note = "gone", "In last year's accounts, absent now."
         elif this_year == last_year and this_year != ZERO:
-            status, note = "unchanged", (
-                "Identical to last year, to the cent. A balance that does "
-                "not move in twelve months usually should have.")
+            if key in EXPECTED_STATIC:
+                status, note = "normal", None
+            else:
+                status, note = "unchanged", (
+                    "Identical to last year, to the cent. A balance that does "
+                    "not move in twelve months usually should have.")
         elif last_year == ZERO:
             status, note = "new", "Nil last year."
+        elif key in EXPECTED_TO_MOVE:
+            status, note = "normal", None
         else:
-            change = (this_year - last_year) / abs(last_year)
+            # On magnitudes. A payables balance is held as a credit, so
+            # signed arithmetic would report a liability growing from 40,000
+            # to 89,220 as a fall of 123% - which reads as the opposite of
+            # what happened.
+            change = (abs(this_year) - abs(last_year)) / abs(last_year)
             if abs(change) >= LARGE_MOVEMENT:
                 status = "moved"
                 note = f"Changed by {change:+.0%}."
