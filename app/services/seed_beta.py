@@ -25,8 +25,8 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from ..extensions import db
-from ..models import (Customer, Document, ExtractedLineItem, FinancialYear,
-                      TrialBalanceAccount)
+from ..models import (AccountMapping, Connection, Customer, Document,
+                      ExtractedLineItem, FinancialYear, TrialBalanceAccount)
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ PRIOR_TB = [
     ("1010", "Cash at Bank",        "cash_and_equivalents", "120000.00", None),
     ("1200", "Trade Debtors",       "trade_receivables",     "85000.00", None),
     ("1500", "Plant and Equipment", "ppe",                   "60000.00", None),
-    ("5010", "Cost of Sales",       "purchases",            "320000.00", None),
+    ("5010", "Cost of Sales",       "service_charges",      "320000.00", None),
     ("6010", "Salaries & Wages",    "staff_salaries",       "120000.00", None),
     ("6020", "Depreciation",        "depreciation",           "5000.00", None),
     ("6030", "Bank Charges",        "bank_charges",           "1000.00", None),
@@ -76,7 +76,7 @@ CURRENT_TB = [
     ("1010", "Cash at Bank",        "cash_and_equivalents", "163753.90", None),
     ("1200", "Trade Debtors",       "trade_receivables",    "180432.00", None),
     ("1500", "Plant and Equipment", "ppe",                   "55000.00", None),
-    ("5010", "Cost of Sales",       "purchases",            "380000.00", None),
+    ("5010", "Cost of Sales",       "service_charges",      "380000.00", None),
     ("6010", "Salaries & Wages",    "staff_salaries",       "140000.00", None),
     ("6020", "Depreciation",        "depreciation",           "5000.00", None),
     ("6030", "Bank Charges",        "bank_charges",           "1200.00", None),
@@ -145,6 +145,51 @@ def _document(financial_year, category, filename, user_id, rows,
     return document
 
 
+def _tb_document(financial_year, filename, user_id, accounts):
+    """The trial balance the year's figures actually came from.
+
+    Without this the seeded accounts have no source document, and "Rebuild
+    from sources" is right to refuse: there is nothing to rebuild them from.
+    A real engagement always has one - a workbook the client sent, or a Xero
+    pull - so a seed that omits it puts the app in a state it cannot reach on
+    its own, and then tests that state.
+
+    The rows carry debit and credit rather than a single amount, because that
+    is what a trial balance workbook has. A figure with a side of its own
+    needs no inference about which side it belongs on.
+    """
+    document = Document(
+        financial_year_id=financial_year.id,
+        original_filename=filename,
+        stored_filename=f"seed__trial_balance__{financial_year.id}",
+        storage_path="(seeded for testing - no file on disk)",
+        file_type="xlsx",
+        mime_type="application/octet-stream",
+        size_bytes=0,
+        category="trial_balance",
+        category_source="manual",
+        extraction_status="extracted",
+        extraction_engine="seed",
+        extraction_confidence=1.0,
+        ai_used=False,
+        review_status="verified",
+        uploaded_by=user_id,
+        reviewed_by=user_id,
+        reviewed_at=datetime.utcnow(),
+    )
+    db.session.add(document)
+    db.session.flush()
+
+    for index, (code, name, _key, debit, credit) in enumerate(accounts):
+        db.session.add(ExtractedLineItem(
+            document_id=document.id, row_index=index,
+            account_code=code, raw_label=name, label=name,
+            debit=Decimal(debit) if debit else None,
+            credit=Decimal(credit) if credit else None,
+            confidence=1.0, needs_review=False, status="auto"))
+    return document
+
+
 def seed(user_id=None):
     """Create the engagement. Returns (customer, prior_fy, current_fy)."""
     existing = Customer.query.filter_by(name=CUSTOMER_NAME).first()
@@ -193,7 +238,22 @@ def seed(user_id=None):
     db.session.add(current)
     db.session.flush()
 
-    for financial_year, accounts in ((prior, PRIOR_TB), (current, CURRENT_TB)):
+    # Documents before accounts, and not for tidiness. A trial balance is
+    # stale when a source has been verified since it was built, and every
+    # document here is verified the moment it is created - so seeding the
+    # accounts first left the engagement permanently reporting "a source
+    # document has changed", on a set of figures nothing had touched.
+    _document(current, "signed_accounts",
+              "Sunrise Marine - Signed Accounts FY2024.pdf", user_id,
+              SIGNED_ACCOUNTS)
+
+    for category, filename, _label, rows in EVIDENCE:
+        _document(current, category, filename, user_id, rows)
+
+    for financial_year, accounts, filename in (
+            (prior, PRIOR_TB, "Sunrise Marine - Trial Balance FY2024.xlsx"),
+            (current, CURRENT_TB, "Sunrise Marine - Trial Balance FY2025.xlsx")):
+        source = _tb_document(financial_year, filename, user_id, accounts)
         for code, name, key, debit, credit in accounts:
             db.session.add(TrialBalanceAccount(
                 financial_year_id=financial_year.id,
@@ -202,15 +262,9 @@ def seed(user_id=None):
                 statement_type=None,
                 debit=Decimal(debit) if debit else Decimal("0.00"),
                 credit=Decimal(credit) if credit else Decimal("0.00"),
-                source="upload", confidence=1.0,
+                source="upload", source_document_id=source.id,
+                confidence=1.0,
                 needs_review=key is None))
-
-    _document(current, "signed_accounts",
-              "Sunrise Marine - Signed Accounts FY2024.pdf", user_id,
-              SIGNED_ACCOUNTS)
-
-    for category, filename, _label, rows in EVIDENCE:
-        _document(current, category, filename, user_id, rows)
 
     db.session.commit()
     log.info("Seeded %s: prior FY %s, current FY %s",
@@ -249,6 +303,17 @@ def remove():
     db.session.flush()
     for financial_year in years:
         db.session.delete(financial_year)
+
+    # Mappings the auditor set on the Mapping screen are remembered against
+    # the CLIENT, not the year - that is the whole point of them, so next
+    # year's engagement inherits the choice. They outlive the engagement and
+    # will refuse to let the client be deleted underneath them.
+    AccountMapping.query.filter_by(
+        customer_id=customer.id).delete(synchronize_session=False)
+    Connection.query.filter_by(
+        customer_id=customer.id).delete(synchronize_session=False)
+    db.session.flush()
+
     db.session.delete(customer)
     db.session.commit()
     return True
