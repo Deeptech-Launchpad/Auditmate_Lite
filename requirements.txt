@@ -44,3 +44,4 @@ pydantic>=2.11
 # Uncomment on the Linux VPS:
 # WeasyPrint==62.3
 truststore>=0.9
+MarkupSafe==3.0.3
