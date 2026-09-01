@@ -24,7 +24,7 @@
       agreed. To refresh them, amend and re-approve the trial balance.
     #}
     <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn">
-      ← Trial Balance
+      ← Extracted Financials
     </a>
     {% if fy.tb_is_approved %}
       <a href="{{ url_for('reports.builder', fy_id=fy.id) }}" class="btn btn-primary">

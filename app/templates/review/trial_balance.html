@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trial Balance for review · {{ customer.name }}</title>
+  <title>Extracted Financials for review · {{ customer.name }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <style>
     /* Standalone page: no sidebar, no app navigation, nothing but the
@@ -43,7 +43,7 @@
 <div class="review-wrap">
 
   <div class="review-head">
-    <h1>Trial Balance for your review</h1>
+    <h1>Extracted Financials for your review</h1>
     <div class="co">{{ customer.legal_name or customer.name }}</div>
     <div class="meta">
       {% if customer.uen %}UEN {{ customer.uen }} · {% endif %}

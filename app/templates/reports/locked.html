@@ -36,7 +36,7 @@
         <div class="rail-line {{ 'done' if fy.tb_accounts else '' }}"></div>
         <div class="rail-step {{ 'done' if fy.statements else ('active' if fy.documents else '') }}">
           <span class="bullet">{{ '✓' if fy.tb_accounts else '2' }}</span>
-          <span class="text">Trial Balance</span>
+          <span class="text">Extracted Financials</span>
         </div>
         <div class="rail-line"></div>
         <div class="rail-step {{ 'active' if fy.tb_versions else '' }}">

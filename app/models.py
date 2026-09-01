@@ -631,7 +631,7 @@ class StatementLine(db.Model):
     # statement (which presents only the subtotal).
     is_detail = db.Column(db.Boolean, default=False)
     # Note number shown in the statement's "Notes" column.
-    note_ref = db.Column(db.String(10))
+    note_ref = db.Column(db.String(80))
     is_computed = db.Column(db.Boolean, default=False)
     formula = db.Column(db.String(255))
 
@@ -1006,7 +1006,53 @@ class AuditReportSection(db.Model):
     content_html = db.Column(db.Text)
     data_binding = db.Column(JSON)
 
+    # A sub-note the auditor attached to an existing note - "11.1" rather
+    # than its own top-level number. NULL for every ordinary note. Ordering
+    # among several children of the same parent is still their own
+    # sort_order; they render as a block directly after the parent
+    # regardless of where the parent sits among its own siblings.
+    parent_section_id = db.Column(db.Integer,
+                                  db.ForeignKey("audit_report_sections.id"))
+
     report = db.relationship("AuditReport", back_populates="sections")
+    children = db.relationship(
+        "AuditReportSection", backref=db.backref("parent", remote_side=[id]),
+        order_by="AuditReportSection.sort_order")
+
+
+class NoteLibraryEntry(db.Model):
+    """The FRS notes catalogue, as a table an auditor can actually add to.
+
+    Seeded once from config/notes_catalogue.yaml (source="spreadsheet") -
+    that seed is never edited in place here, so the spreadsheet stays the
+    traceable origin of everything that shipped with it. A note an auditor
+    adds through the report builder and chooses to save "to the library"
+    becomes a second kind of row (source="auditor_added"), from then on
+    proposed to every engagement the same way a spreadsheet note is.
+
+    Same shape `services/reports.py` already expects from the YAML - key,
+    heading, tick_state, order, trigger_keys, pieces, subsections - kept in
+    JSON columns rather than normalised, because a piece's shape already
+    varies (a policy paragraph carries wording; a table piece carries
+    tb_keys) and the reading code was written against exactly this shape.
+    """
+    __tablename__ = "note_library_entries"
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(120), unique=True, nullable=False)
+    heading = db.Column(db.String(255), nullable=False)
+    tick_state = db.Column(db.String(20), default="manual", nullable=False)
+    sort_order = db.Column(db.Integer, default=500, nullable=False)
+    trigger_keys = db.Column(JSON)
+    pieces = db.Column(JSON)
+    subsections = db.Column(JSON)
+
+    source = db.Column(db.String(20), default="spreadsheet", nullable=False)
+    added_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    added_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Which engagement and gap prompted an auditor-added note - traceability
+    # for a note that did not come from the spreadsheet.
+    added_reason = db.Column(db.Text)
 
 
 class ReportFigureOverride(db.Model):

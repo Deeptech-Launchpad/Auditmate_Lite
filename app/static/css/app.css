@@ -193,6 +193,20 @@ table.data .muted { color: var(--text-muted); font-size: 12.5px; }
 
 .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
+/* ------------------------------------------------------- content gaps */
+/* Where the FRS library has nothing, or next to nothing, behind a note -
+   see services/reports.py:content_gaps(). MISSING (red) is a line with no
+   note at all; THIN (amber) is a required note with almost no content. */
+
+.gap-row {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-top: 1px solid var(--border);
+}
+.gap-row:first-of-type { border-top: none; padding-top: 4px; }
+.gap-row .pill { flex-shrink: 0; margin-top: 1px; }
+.gap-title { font-weight: 600; font-size: 13.5px; }
+.gap-detail { margin-top: 2px; line-height: 1.5; }
+
 /* -------------------------------------------------------------- buttons */
 
 .btn {
@@ -524,6 +538,20 @@ table.fin tr.overridden input.amount { background: var(--amber-light); border-co
 
 .report-layout { display: grid; grid-template-columns: 330px 1fr; gap: 18px; align-items: start; }
 
+/* Sections and Live preview scroll independently of each other and of the
+   page - each panel stays put under the topbar while its own content
+   scrolls, rather than one long page where scrolling the notes list also
+   drags the report preview out of view. */
+.report-layout > .card,
+.report-layout > div > .card {
+  position: sticky; top: 74px; max-height: calc(100vh - 90px);
+  display: flex; flex-direction: column;
+}
+.report-layout > .card > .card-body,
+.report-layout > div > .card > .card-body {
+  overflow-y: auto; flex: 1; min-height: 0;
+}
+
 .section-item {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px;
   border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
@@ -537,6 +565,38 @@ table.fin tr.overridden input.amount { background: var(--amber-light); border-co
   color: var(--text-faint); font-weight: 700;
 }
 .section-item.dragging { opacity: .4; border-style: dashed; }
+.section-item.section-child {
+  margin-left: 22px; width: calc(100% - 22px);
+  background: var(--brand-light); border-color: #d5e4f5; cursor: default;
+}
+.section-item.section-child .handle { visibility: hidden; }
+
+/* -------------------------------------------------------- add-note form */
+
+.add-note-form {
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  padding: 14px; margin-top: 8px; background: var(--surface);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.anf-field { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.anf-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .3px; color: var(--text-faint); }
+.anf-field input[type="text"] {
+  padding: 8px 11px; border: 1px solid var(--border-strong); border-radius: 6px;
+  font-size: 13.5px; font-family: inherit;
+}
+.anf-radio { display: flex; align-items: center; gap: 7px; font-size: 13.5px; cursor: pointer; }
+.anf-select {
+  margin-left: 24px; padding: 6px 9px; border: 1px solid var(--border-strong);
+  border-radius: 6px; font-size: 13px; font-family: inherit; max-width: 100%;
+}
+.anf-select:disabled { opacity: .5; background: #f5f6f8; }
+.anf-accounts {
+  max-height: 160px; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;
+}
+.anf-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.anf-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 .paper {
   background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
@@ -599,6 +659,16 @@ table.fin tr.overridden input.amount { background: var(--amber-light); border-co
   .report-layout { grid-template-columns: 1fr; }
   .split { grid-template-columns: 1fr; }
   .split-pane + .split-pane { border-left: 0; border-top: 1px solid var(--border); }
+  /* Stacked single column: let the page scroll normally instead of two
+     short, independently-scrolling panels fighting for a cramped height. */
+  .report-layout > .card,
+  .report-layout > div > .card {
+    position: static; max-height: none;
+  }
+  .report-layout > .card > .card-body,
+  .report-layout > div > .card > .card-body {
+    overflow-y: visible;
+  }
 }
 
 /* ------------------------------------------------- engagement picker --- */
@@ -977,12 +1047,12 @@ tr.row-doc-total input.cell { font-weight: 600; }
 .src-legend .sw {
   width: 13px; height: 13px; border-radius: 3px; display: inline-block;
 }
-.src-legend .sw-tb   { background: rgba(37, 99, 168, .28);
+.src-legend .sw-tb   { background: rgba(37, 99, 168, .55);
                        box-shadow: inset 3px 0 0 #2563a8; }
 .src-legend .sw-calc { background: #fff;
                        border: 1px dashed #7a8290;
                        box-shadow: inset 2px 0 0 #7a8290; }
-.src-legend .sw-over { background: rgba(255, 176, 32, .30);
+.src-legend .sw-over { background: rgba(255, 176, 32, .55);
                        box-shadow: inset 2px 0 0 #b06a00; }
 .src-legend .legend-tip { margin-left: auto; color: #77808d; font-style: italic; }
 

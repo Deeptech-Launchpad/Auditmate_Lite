@@ -45,7 +45,7 @@
       </a>
       <a class="nav-item {% if request.blueprint == 'trial_balance' %}active{% endif %}"
          href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">
-        <span class="icon">▤</span> 2. Trial Balance
+        <span class="icon">▤</span> 2. Extracted Financials
       </a>
       {# Customer Review is deliberately not a step. The firm's position:
          "The SME client is not an accountant and will not log in to approve

@@ -15,7 +15,9 @@ knows the figure and will type it in. So this reports, and does not block.
 """
 import logging
 
-from ..models import Document, TrialBalanceAccount
+from decimal import Decimal
+
+from ..models import Document, FinancialStatement, TrialBalanceAccount
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +39,39 @@ def _previous_year(financial_year):
     return previous_year(financial_year)
 
 
+def _balance_mismatch(financial_year):
+    """The two sides of the balance sheet, for whichever year(s) disagree.
+
+    Checked before the notes tick list is shown, per the firm's instruction:
+    an imbalance is named as an error at that point, not discovered later in
+    a finished document. It does not stop the report from being produced -
+    nothing here does, see the module docstring - but it is surfaced first
+    and prominently rather than buried among the other checks.
+    """
+    statement = FinancialStatement.query.filter_by(
+        financial_year_id=financial_year.id, statement_type="balance_sheet"
+    ).first()
+    if not statement:
+        return None
+
+    lines = {line.line_key: line for line in statement.lines}
+    assets = lines.get("total_assets")
+    liabilities = lines.get("total_equity_and_liabilities")
+    if not assets or not liabilities:
+        return None
+
+    mismatches = []
+    for label, attr in (("this year", "amount_current"),
+                        ("last year", "amount_previous")):
+        a = Decimal(str(getattr(assets, attr) or 0))
+        l = Decimal(str(getattr(liabilities, attr) or 0))
+        if a != l:
+            mismatches.append(f"{label}: assets {a:,.2f} vs "
+                              f"equity and liabilities {l:,.2f}, "
+                              f"a difference of {a - l:,.2f}")
+    return mismatches or None
+
+
 def _prior_figures(financial_year):
     """Whether last year's figures can be had at all, from any source.
 
@@ -55,10 +90,25 @@ def _prior_figures(financial_year):
 # "missing" without "and here is what would fix it" is just a complaint.
 REQUIREMENTS = [
     {
+        "key": "balance_check",
+        "serves": "The statement of financial position, and every note",
+        "needs": "Total assets to equal total equity and liabilities",
+        "how_to_get": ("Recheck the mapping and the trial balance for the year(s) "
+                "named - an account mapped to the wrong side, or a source "
+                "document missed, is the usual cause."),
+        "why": ("A trial balance that does not balance means something is "
+                "wrong upstream of the statements, and every note is built "
+                "from those same figures. Shown here first, before notes "
+                "are selected, rather than found later in the finished "
+                "document."),
+        "test": lambda fy: not _balance_mismatch(fy),
+        "detail": lambda fy: _balance_mismatch(fy),
+    },
+    {
         "key": "comparatives",
         "serves": "Every statement's prior-year column",
         "needs": "Last year's figures",
-        "get": ("Any one of three: last year's signed accounts uploaded and "
+        "how_to_get": ("Any one of three: last year's signed accounts uploaded and "
                 "verified; \"Also pull last year\" on the Documents page if "
                 "the client is on Xero; or the previous financial year set up "
                 "in Auditmate with its trial balance approved."),
@@ -69,9 +119,9 @@ REQUIREMENTS = [
     },
     {
         "key": "receivables_ageing",
-        "serves": "Note 7 - Trade receivables, ageing table",
+        "serves": "The trade and other receivables note, ageing table",
         "needs": "An aged receivables listing",
-        "get": "The aged receivables report from the client's accounting system.",
+        "how_to_get": "The aged receivables report from the client's accounting system.",
         "why": ("The trial balance gives one figure for receivables. The "
                 "ageing table needs it split by how old each balance is, "
                 "which only the listing carries."),
@@ -80,9 +130,9 @@ REQUIREMENTS = [
     },
     {
         "key": "payables_listing",
-        "serves": "Note 11 - Other payables",
+        "serves": "The other payables figure, against the trial balance",
         "needs": "An aged payables listing",
-        "get": "The aged payables report from the client's accounting system.",
+        "how_to_get": "The aged payables report from the client's accounting system.",
         "why": ("Needed to support the payables figure and to check it "
                 "against the trial balance."),
         "test": lambda fy: (not _has_accounts(fy, "trade_payables")
@@ -92,7 +142,7 @@ REQUIREMENTS = [
         "key": "fixed_assets",
         "serves": "Fixed asset movement table",
         "needs": "A fixed asset register with cost, purchase date and useful life",
-        "get": ("The client's fixed asset register. A figure for net book "
+        "how_to_get": ("The client's fixed asset register. A figure for net book "
                 "value is not enough - the table needs cost, additions, "
                 "disposals and depreciation separately."),
         "why": ("Depreciation cannot be checked against an asset's useful "
@@ -104,9 +154,9 @@ REQUIREMENTS = [
     },
     {
         "key": "bank",
-        "serves": "The cash figure, and Note 9",
+        "serves": "The cash figure, and the cash and cash equivalents note",
         "needs": "A bank statement at the year end",
-        "get": "The closing bank statement for every account the client holds.",
+        "how_to_get": "The closing bank statement for every account the client holds.",
         "why": ("Cash is the one balance an outside party states "
                 "independently. A trial balance with no bank account at all "
                 "has happened, and the only symptom was an unexplained "
@@ -116,9 +166,9 @@ REQUIREMENTS = [
     },
     {
         "key": "tax",
-        "serves": "Note 6 - Income tax expense",
+        "serves": "The income tax expense note",
         "needs": "The tax assessment or computation",
-        "get": "The IRAS notice of assessment, or the tax computation.",
+        "how_to_get": "The IRAS notice of assessment, or the tax computation.",
         "why": ("Tax expense and tax payable both need an outside figure to "
                 "agree to. A tax payable balance that has not moved in a "
                 "year is a finding this would surface."),
@@ -129,7 +179,7 @@ REQUIREMENTS = [
         "key": "corporate_information",
         "serves": "Cover page, corporate information, directors' statement",
         "needs": "Directors, company secretary and registered office",
-        "get": ("Fill these in on the client's record - Customers, then Edit. "
+        "how_to_get": ("Fill these in on the client's record - Customers, then Edit. "
                 "Directors and shareholdings are also needed at both the "
                 "start and the end of the year."),
         "why": ("These pages are not generated from the trial balance. "
@@ -144,7 +194,7 @@ REQUIREMENTS = [
         "key": "uen",
         "serves": "Cover page and corporate information",
         "needs": "The company's UEN",
-        "get": "Add the UEN on the client's record.",
+        "how_to_get": "Add the UEN on the client's record.",
         "why": "A Singapore set of accounts states it on the front page.",
         "test": lambda fy: bool((fy.customer.uen or "").strip()),
     },
@@ -160,11 +210,15 @@ def check(financial_year):
     for spec in REQUIREMENTS:
         try:
             met = bool(spec["test"](financial_year))
+            detail = spec["detail"](financial_year) if "detail" in spec else None
         except Exception:            # a broken check must not stop the page
             log.exception("Readiness check %s failed", spec["key"])
-            met = False
-        items.append({**{k: v for k, v in spec.items() if k != "test"},
-                      "met": met})
+            met, detail = False, None
+        item = {k: v for k, v in spec.items() if k not in ("test", "detail")}
+        item["met"] = met
+        if detail:
+            item["detail"] = detail
+        items.append(item)
 
     missing = [i for i in items if not i["met"]]
     return {

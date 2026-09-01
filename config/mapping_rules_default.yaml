@@ -55,7 +55,11 @@
 - {pattern: "renovation",           statement: balance_sheet, line: ppe, priority: 15}
 - {pattern: "intangible",           statement: balance_sheet, line: intangible_assets, priority: 10}
 - {pattern: "goodwill",             statement: balance_sheet, line: intangible_assets, priority: 10}
+- {pattern: "investment property",  statement: balance_sheet, line: investment_property, priority: 8}
 - {pattern: "investment",           statement: balance_sheet, line: investments, priority: 15}
+- {pattern: "right-of-use",         statement: balance_sheet, line: right_of_use_assets, priority: 8}
+- {pattern: "right of use",         statement: balance_sheet, line: right_of_use_assets, priority: 8}
+- {pattern: "rou asset",            statement: balance_sheet, line: right_of_use_assets, priority: 8}
 - {pattern: "inventor",             statement: balance_sheet, line: inventories, priority: 10}
 - {pattern: "stock in trade",       statement: balance_sheet, line: inventories, priority: 10}
 - {pattern: "trade receivable",     statement: balance_sheet, line: trade_receivables, priority: 5}
@@ -63,6 +67,8 @@
 - {pattern: "sundry debtor",        statement: balance_sheet, line: trade_receivables, priority: 5}
 - {pattern: "accounts receivable",  statement: balance_sheet, line: trade_receivables, priority: 5}
 - {pattern: "debtor",               statement: balance_sheet, line: trade_receivables, priority: 25}
+- {pattern: "contract asset",       statement: balance_sheet, line: contract_assets, priority: 8}
+- {pattern: "assets held for sale", statement: balance_sheet, line: assets_held_for_sale, priority: 8}
 - {pattern: "prepay",               statement: balance_sheet, line: prepayments, priority: 10}
 - {pattern: "deposit",              statement: balance_sheet, line: prepayments, priority: 20}
 - {pattern: "cash at bank",         statement: balance_sheet, line: cash_and_equivalents, priority: 5}
@@ -92,6 +98,13 @@
 - {pattern: "hire purchase",        statement: balance_sheet, line: long_term_borrowings, priority: 10, sign: -1}
 - {pattern: "bank overdraft",       statement: balance_sheet, line: short_term_borrowings, priority: 10, sign: -1}
 - {pattern: "director.*loan",       statement: balance_sheet, line: short_term_borrowings, match: regex, priority: 3, sign: -1}
+- {pattern: "lease liabilit",       statement: balance_sheet, line: lease_liabilities, priority: 8, sign: -1}
+- {pattern: "provision for warranty", statement: balance_sheet, line: provisions, priority: 8, sign: -1}
+- {pattern: "provision for restructuring", statement: balance_sheet, line: provisions, priority: 8, sign: -1}
+- {pattern: "provision",            statement: balance_sheet, line: provisions, priority: 20, sign: -1}
+- {pattern: "contract liabilit",    statement: balance_sheet, line: contract_liabilities, priority: 8, sign: -1}
+- {pattern: "deferred revenue",     statement: balance_sheet, line: contract_liabilities, priority: 10, sign: -1}
+- {pattern: "unearned revenue",     statement: balance_sheet, line: contract_liabilities, priority: 10, sign: -1}
 
 # --- added to match the client's template line keys ---
 - {pattern: "cpf",                  statement: profit_and_loss, line: cpf, priority: 10}

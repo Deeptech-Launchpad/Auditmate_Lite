@@ -30,13 +30,13 @@ profit_and_loss:
   title: Statement of Comprehensive Income
   columns: [current, previous]
   lines:
-    - {key: revenue,               label: "Revenue", group: revenue, note: 4}
+    - {key: revenue,               label: "Revenue", group: revenue, note: revenue}
 
     # --- Cost of sales: detail lines feed the subtotal shown on the face ---
     - {key: purchases,             label: "Purchases", group: cost_of_sales, detail: true}
     - {key: design_implementation, label: "Design & implementation", group: cost_of_sales, detail: true}
     - {key: service_charges,       label: "Service charges for project", group: cost_of_sales, detail: true}
-    - {key: cost_of_sales,         label: "Cost of sales", group: cost_of_sales, subtotal: true, formula: sum_group_cost_of_sales, note: 5}
+    - {key: cost_of_sales,         label: "Cost of sales", group: cost_of_sales, subtotal: true, formula: sum_group_cost_of_sales}
 
     - {key: gross_profit,          label: "Gross profit", group: gross, subtotal: true, formula: gross_profit}
 
@@ -67,43 +67,50 @@ profit_and_loss:
     # client template shows "IRAS rebate" among operating expenses.
     - {key: other_income,          label: "Other income", group: operating_expenses, detail: true}
     - {key: interest_income,       label: "Interest income", group: operating_expenses, detail: true}
-    - {key: operating_expenses,    label: "Operating expenses", group: operating_expenses, subtotal: true, formula: sum_group_operating_expenses, note: 5}
+    - {key: operating_expenses,    label: "Operating expenses", group: operating_expenses, subtotal: true, formula: sum_group_operating_expenses, note: administrative_and_other_expenses}
 
-    - {key: profit_before_tax,     label: "Profit before tax", group: result, subtotal: true, formula: profit_before_tax}
-    - {key: tax_expense,           label: "Income tax expense", group: result, formula: null, note: 6}
+    - {key: profit_before_tax,     label: "Profit before tax", group: result, subtotal: true, formula: profit_before_tax, note: profit_before_tax}
+    - {key: tax_expense,           label: "Income tax expense", group: result, formula: null, note: income_tax_expense}
     - {key: profit_for_year,       label: "Profit for the period, net of tax", group: result, subtotal: true, formula: profit_for_year}
-    - {key: other_comprehensive_income, label: "Other comprehensive income for the year", group: result}
+    - {key: other_comprehensive_income, label: "Other comprehensive income for the year", group: result, no_note: true}
     - {key: total_comprehensive_income, label: "Total comprehensive income for the period", group: result, total: true, formula: total_comprehensive_income}
 
 balance_sheet:
   title: Statement of Financial Position
   columns: [current, previous]
   lines:
-    - {key: ppe,                   label: "Fixed Assets", group: non_current_assets, indent: 1}
-    - {key: intangible_assets,     label: "Intangible assets", group: non_current_assets, indent: 1, optional: true}
-    - {key: investments,           label: "Investments", group: non_current_assets, indent: 1, optional: true}
+    - {key: ppe,                   label: "Fixed Assets", group: non_current_assets, indent: 1, note: property_plant_and_equipment}
+    - {key: investment_property,   label: "Investment property", group: non_current_assets, indent: 1, optional: true, note: investment_property}
+    - {key: intangible_assets,     label: "Intangible assets", group: non_current_assets, indent: 1, optional: true, note: intangible_assets}
+    - {key: right_of_use_assets,   label: "Right-of-use assets", group: non_current_assets, indent: 1, optional: true, note: right_of_use_assets}
+    - {key: investments,           label: "Investments", group: non_current_assets, indent: 1, optional: true, note: investments_in_subsidiaries}
     - {key: total_non_current_assets, label: "Total non-current assets", group: non_current_assets, subtotal: true, formula: sum_group_non_current_assets}
 
-    - {key: inventories,           label: "Inventories", group: current_assets, indent: 1, optional: true}
-    - {key: trade_receivables,     label: "Trade receivables", group: current_assets, indent: 1, note: 7}
-    - {key: prepayments,           label: "Deposits & Other Receivables", group: current_assets, indent: 1, note: 8}
-    - {key: cash_and_equivalents,  label: "Cash and cash equivalents", group: current_assets, indent: 1, note: 9}
+    - {key: inventories,           label: "Inventories", group: current_assets, indent: 1, optional: true, note: inventories}
+    - {key: contract_assets,       label: "Contract assets", group: current_assets, indent: 1, optional: true, note: contract_balances}
+    - {key: trade_receivables,     label: "Trade receivables", group: current_assets, indent: 1, note: trade_receivables}
+    - {key: prepayments,           label: "Deposits & Other Receivables", group: current_assets, indent: 1}
+    - {key: assets_held_for_sale,  label: "Assets held for sale", group: current_assets, indent: 1, optional: true, note: assets_held_for_sale}
+    - {key: cash_and_equivalents,  label: "Cash and cash equivalents", group: current_assets, indent: 1, note: cash_and_cash_equivalents}
     - {key: total_current_assets,  label: "Total current assets", group: current_assets, subtotal: true, formula: sum_group_current_assets}
     - {key: total_assets,          label: "Total assets", group: assets_total, total: true, formula: total_assets}
 
-    - {key: share_capital,         label: "Share capital", group: equity, indent: 1, note: 10}
-    - {key: working_capital,       label: "Working Capital", group: equity, indent: 1}
-    - {key: retained_earnings,     label: "Accumulated profit/ (loss)", group: equity, indent: 1, formula: retained_earnings}
+    - {key: share_capital,         label: "Share capital", group: equity, indent: 1, note: share_capital}
+    - {key: working_capital,       label: "Working Capital", group: equity, indent: 1, no_note: true}
+    - {key: retained_earnings,     label: "Accumulated profit/ (loss)", group: equity, indent: 1, formula: retained_earnings, no_note: true}
     - {key: total_equity,          label: "Total capital and reserves", group: equity, subtotal: true, formula: sum_group_equity}
 
-    - {key: long_term_borrowings,  label: "Long-term borrowings", group: non_current_liabilities, indent: 1, optional: true}
-    - {key: deferred_tax,          label: "Deferred tax liabilities", group: non_current_liabilities, indent: 1, optional: true}
+    - {key: long_term_borrowings,  label: "Long-term borrowings", group: non_current_liabilities, indent: 1, optional: true, note: borrowings}
+    - {key: lease_liabilities,     label: "Lease liabilities", group: non_current_liabilities, indent: 1, optional: true, note: lease_liabilities}
+    - {key: provisions,            label: "Provisions", group: non_current_liabilities, indent: 1, optional: true, note: provisions}
+    - {key: deferred_tax,          label: "Deferred tax liabilities", group: non_current_liabilities, indent: 1, optional: true, note: deferred_tax_liabilities}
     - {key: total_non_current_liabilities, label: "Total non-current liabilities", group: non_current_liabilities, subtotal: true, formula: sum_group_non_current_liabilities, optional: true}
 
-    - {key: trade_payables,        label: "Other Payables", group: current_liabilities, indent: 1, note: 11}
+    - {key: trade_payables,        label: "Other Payables", group: current_liabilities, indent: 1}
     - {key: accruals,              label: "Accruals", group: current_liabilities, indent: 1, optional: true}
-    - {key: short_term_borrowings, label: "Short-term borrowings", group: current_liabilities, indent: 1, optional: true}
-    - {key: tax_payable,           label: "Provision for income tax", group: current_liabilities, indent: 1, note: 6}
+    - {key: contract_liabilities,  label: "Contract liabilities", group: current_liabilities, indent: 1, optional: true, note: contract_balances}
+    - {key: short_term_borrowings, label: "Short-term borrowings", group: current_liabilities, indent: 1, optional: true, note: borrowings}
+    - {key: tax_payable,           label: "Provision for income tax", group: current_liabilities, indent: 1, no_note: true}
     - {key: total_current_liabilities, label: "Total current liabilities", group: current_liabilities, subtotal: true, formula: sum_group_current_liabilities}
     - {key: total_equity_and_liabilities, label: "Total equity and liabilities", group: liabilities_total, total: true, formula: total_equity_and_liabilities}
 

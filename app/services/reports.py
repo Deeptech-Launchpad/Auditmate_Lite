@@ -16,8 +16,11 @@ import yaml
 from flask import current_app
 
 from ..extensions import db
-from ..models import AuditReport, AuditReportSection, FinancialStatement
+from ..models import (AuditReport, AuditReportSection, FinancialStatement,
+                      TrialBalanceAccount)
 from . import notes as notes_service
+
+NOTE_PREFIX = "note__"
 
 log = logging.getLogger(__name__)
 
@@ -51,11 +54,47 @@ GROUP_HEADINGS = {
 
 @functools.lru_cache(maxsize=1)
 def load_sections():
+    """The structural sections: cover page, statements, detailed P&L.
+
+    The 74-note FRS catalogue is separate - see load_notes_catalogue() -
+    because a note's set is dynamic (which ones exist depends on the
+    engagement) while these are fixed and always the same seven or eight.
+    """
     path = current_app.config["CONFIG_DIR"] / "report_sections.yaml"
     if not path.exists():
         return []
     with open(path, "r", encoding="utf-8") as handle:
         return yaml.safe_load(handle) or []
+
+
+def load_notes_catalogue():
+    """The FRS disclosure library: every note that could apply to a
+    single-entity Singapore Pte Ltd, in the order the firm's own template
+    presents them.
+
+    Read from `note_library_entries`, not the YAML file - the table is what
+    an auditor's "save to the library" actually writes to, and a note
+    added that way must be visible to the very next engagement without a
+    server restart, which a cached read of a static file can never give.
+    The 54 rows the spreadsheet supplied are seeded there once (see
+    `flask seed-note-library`); this function does not distinguish them
+    from ones an auditor added later - both are just library rows.
+
+    Deliberately NOT cached - see above. Called once per report build,
+    which is cheap enough that the extra correctness is worth it.
+    """
+    from ..models import NoteLibraryEntry
+
+    rows = (NoteLibraryEntry.query
+            .order_by(NoteLibraryEntry.sort_order).all())
+    return [{
+        "key": r.key,
+        "heading": r.heading,
+        "tick_state": r.tick_state,
+        "trigger_keys": r.trigger_keys,
+        "pieces": r.pieces or [],
+        "subsections": r.subsections or [],
+    } for r in rows]
 
 
 
@@ -147,7 +186,7 @@ def ensure_report(financial_year) -> AuditReport:
     if report is not None:
         return report
 
-    present = _accounts_present(financial_year)
+    present = _present_keys(financial_year)
 
     report = AuditReport(
         financial_year_id=financial_year.id,
@@ -156,68 +195,365 @@ def ensure_report(financial_year) -> AuditReport:
     db.session.add(report)
     db.session.flush()
 
-    for order, spec in enumerate(load_sections()):
+    order = 0
+    for spec in load_sections():
         db.session.add(AuditReportSection(
             report_id=report.id,
             section_key=spec["key"],
             title=spec.get("title", spec["key"]),
             section_type=spec.get("type", "free_text"),
             sort_order=order,
-            is_enabled=_enabled_for(spec, present),
+            is_enabled=bool(spec.get("default_enabled", False)),
             content_html=spec.get("content", ""),
             data_binding={"statement_type": spec["statement_type"]}
             if spec.get("statement_type") else None,
         ))
+        order += 1
+
+    for note in load_notes_catalogue():
+        db.session.add(_build_note_section(note, present, order, report.id))
+        order += 1
 
     db.session.commit()
     return report
 
 
+# --------------------------------------------------------------------------
+# The FRS notes engine: selection, suppression, numbering
+# --------------------------------------------------------------------------
+#
 # A note that explains a figure belongs in the accounts only when the figure
 # is there. A company with no bank loan should not receive a borrowings note
-# carrying template wording about interest rates and covenants - that is a
-# statement about the company, and it is not true.
+# carrying wording about interest rates and covenants - that is a statement
+# about the company, and it is not true.
 #
-# Notes that are pure wording - the accounting policies, the critical
-# estimates, the standards not yet adopted - are not in this table. Nothing
-# in a trial balance decides whether they belong, so they keep whatever
-# default_enabled says and a person chooses.
-NOTE_ACCOUNTS = {
-    "note_04_revenue": ["revenue"],
-    "note_05_profit_before_tax": ["revenue", "operating_expenses"],
-    "note_06_income_tax": ["tax_expense", "tax_payable"],
-    "note_07_trade_receivables": ["trade_receivables"],
-    "note_08_deposits_other_receivables": ["prepayments", "other_receivables",
-                                           "deposits"],
-    "note_09_cash": ["cash_and_equivalents"],
-    "note_10_share_capital": ["share_capital", "working_capital"],
-    "note_11_other_payables": ["trade_payables", "accruals", "other_payables"],
-}
+# "There" means either year, not just this one: a balance held last year and
+# nil this year must still show its note, with nil against last year's
+# figure - a note cannot silently vanish just because the closing balance
+# happens to be nil.
+
+def _present_keys(financial_year):
+    """Standard keys carrying a balance this year, or last year, or both."""
+    current = (TrialBalanceAccount.query
+               .filter_by(financial_year_id=financial_year.id)
+               .filter(TrialBalanceAccount.standard_key.isnot(None))
+               .all())
+    present = {r.standard_key for r in current
+               if (r.debit or 0) or (r.credit or 0)}
+
+    for statement in FinancialStatement.query.filter_by(
+            financial_year_id=financial_year.id).all():
+        for line in statement.lines:
+            if line.amount_previous:
+                present.add(line.line_key)
+
+    return present
 
 
-def _accounts_present(financial_year):
-    """Every statement line this engagement's trial balance actually holds."""
-    from ..models import TrialBalanceAccount
+def _piece_triggered(tick_state, trigger_keys, present):
+    """Always fires; TB-driven fires if any of its keys is present; a Manual
+    piece never fires on its own - the preparer switches it on by hand."""
+    if tick_state == "always":
+        return True
+    if tick_state == "tb_driven":
+        return any(key in present for key in (trigger_keys or []))
+    return False
+
+
+def _note_triggered(note, present):
+    return _piece_triggered(note.get("tick_state"), note.get("trigger_keys"),
+                            present)
+
+
+TABLE_FORMS = {"Table", "Figure in note", "Narrative + table"}
+
+
+def _assemble_note_content(note, present):
+    """Build a note's starting text and figure tables from whichever of its
+    pieces are triggered right now.
+
+    This runs once, when the report is first created - the same point
+    hand-authored content used to be copied in from report_sections.yaml.
+    Like that content, what is produced here is then auditor-editable and
+    frozen; it is not silently regenerated on every render, so an auditor's
+    edit is never overwritten by a later trigger recalculation.
+    """
+    html_parts = []
+    table_specs = []
+    seen_table_keys = set()
+
+    def add_piece(piece):
+        if not _piece_triggered(piece.get("tick_state"), piece.get("tb_keys"),
+                                present):
+            return
+        if piece.get("output_form") == "Narrative paragraph":
+            wording = piece.get("wording")
+            if wording:
+                html_parts.append(f"<p>{wording}</p>")
+        elif piece.get("output_form") in TABLE_FORMS:
+            keys = piece.get("tb_keys") or []
+            # Several pieces in one note (a movement schedule, a class
+            # breakdown, a useful-lives table) can share the same trial
+            # balance keys because the account-level breakdown is all this
+            # engine can build so far - see the FRS build notes on PPE and
+            # similar. Rendering that same flat breakdown under each
+            # piece's own heading would print near-identical tables two or
+            # three times, which reads as more wrong than showing it once.
+            dedup_key = tuple(sorted(keys))
+            if keys and dedup_key not in seen_table_keys:
+                seen_table_keys.add(dedup_key)
+                heading = piece.get("wording") or piece.get("requirement", "")
+                table_specs.append({"source": "accounts", "keys": keys,
+                                    "heading": heading, "total": ""})
+            # No resolvable trial balance keys: nothing to compute, so
+            # nothing is added. The auditor adds it by hand if it applies -
+            # see readiness.py for the equivalent "flag, don't fabricate"
+            # rule on the missing-documents side.
+
+    for piece in note.get("pieces", []):
+        add_piece(piece)
+
+    for sub in note.get("subsections", []):
+        if not _piece_triggered(sub.get("tick_state"), sub.get("trigger_keys"),
+                                present):
+            continue
+        sub_parts = []
+        for piece in sub.get("pieces", []):
+            if (_piece_triggered(piece.get("tick_state"), piece.get("tb_keys"),
+                                 present)
+                    and piece.get("output_form") == "Narrative paragraph"
+                    and piece.get("wording")):
+                sub_parts.append(f"<p>{piece['wording']}</p>")
+        if sub_parts:
+            html_parts.append(f"<h4>{sub['heading']}</h4>")
+            html_parts.extend(sub_parts)
+
+    if not html_parts:
+        html_parts.append("<p><em>Write this note here.</em></p>")
+
+    return "\n".join(html_parts), table_specs
+
+
+def _build_note_section(note, present, sort_order, report_id):
+    content_html, table_specs = _assemble_note_content(note, present)
+    return AuditReportSection(
+        report_id=report_id,
+        section_key=f"{NOTE_PREFIX}{note['key']}",
+        title=note["heading"],
+        section_type="free_text",
+        sort_order=sort_order,
+        is_enabled=_note_triggered(note, present),
+        content_html=content_html,
+        data_binding={"note_table_specs": table_specs} if table_specs else None,
+    )
+
+
+def ordered_sections(report, *, top_level_only=False):
+    """`report.sections` regrouped so a sub-note always sits directly after
+    its parent, whatever its own sort_order says relative to unrelated
+    sections.
+
+    A child's sort_order only orders it among its OWN siblings (several
+    sub-notes attached to the same parent); it says nothing about where
+    among the top-level notes the whole group falls. Both numbering and
+    rendering need that same grouping, so it lives here once rather than
+    twice.
+    """
+    top = [s for s in sorted(report.sections, key=lambda s: s.sort_order)
+          if s.parent_section_id is None]
+    if top_level_only:
+        return top
+
+    out = []
+    for section in top:
+        out.append(section)
+        out.extend(sorted(section.children, key=lambda c: c.sort_order))
+    return out
+
+
+def note_number_map(report):
+    """{note key: printed number}, computed fresh from whichever notes are
+    enabled right now, in seed order. "11.1" for a sub-note attached to
+    note 11, otherwise a plain "11".
+
+    Never stored. A note that gets unticked must leave no gap behind it, and
+    a statement line's "see Note N" must always match the number actually
+    printed - both are only true if this is recalculated on every render
+    rather than fixed at creation.
+    """
+    def is_note(s):
+        return (s.section_type != "statement"
+                and (s.section_key.startswith(NOTE_PREFIX)
+                    or s.section_key.startswith("custom_")))
+
+    def bare(s):
+        return (s.section_key[len(NOTE_PREFIX):]
+               if s.section_key.startswith(NOTE_PREFIX) else s.section_key)
+
+    mapping = {}
+    n = 0
+    for section in ordered_sections(report, top_level_only=True):
+        if not (is_note(section) and section.is_enabled):
+            continue
+        n += 1
+        num = str(n)
+        mapping[bare(section)] = num
+        mapping[section.section_key] = num
+
+        children = [c for c in sorted(section.children, key=lambda c: c.sort_order)
+                   if is_note(c) and c.is_enabled]
+        for i, child in enumerate(children, start=1):
+            child_num = f"{num}.{i}"
+            mapping[bare(child)] = child_num
+            mapping[child.section_key] = child_num
+    return mapping
+
+
+def content_gaps(report, financial_year):
+    """Where the FRS library, drawn strictly from
+    AuditMate_FullFRS_Disclosure_Requirements_1.xlsx, does not cover what
+    this engagement's own statements need.
+
+    Two different failures, kept apart because they need different fixes:
+
+    MISSING - a line is printing on the face of a statement, but no note in
+    the library explains it at all. The library was never given content for
+    this - it is not a case of the trigger failing to fire, there is simply
+    nothing there to trigger.
+
+    THIN - a note that is always required, in every engagement, has next to
+    no content behind it - a single edge-case figure standing in for what
+    should be a real policy paragraph.
+
+    Deliberately mechanical, not a judgement call: the library is never
+    padded with invented wording to make a gap disappear. The auditor sees
+    exactly what is short and adds it themselves, the same way a note not on
+    the list gets added today.
+    """
+    from .statements import load_templates
+
+    catalogue = {n["key"]: n for n in load_notes_catalogue()}
+    templates = load_templates()
+
+    missing = []
+    for statement_type in ("profit_and_loss", "balance_sheet"):
+        statement = FinancialStatement.query.filter_by(
+            financial_year_id=financial_year.id,
+            statement_type=statement_type).first()
+        lines_by_key = ({l.line_key: l for l in statement.lines}
+                        if statement else {})
+
+        for spec in templates.get(statement_type, {}).get("lines", []):
+            if spec.get("subtotal") or spec.get("total") or spec.get("detail"):
+                continue
+            if spec.get("no_note"):
+                continue
+            note_key = spec.get("note")
+            if note_key and note_key in catalogue:
+                continue      # has a real note behind it
+
+            line = lines_by_key.get(spec["key"])
+            printing = bool(line and (line.amount_current or line.amount_previous))
+            if not spec.get("optional") or printing:
+                missing.append({"line": spec.get("label", spec["key"]),
+                               "key": spec["key"], "statement": statement_type})
+
+    # Group by underlying gap: "Other Payables" and "Accruals" both point at
+    # the one absent note, not two separate ones.
+    grouped_missing = []
+    if missing:
+        labels = sorted({m["line"] for m in missing})
+        grouped_missing.append({
+            "lines": labels,
+            "keys": sorted({m["key"] for m in missing}),
+            "detail": ("No note in the library explains " + ", ".join(labels)
+                      + " - there is nothing in the spreadsheet covering it, "
+                        "not a trigger that failed to fire."),
+        })
+
+    thin = []
+    enabled_note_keys = {
+        s.section_key[len(NOTE_PREFIX):]
+        for s in report.sections
+        if s.is_enabled and s.section_key.startswith(NOTE_PREFIX)
+    }
+    for key in sorted(enabled_note_keys):
+        note = catalogue.get(key)
+        if not note or note.get("tick_state") != "always":
+            continue
+        pieces = list(note.get("pieces") or [])
+        for sub in note.get("subsections", []):
+            pieces += sub.get("pieces") or []
+        live = [p for p in pieces if p.get("tick_state") in ("always", "tb_driven")]
+        narrative = [p for p in live if p.get("output_form") == "Narrative paragraph"]
+        if len(live) <= 1 and not narrative:
+            forms = ", ".join(p["output_form"].lower() for p in live) or "nothing"
+            thin.append({
+                "note": note["heading"],
+                "detail": (f"This note is required for every engagement, "
+                          f"but the library gives it only {forms} - no "
+                          f"policy or description of what the figure "
+                          f"actually is."),
+            })
+
+    return {"missing": grouped_missing, "thin": thin,
+            "has_gaps": bool(grouped_missing or thin)}
+
+
+def mapped_accounts(financial_year):
+    """This engagement's trial balance, one row per standard line that
+    actually carries a balance - the checklist an auditor picks from when
+    a new note needs real figures instead of hand-typed ones.
+
+    Deduplicated by standard_key: several trial balance accounts can map to
+    the same line (two bank accounts both feed cash_and_equivalents), and
+    the note table is built from the line, not the individual accounts.
+    """
+    from .statements import load_templates
+    from decimal import Decimal
+
+    labels = {}
+    for statement in load_templates().values():
+        if not isinstance(statement, dict):
+            continue
+        for line in statement.get("lines") or []:
+            labels[line["key"]] = line.get("label", line["key"])
 
     rows = (TrialBalanceAccount.query
             .filter_by(financial_year_id=financial_year.id)
             .filter(TrialBalanceAccount.standard_key.isnot(None))
             .all())
-    return {r.standard_key for r in rows
-            if (r.debit or 0) or (r.credit or 0)}
+
+    totals = {}
+    for r in rows:
+        net = Decimal(str((r.debit or 0))) - Decimal(str((r.credit or 0)))
+        totals[r.standard_key] = totals.get(r.standard_key, Decimal("0")) + net
+
+    return sorted(
+        ({"key": key, "label": labels.get(key, key), "amount": amount}
+         for key, amount in totals.items() if amount),
+        key=lambda a: a["label"])
 
 
-def _enabled_for(spec, present):
-    """Whether a section starts ticked.
-
-    A note tied to accounts is ticked when the trial balance carries any of
-    them, and left off when it does not. Everything else falls back to the
-    template's own default, which is what a person then adjusts.
+def attachable_notes(report):
+    """Top-level enabled notes an auditor can attach a new sub-note under -
+    the parent-note dropdown in the "add a note" form. Numbered exactly as
+    they will print, using the same live count as everywhere else.
     """
-    keys = NOTE_ACCOUNTS.get(spec["key"])
-    if keys is None:
-        return bool(spec.get("default_enabled", False))
-    return any(key in present for key in keys)
+    numbers = note_number_map(report)
+    out = []
+    for section in ordered_sections(report, top_level_only=True):
+        if not section.is_enabled:
+            continue
+        if section.section_type == "statement":
+            continue
+        if not (section.section_key.startswith(NOTE_PREFIX)
+                or section.section_key.startswith("custom_")):
+            continue
+        num = numbers.get(section.section_key)
+        if num:
+            out.append({"id": section.id, "number": num, "title": section.title})
+    return out
 
 
 @functools.lru_cache(maxsize=1)
@@ -255,8 +591,11 @@ def section_payload(section, customer, financial_year, chips: bool = False):
         payload["html"] = render_bindings(section.content_html or "",
                                           customer, financial_year,
                                           chips=chips)
+        note_table_spec = spec.get("note_table")
+        if note_table_spec is None and section.data_binding:
+            note_table_spec = section.data_binding.get("note_table_specs")
         payload["tables"] = notes_service.build_tables(
-            spec.get("note_table"), financial_year)
+            note_table_spec, financial_year)
         apply_note_overrides(section, payload["tables"])
 
     return payload

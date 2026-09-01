@@ -1,0 +1,1801 @@
+# The FRS notes catalogue for a single-entity Singapore Pte Ltd.
+#
+# Generated from AuditMate_FullFRS_Disclosure_Requirements_1.xlsx, supplied
+# 2026-08-31. DRAFT per that file's own header - not yet reviewed by a
+# qualified Singapore practitioner. Ref column preserved as `ref` below;
+# never renumber a ref, it is the stable key the whole engine keys against.
+#
+# tick_state: always | tb_driven | manual
+#   always     - every engagement, cannot be unticked from here.
+#   tb_driven  - pre-ticked when any of trigger_keys carries a balance in
+#                EITHER this year or last year; hidden otherwise.
+#   manual     - unticked by default; the preparer opts in.
+# A piece's own tick_state can be stricter than its parent note's (a
+# TB-driven note can still hold a Manual piece that only appears if the
+# preparer opts into it specifically).
+#
+# output_form: narrative_paragraph | table | figure_in_note (drives which
+# editor the preparer sees for that piece).
+#
+# Numbering is NOT stored here. It is generated at render time from
+# whichever notes are enabled, in the order this file lists them - see
+# services/reports.py:note_number_map().
+#
+# Nine tb_driven items have no resolvable trigger_keys (contingent
+# liabilities, commitments, non-cash transactions, dividends, related party
+# transactions/balances, FX risk, concentration of risk, events after the
+# reporting period) - a trial balance account name alone cannot reveal these.
+# They default OFF like a Manual item until a better signal exists.
+
+- key: corporate_information
+  heading: Corporate information
+  tick_state: always
+  pieces:
+  - ref: CA-STRUCT-01
+    output_form: Narrative paragraph
+    tick_state: always
+    wording: |-
+      The Company is a private limited company incorporated and domiciled in the Republic of Singapore under the Companies Act.
+
+      The registered office is located at {{ customer.address }}.
+
+      The principal activities of the Company are those of <em>[describe principal activities]</em>. There have been no significant changes in these activities during the period.
+
+      The financial statements were approved and authorised for issue by the board of directors on the same date as per the directors' statement.
+    build_note: Structural, not in the 74-note tick list (a Companies Act requirement, not an FRS disclosure) - carried over unchanged from the existing template so it keeps first position.
+    requirement: State what the Company is, where it is registered, and what it does.
+
+- key: material_accounting_policy_information
+  heading: Material accounting policy information
+  tick_state: always
+  pieces:
+  - ref: F1-07
+    output_form: Narrative paragraph
+    tick_state: always
+    wording: |-
+      The accounting policies set out below have been applied consistently to all periods presented in these financial statements. Only accounting policy information that is material to an understanding of these financial statements has been disclosed.
+    build_note: This is the anchor for the whole policies section and for suppression logic.
+    requirement: Disclose material accounting policy information.
+  - ref: F1-08
+    output_form: Narrative paragraph
+    tick_state: always
+    wording: |-
+      Accounting policy information relating to transactions, other events or conditions that are not material to the Company has not been disclosed, so that material information is not obscured by immaterial information.
+    build_note: Authority for TB-driven suppression. Cite with FRS PS 2 paras 88B-88G.
+    requirement: |-
+      Omit accounting policy information relating to immaterial transactions, events or conditions, and do not let immaterial policy information obscure material policy information.
+  subsections:
+  - key: basis_of_preparation
+    heading: Basis of preparation
+    tick_state: always
+    pieces:
+    - ref: F1-01
+      output_form: Narrative paragraph
+      tick_state: always
+      wording: |-
+        The financial statements have been prepared in accordance with the provisions of the Companies Act 1967 and Financial Reporting Standards in Singapore ("FRS").
+      build_note: Opening compliance note. Wording must say FRS, not SFRS(I).
+      requirement: |-
+        State explicitly and without qualification that the financial statements comply with Financial Reporting Standards in Singapore.
+  - key: going_concern
+    heading: Going concern
+    tick_state: always
+    pieces:
+    - ref: F1-06
+      output_form: Narrative paragraph
+      tick_state: always
+      wording: |-
+        The financial statements have been prepared on a going concern basis. The directors have assessed the Company's ability to continue in operation for at least twelve months from the date these financial statements are authorised for issue, taking into account its cash flow forecasts and the continued support of its shareholders, and are satisfied that the Company has adequate resources to continue in operational existence for the foreseeable future.
+      build_note: Base paragraph always on. Material uncertainty paragraph is MANUAL.
+      requirement: |-
+        Confirm the going concern basis, and where material uncertainties exist, disclose them.
+  - key: changes_in_accounting_policies
+    heading: Changes in accounting policies
+    tick_state: manual
+    pieces:
+    - ref: F8-03
+      output_form: Narrative paragraph
+      tick_state: manual
+      wording: |-
+        During the financial year the Company changed its accounting policy for {SUBJECT}. The directors consider that the new policy provides reliable and more relevant information about the effect of the transactions concerned on the Company's financial position and financial performance. The change has been applied retrospectively and the comparative figures have been restated accordingly.
+      build_note: MANUAL trigger only.
+      requirement: |-
+        For a voluntary change in accounting policy, disclose the nature, the reason the new policy is more reliable and relevant, and the amount of the adjustment for each line item affected.
+  - key: new_and_amended_standards_adopted
+    heading: New and amended standards adopted
+    tick_state: always
+    pieces:
+    - ref: F8-01
+      output_form: Figure in note
+      tick_state: always
+      wording: Standard | Effect on the financial statements
+      build_note: Annual maintenance item. Table refreshed each year as amendments bite.
+      requirement: |-
+        On initial application of a standard, disclose its title, the nature of the change and the effect on the current and prior periods.
+  - key: standards_issued_but_not_yet_effective
+    heading: Standards issued but not yet effective
+    tick_state: always
+    pieces:
+    - ref: F8-02
+      output_form: Figure in note
+      tick_state: always
+      wording: Standard | Effective for annual periods beginning on or after
+      build_note: Annual maintenance item. Highest-churn note in the library.
+      requirement: |-
+        Disclose standards issued but not yet effective that have not been early adopted, with known or reasonably estimable information about their likely impact.
+  - key: functional_and_presentation_currency
+    heading: Functional and presentation currency
+    tick_state: always
+    pieces:
+    - ref: F21-01
+      output_form: Narrative paragraph
+      tick_state: always
+      wording: |-
+        The financial statements are presented in Singapore Dollars, which is also the Company's functional currency, and all values are rounded to the nearest dollar unless otherwise stated.
+      build_note: Usually SGD both; conditional paragraph where different.
+      requirement: |-
+        Disclose the functional currency and, where it differs from the presentation currency, the reason for using a different presentation currency.
+  - key: foreign_currency_translation
+    heading: Foreign currency translation
+    tick_state: always
+    pieces:
+    - ref: F21-02
+      output_form: Narrative paragraph
+      tick_state: always
+      tb_keys:
+      - cash_and_equivalents
+      wording: |-
+        Transactions in currencies other than the Company's functional currency are translated into the functional currency at the exchange rates prevailing at the dates of the transactions. At the end of each reporting period, monetary assets and liabilities denominated in foreign currencies are retranslated at the exchange rates prevailing at that date. Non-monetary items measured at historical cost are not retranslated. Exchange differences arising on settlement or on retranslation are recognised in profit or loss.
+      build_note: Suppress where no foreign currency balances or transactions.
+      requirement: |-
+        Disclose the policy for translating foreign currency transactions and monetary and non-monetary balances.
+  - key: impairment_of_non_financial_assets
+    heading: Impairment of non-financial assets
+    tick_state: tb_driven
+    trigger_keys:
+    - trade_receivables
+    pieces:
+    - ref: F36-01
+      output_form: Figure in note
+      tick_state: tb_driven
+      tb_keys:
+      - trade_receivables
+      wording: Impairment loss recognised, and the line item in which it is included
+      build_note: Suppress where no impairment charge.
+      requirement: |-
+        Disclose the amount of impairment losses recognised in profit or loss and the line item in which they are included.
+    - ref: F36-02
+      output_form: Figure in note
+      tick_state: manual
+      tb_keys:
+      - trade_receivables
+      wording: Reversal of impairment loss recognised
+      build_note: Rare.
+      requirement: |-
+        Disclose the amount of reversals of impairment losses recognised in profit or loss and the line item affected.
+    - ref: F36-03
+      output_form: Figure in note
+      tick_state: tb_driven
+      tb_keys:
+      - trade_receivables
+      wording: Carrying amount before impairment | Impairment loss | Recoverable amount
+      build_note: MANUAL narrative.
+      requirement: |-
+        For a material impairment, disclose the events and circumstances that led to it, the amount, and the basis on which recoverable amount was determined.
+    - ref: F36-04
+      output_form: Figure in note
+      tick_state: manual
+      tb_keys:
+      - trade_receivables
+      wording: Recoverable amount | Basis of measurement | Discount rate applied
+      build_note: See FRS PS 2 Example T on suppressing boilerplate impairment policy.
+      requirement: |-
+        Disclose the recoverable amount of the asset or cash-generating unit and whether it is fair value less costs of disposal or value in use, and where value in use is used, the discount rate applied in the current and previous estimates.
+  - key: financial_instruments
+    heading: Financial instruments
+    tick_state: always
+    pieces:
+    - ref: F109-01
+      output_form: Narrative paragraph
+      tick_state: always
+      tb_keys:
+      - trade_receivables
+      - cash_and_equivalents
+      wording: |-
+        Financial assets are classified at initial recognition on the basis of the Company's business model for managing them and their contractual cash flow characteristics. The Company's financial assets comprise trade and other receivables and cash and bank balances, all of which are held within a business model whose objective is to collect contractual cash flows, and whose contractual terms give rise on specified dates to cash flows that are solely payments of principal and interest. These assets are accordingly measured at amortised cost using the effective interest method, less any loss allowance.
+      build_note: Core policy note. See FRS PS 2 para 88F(a) on standardised policy text.
+      requirement: |-
+        Disclose the policy for classifying and measuring financial assets, reflecting the business model for managing them and their contractual cash flow characteristics.
+    - ref: F109-02
+      output_form: Narrative paragraph
+      tick_state: always
+      tb_keys:
+      - trade_receivables
+      - cash_and_equivalents
+      - long_term_borrowings
+      wording: |-
+        A financial asset is derecognised when the contractual rights to the cash flows from the asset expire, or when the asset is transferred and substantially all the risks and rewards of ownership pass to the transferee. A financial liability is derecognised when the obligation under the liability is discharged, cancelled or expires. Any difference between the carrying amount derecognised and the consideration received or paid is recognised in profit or loss.
+      build_note: Candidate for suppression where no derecognition events occurred.
+      requirement: Disclose the policy for derecognition of financial assets and liabilities.
+  - key: impairment_of_financial_assets
+    heading: Impairment of financial assets
+    tick_state: always
+    pieces:
+    - ref: F109-03
+      output_form: Narrative paragraph
+      tick_state: always
+      tb_keys:
+      - trade_receivables
+      wording: |-
+        The Company recognises a loss allowance for expected credit losses on financial assets measured at amortised cost. A financial asset is considered to be in default when the counterparty fails to make a contractual payment within 90 days of the date on which it falls due, or when information becomes available indicating that the counterparty is unlikely to pay its obligations in full. Financial assets are written off when there is no reasonable expectation of recovery, and amounts subsequently recovered are recognised in profit or loss.
+      build_note: Simplified approach for trade receivables in virtually all SME sets.
+      requirement: |-
+        Disclose the expected credit loss approach applied, whether the simplified or general approach, the definition of default and the write-off policy.
+  - key: loss_allowance
+    heading: Loss allowance
+    tick_state: manual
+    pieces:
+    - ref: F107-22
+      output_form: Figure in note
+      tick_state: manual
+      tb_keys:
+      - trade_receivables
+      - cash_and_equivalents
+      wording: |-
+        Loss allowance on financial assets measured at fair value through other comprehensive income
+      build_note: Rare in SME sets but a presentation trap where FVOCI assets exist.
+      requirement: |-
+        Where financial assets are measured at fair value through other comprehensive income, do not reduce the carrying amount by the loss allowance or present the allowance separately in the statement of financial position, but disclose the loss allowance in the notes.
+    - ref: F107-09
+      output_form: Table
+      tick_state: tb_driven
+      tb_keys:
+      - trade_receivables
+      wording: 'Loss allowance: at 1 January, charge for the year, written off, at 31 December'
+      build_note: 'Table shape: opening, charge, write-off, closing.'
+      requirement: |-
+        Provide a reconciliation of the loss allowance from the opening to the closing balance, by class of financial instrument.
+  - key: government_grants
+    heading: Government grants
+    tick_state: tb_driven
+    trigger_keys:
+    - other_income
+    pieces:
+    - ref: F20-01
+      output_form: Narrative paragraph
+      tick_state: tb_driven
+      tb_keys:
+      - other_income
+      wording: |-
+        Government grants are recognised only when there is reasonable assurance that the Company will comply with the conditions attaching to them and that the grants will be received. Grants that compensate the Company for expenses incurred are recognised in profit or loss on a systematic basis over the periods in which the related expenses are recognised, and are presented within other income.
+      build_note: Relevant for Singapore wage and training support schemes.
+      requirement: |-
+        Disclose the accounting policy for government grants, including the method of presentation adopted.
+    - ref: F20-02
+      output_form: Narrative paragraph
+      tick_state: tb_driven
+      tb_keys:
+      - other_income
+      wording: |-
+        During the financial year the Company recognised government grants of ${AMOUNT} (previous year: ${AMOUNT}) under government support schemes. There are no unfulfilled conditions or other contingencies attaching to these grants.
+      build_note: Suppress where no grant income account is mapped.
+      requirement: |-
+        Disclose the nature and extent of grants recognised, and any unfulfilled conditions or contingencies attaching.
+  - key: comparative_information
+    heading: Comparative information
+    tick_state: manual
+    pieces:
+    - ref: F1-21
+      output_form: Narrative paragraph
+      tick_state: manual
+      wording: |-
+        Certain comparative figures have been reclassified to conform with the current year's presentation. The reclassification has no effect on the profit reported for the previous financial year or on total equity at the end of that year.
+      build_note: MANUAL trigger only.
+      requirement: |-
+        Where comparative amounts are reclassified, disclose the nature, amount and reason for the reclassification.
+  - key: goods_and_services_tax
+    heading: Goods and services tax
+    tick_state: always
+    pieces:
+    - ref: F1-32
+      output_form: Narrative paragraph
+      tick_state: always
+      wording: |-
+        Revenue, expenses and assets are recognised net of goods and services tax, except where the goods and services tax incurred on a purchase of assets or services is not recoverable from the taxation authority, in which case it is recognised as part of the cost of acquisition of the asset or as part of the expense item. Receivables and payables are stated inclusive of goods and services tax. The net amount recoverable from, or payable to, the taxation authority is included within receivables or payables in the statement of financial position.
+      build_note: Singapore-specific policy sub-section. Appears in observed practice but has no direct
+        FRS paragraph of its own; sits under the material accounting policy requirement.
+      requirement: |-
+        Disclose the policy for accounting for goods and services tax, being that revenue, expenses and assets are recognised net of GST except where the GST incurred is not recoverable from the taxation authority, and that the net amount recoverable from or payable to the authority is included within receivables or payables.
+- key: significant_accounting_judgements_and_estimates
+  heading: Significant accounting judgements and estimates
+  tick_state: always
+  pieces:
+  - ref: F1-31
+    output_form: Narrative paragraph
+    tick_state: always
+    wording: |-
+      The preparation of financial statements requires management to exercise judgement in applying the Company's accounting policies, and to make estimates and assumptions about the future. The judgements and estimates considered most significant are set out below.
+    build_note: Container note. Carries a short lead-in; the judgements and estimates disclosures sit
+      under it as sub-sections.
+    requirement: |-
+      Disclose the judgements and the estimation uncertainties that management has applied in preparing the financial statements.
+  subsections:
+  - key: critical_judgements_in_applying_accounting_policies
+    heading: Critical judgements in applying accounting policies
+    tick_state: always
+    pieces:
+    - ref: F1-09
+      output_form: Narrative paragraph
+      tick_state: always
+      wording: |-
+        In applying the Company's accounting policies, management has made judgements which have a significant effect on the amounts recognised in these financial statements. The judgement considered most significant is the assessment of whether the Company acts as principal or agent in its revenue arrangements, which determines whether revenue is recognised gross or net of amounts payable to suppliers. Management has concluded that the Company acts as principal because it controls the goods or services before they are transferred to the customer, bears the inventory risk and has discretion in establishing prices.
+      build_note: Judgements section. Pre-tick a default set, allow manual add.
+      requirement: |-
+        Disclose the judgements management made in applying accounting policies that have the most significant effect on recognised amounts.
+    - ref: F115-07
+      output_form: Narrative paragraph
+      tick_state: always
+      wording: |-
+        In determining the amount and timing of revenue recognition, management has made judgements as to the point at which control of the goods transfers to the customer, and as to the method used to measure progress towards complete satisfaction of performance obligations that are satisfied over time.
+      build_note: Links to the judgements section under FRS 1 para 122.
+      requirement: |-
+        Disclose the significant judgements made in determining the timing of satisfaction of performance obligations and the transaction price.
+  - key: key_sources_of_estimation_uncertainty
+    heading: Key sources of estimation uncertainty
+    tick_state: always
+    pieces:
+    - ref: F1-10
+      output_form: Narrative paragraph
+      tick_state: always
+      wording: |-
+        The preparation of financial statements requires management to make estimates and assumptions that affect the reported amounts of assets, liabilities, income and expenses. Estimates and underlying assumptions are reviewed on an ongoing basis, and revisions are recognised in the period in which the estimate is revised. The key sources of estimation uncertainty at the end of the reporting period that carry a significant risk of resulting in a material adjustment to the carrying amounts of assets and liabilities within the next financial year are the estimation of the useful lives of property, plant and equipment and the measurement of the allowance for expected credit losses on trade receivables.
+      build_note: 'Estimates section. Typical set: useful lives, ECL, inventory provision, tax.'
+      requirement: |-
+        Disclose assumptions about the future and other major sources of estimation uncertainty carrying a significant risk of material adjustment within the next year.
+- key: revenue
+  heading: Revenue
+  tick_state: always
+  pieces:
+  - ref: F115-02
+    output_form: Narrative paragraph
+    tick_state: always
+    tb_keys:
+    - revenue
+    wording: |-
+      Revenue from the sale of goods is recognised when the Company satisfies its performance obligation by transferring control of the goods to the customer, which occurs on delivery. Payment is due within 60 days of invoicing. Revenue from the rendering of services is recognised as the services are performed and the customer simultaneously receives and consumes the benefits provided, with payment due within 30 days of invoicing.
+    build_note: Entity-specific wording required; boilerplate is a known reviewer flag.
+    requirement: |-
+      For each major revenue stream, describe the nature of the goods or services, when performance obligations are satisfied, and the significant payment terms.
+  - ref: F115-03
+    output_form: Narrative paragraph
+    tick_state: always
+    tb_keys:
+    - revenue
+    wording: |-
+      Revenue from the sale of goods is recognised at the point in time at which control of the goods transfers to the customer. Revenue from the rendering of services is recognised over time, with progress towards complete satisfaction of the performance obligation measured by reference to the services performed to date as a proportion of the total services to be performed under the contract.
+    build_note: Drives the disaggregation table's timing split.
+    requirement: |-
+      Disclose whether revenue is recognised at a point in time or over time and, where over time, the method used to measure progress.
+  - ref: F115-10
+    output_form: Narrative paragraph
+    tick_state: manual
+    wording: |-
+      The Company has applied the practical expedient available under FRS 115 and has not disclosed the transaction price allocated to remaining performance obligations for contracts with an original expected duration of one year or less.
+    build_note: Commonly the one-year expedient on remaining performance obligations.
+    requirement: Disclose which practical expedients have been applied.
+  - ref: F115-01
+    output_form: Table
+    tick_state: always
+    tb_keys:
+    - revenue
+    wording: |-
+      Types of goods and services | Timing of transfer: at a point in time, over time | Total revenue
+    build_note: 'Table shape: by revenue stream, by timing of transfer.'
+    requirement: |-
+      Disaggregate revenue into categories depicting how the nature, amount, timing and uncertainty of revenue and cash flows are affected by economic factors.
+- key: contract_balances
+  heading: Contract balances
+  tick_state: tb_driven
+  trigger_keys:
+  - contract_assets
+  - contract_liabilities
+  pieces:
+  - ref: F115-04
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    tb_keys:
+    - contract_assets
+    - contract_liabilities
+    wording: |-
+      Contract liabilities represent consideration received from customers in advance of the Company satisfying the related performance obligations, and are recognised as revenue when those obligations are satisfied. Contract assets represent the Company's right to consideration for work performed but not yet billed at the end of the reporting period.
+    build_note: Suppress where no contract asset or liability accounts are mapped.
+    requirement: |-
+      Disclose the opening and closing balances of receivables, contract assets and contract liabilities, and explain significant changes.
+  - ref: F115-05
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - contract_liabilities
+    wording: |-
+      Revenue recognised that was included in the contract liability balance at the beginning of the year
+    build_note: Derived by comparing the opening contract liability with the amount released to revenue
+      in the period.
+    requirement: |-
+      Disclose revenue recognised in the period that was included in the contract liability balance at the beginning of the period.
+- key: contract_costs
+  heading: Contract costs
+  tick_state: manual
+  pieces:
+  - ref: F115-09
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - contract_assets
+    wording: |-
+      Costs to obtain a contract | Costs to fulfil a contract | Amortisation for the year | Closing balance
+    build_note: Rare.
+    requirement: |-
+      Disclose costs capitalised to obtain or fulfil a contract, the amortisation method and the closing balance by asset type.
+- key: remaining_performance_obligations
+  heading: Remaining performance obligations
+  tick_state: manual
+  pieces:
+  - ref: F115-06
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - contract_liabilities
+    wording: |-
+      Transaction price allocated to remaining performance obligations | Expected timing of recognition
+    build_note: Practical expedients often available; see F115-10.
+    requirement: |-
+      Disclose the transaction price allocated to remaining performance obligations and when it is expected to be recognised as revenue.
+- key: other_income
+  heading: Other income
+  tick_state: tb_driven
+  trigger_keys:
+  - other_income
+  - trade_receivables
+  pieces:
+  - ref: F21-03
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - other_income
+    wording: Net foreign exchange gain or loss
+    build_note: Auto-populated from mapped FX accounts.
+    requirement: Disclose the amount of exchange differences recognised in profit or loss.
+  - ref: F107-04
+    output_form: Figure in note
+    tick_state: tb_driven
+    wording: Net gains or losses on financial assets at amortised cost
+    build_note: Often immaterial in an SME set; candidate for suppression.
+    requirement: |-
+      Disclose net gains or losses on each category of financial asset and financial liability.
+  - ref: F107-06
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - trade_receivables
+    wording: Net gains or losses on financial assets measured at amortised cost
+    build_note: The impairment line requirement is FRS 1 para 82(ba) - see PS-PL-08 - and the allowance
+      reconciliation is FRS 107 para 35H.
+    requirement: Disclose net gains or net losses on financial assets measured at amortised cost.
+- key: administrative_and_other_expenses
+  heading: Administrative and other expenses
+  tick_state: tb_driven
+  trigger_keys:
+  - depreciation
+  - staff_salaries
+  pieces:
+  - ref: F1-17
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - depreciation
+    - staff_salaries
+    wording: Depreciation | Amortisation | Employee benefits expense
+    build_note: Conditional on the presentation format chosen at client level.
+    requirement: |-
+      Where expenses are presented by function, additionally disclose depreciation, amortisation and employee benefits expense.
+- key: finance_costs
+  heading: Finance costs
+  tick_state: manual
+  pieces:
+  - ref: F23-01
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - interest_expense
+    wording: Borrowing costs capitalised during the year
+    build_note: Rare in SME sets. MANUAL.
+    requirement: Disclose the amount of borrowing costs capitalised during the period.
+  - ref: F23-02
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - interest_expense
+    wording: Capitalisation rate applied
+    build_note: MANUAL.
+    requirement: |-
+      Disclose the capitalisation rate used to determine borrowing costs eligible for capitalisation.
+  - ref: F107-05
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - interest_expense
+    - interest_income
+    wording: |-
+      Interest income calculated using the effective interest method | Interest expense on financial liabilities not at fair value through profit or loss
+    build_note: Wording tightened - the standard specifies the effective interest method and requires
+      the asset amounts shown separately.
+    requirement: |-
+      Disclose total interest revenue and total interest expense calculated using the effective interest method for financial assets measured at amortised cost or at fair value through other comprehensive income, shown separately, and for financial liabilities not measured at fair value through profit or loss.
+  - ref: F107-21
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - other_income
+    wording: |-
+      Fee income | Fee expense, other than amounts included in the effective interest rate
+    build_note: Commonly bank charges and facility fees in an SME set.
+    requirement: |-
+      Disclose fee income and expense, other than amounts included in determining the effective interest rate, arising from financial assets and liabilities not at fair value through profit or loss.
+  - ref: F116-03
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - lease_liabilities
+    wording: Interest expense on lease liabilities
+    build_note: Feeds the FRS 116 para 54 lease table and the finance costs note. Do not double count
+      between the two.
+    requirement: Disclose interest expense on lease liabilities.
+- key: profit_before_tax
+  heading: Profit before tax
+  tick_state: always
+  pieces:
+  - ref: F1-18
+    output_form: Narrative paragraph
+    tick_state: always
+    wording: |-
+      Included in administrative and other expenses is {ITEM} of ${AMOUNT} (previous year: ${AMOUNT}). The amount has been disclosed separately because of its size and nature.
+    build_note: Manual identification; cannot be derived from TB alone.
+    requirement: |-
+      Separately disclose the nature and amount of material items of income or expense.
+- key: income_tax_expense
+  heading: Income tax expense
+  tick_state: always
+  pieces:
+  - ref: F12-05
+    output_form: Narrative paragraph
+    tick_state: always
+    wording: |-
+      Income tax is calculated at the Singapore statutory rate of 17% of the estimated assessable profit for the financial year, after taking account of the partial tax exemption available to the Company under the Income Tax Act 1947.
+    build_note: Singapore headline rate; update annually.
+    requirement: |-
+      Disclose the applicable tax rate used and explain any change from the previous period.
+  - ref: F12-01
+    output_form: Table
+    tick_state: always
+    wording: |-
+      Current income tax | Under or over provision in respect of prior years | Deferred tax | Income tax expense
+    build_note: 'Table shape: current year, under/over provision, deferred, total.'
+    requirement: |-
+      Disclose the major components of tax expense, including current tax, deferred tax and adjustments for prior periods.
+  - ref: F12-02
+    output_form: Table
+    tick_state: always
+    wording: |-
+      Profit before tax | Tax at the statutory rate of 17% | Non-deductible expenses | Income not subject to tax | Tax exemption and rebates | Under or over provision in prior years | Income tax expense
+    build_note: Include Singapore partial exemption and tax exemption for new companies.
+    requirement: |-
+      Provide a reconciliation between tax expense and the product of accounting profit and the applicable tax rate.
+- key: deferred_tax_liabilities
+  heading: Deferred tax liabilities
+  tick_state: tb_driven
+  trigger_keys:
+  - deferred_tax
+  pieces:
+  - ref: F12-03
+    output_form: Table
+    tick_state: tb_driven
+    tb_keys:
+    - deferred_tax
+    wording: |-
+      At the beginning of the year | Charged or credited to profit or loss | At the end of the year
+    build_note: 'Table shape: opening, charge to P&L, closing, by category.'
+    requirement: |-
+      Disclose the amount of deferred tax assets and liabilities recognised, analysed by type of temporary difference.
+  - ref: F12-04
+    output_form: Figure in note
+    tick_state: tb_driven
+    wording: |-
+      Unutilised tax losses | Unabsorbed capital allowances | Deductible temporary differences
+    build_note: Not derivable from TB. Requires a tax computation input field.
+    requirement: |-
+      Disclose deductible temporary differences and unused tax losses for which no deferred tax asset is recognised, with expiry dates where applicable.
+  - ref: F12-06
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - investments
+    wording: Temporary differences relating to investments in subsidiaries
+    build_note: Rare in a standalone SME set.
+    requirement: |-
+      Disclose temporary differences associated with investments in subsidiaries for which no deferred tax liability has been recognised.
+- key: property_plant_and_equipment
+  heading: Property, plant and equipment
+  tick_state: always
+  pieces:
+  - ref: F16-01
+    output_form: Narrative paragraph
+    tick_state: always
+    tb_keys:
+    - ppe
+    wording: |-
+      All items of property, plant and equipment are initially recorded at cost, comprising the purchase price and any costs directly attributable to bringing the asset to the location and condition necessary for it to operate in the manner intended by management. Subsequent to recognition, property, plant and equipment are measured at cost less accumulated depreciation and any accumulated impairment losses. Subsequent expenditure is capitalised only where it is probable that future economic benefits will flow to the Company and the cost can be measured reliably; all other repairs and maintenance are recognised in profit or loss as incurred. The carrying values of property, plant and equipment are reviewed for impairment whenever events or changes in circumstances indicate that the carrying value may not be recoverable.
+    build_note: Cost model in almost all SME sets.
+    requirement: Disclose the measurement bases used for determining gross carrying amount.
+  - ref: F16-02
+    output_form: Narrative paragraph
+    tick_state: always
+    tb_keys:
+    - ppe
+    wording: |-
+      Depreciation of an asset begins when it is available for use and is computed on a straight-line basis over the estimated useful life of the asset, writing off its cost less any estimated residual value. Depreciation ceases at the earlier of the date the asset is classified as held for sale and the date it is derecognised. Fully depreciated assets are retained in the financial statements until they are no longer in use.
+    build_note: Straight line in almost all SME sets.
+    requirement: Disclose the depreciation methods used.
+  - ref: F16-03
+    output_form: Narrative + table
+    tick_state: always
+    tb_keys:
+    - ppe
+    wording: |-
+      The estimated useful lives applied to each class of asset are set out below. Residual values, useful lives and depreciation methods are reviewed at the end of each reporting period and adjusted prospectively where expectations differ from previous estimates.
+    build_note: 'Table shape: class, years. Client-level, carried forward.'
+    requirement: Disclose the useful lives or depreciation rates used, by class of asset.
+  - ref: F16-04
+    output_form: Figure in note
+    tick_state: always
+    tb_keys:
+    - ppe
+    wording: |-
+      Cost at the beginning and end of the year | Accumulated depreciation at the beginning and end of the year
+    build_note: Part of the movement schedule.
+    requirement: |-
+      Disclose gross carrying amount and accumulated depreciation at the beginning and end of the period.
+  - ref: F16-05
+    output_form: Table
+    tick_state: always
+    tb_keys:
+    - ppe
+    wording: |-
+      Cost: at 1 January, additions, disposals, write-offs, at 31 December | Accumulated depreciation: at 1 January, charge for the year, disposals, write-offs, at 31 December | Net carrying amount
+    build_note: The single largest table in a typical SME set. Needs class-level TB detail.
+    requirement: |-
+      Provide a reconciliation of the carrying amount at the beginning and end of the period showing additions, disposals, depreciation, impairment and other movements.
+  - ref: F16-08
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - other_income
+    wording: Compensation received from third parties for items impaired or lost
+    build_note: Rare.
+    requirement: |-
+      Disclose compensation from third parties for items impaired, lost or given up, where not presented separately.
+  - ref: F16-10
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - ppe
+    wording: Carrying amount of temporarily idle assets | Assets retired from active use
+    build_note: Encouraged, not required, alongside para 79(b).
+    requirement: |-
+      Consider disclosing the carrying amount of temporarily idle assets, assets retired from active use and not held for sale, and where the cost model is used, the fair value of property, plant and equipment where materially different from carrying amount.
+  - ref: F16-09
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - ppe
+    wording: Gross carrying amount of fully depreciated assets still in use
+    build_note: Encouraged, not required. Common in Singapore SME practice.
+    requirement: |-
+      Consider disclosing the gross carrying amount of fully depreciated assets still in use.
+- key: investment_property
+  heading: Investment property
+  tick_state: manual
+  pieces:
+  - ref: F40-01
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - investment_property
+    wording: |-
+      Investment property is measured initially at cost, including transaction costs. Subsequent to initial recognition, investment property is measured at cost less accumulated depreciation and any accumulated impairment losses, consistent with the accounting policy applied to property, plant and equipment.
+    build_note: Model choice is client-level and locks the subsequent measurement for all investment property.
+    requirement: Disclose whether the fair value model or the cost model is applied.
+  - ref: F40-02
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - investment_property
+    wording: Fair value | Valuation technique | Name and qualification of the valuer
+    build_note: MANUAL.
+    requirement: |-
+      Where fair value is used, disclose the methods and significant assumptions applied, and the extent to which an independent professional valuer was involved.
+  - ref: F40-03
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - other_income
+    wording: |-
+      Rental income from investment property | Direct operating expenses arising from investment property
+    build_note: Rental income and the related direct operating expenses must be shown separately, not
+      netted.
+    requirement: |-
+      Disclose rental income from investment property and the direct operating expenses arising from it.
+  - ref: F40-04
+    output_form: Table
+    tick_state: manual
+    tb_keys:
+    - investment_property
+    wording: At 1 January | Additions | Depreciation | At 31 December
+    build_note: Reuse PPE movement table shape.
+    requirement: |-
+      Provide a reconciliation of the carrying amount of investment property at the beginning and end of the period.
+- key: intangible_assets
+  heading: Intangible assets
+  tick_state: manual
+  pieces:
+  - ref: F38-01
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - intangible_assets
+    wording: |-
+      Intangible assets acquired separately are measured at cost on initial recognition. Following initial recognition, intangible assets are carried at cost less accumulated amortisation and any accumulated impairment losses. The useful lives of the Company's intangible assets, which comprise computer software, are assessed as finite and are estimated to be three years.
+    build_note: Commonly software licences in an SME set.
+    requirement: |-
+      For each class of intangible asset, disclose whether useful lives are finite or indefinite, and the useful lives or amortisation rates used.
+  - ref: F38-02
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - intangible_assets
+    wording: |-
+      Intangible assets with finite useful lives are amortised on a straight-line basis over their estimated useful lives. The amortisation charge is recognised in profit or loss within administrative and other expenses. The amortisation period and the amortisation method are reviewed at least at the end of each reporting period, and any change is accounted for prospectively as a change in an accounting estimate.
+    build_note: Reuse the amortisation component of the PPE depreciation logic; the mechanics are identical.
+    requirement: |-
+      Disclose the amortisation methods used and the line item in which amortisation is included.
+  - ref: F38-03
+    output_form: Table
+    tick_state: manual
+    tb_keys:
+    - intangible_assets
+    wording: |-
+      Cost: at 1 January, additions, at 31 December | Accumulated amortisation: at 1 January, charge for the year, at 31 December | Net carrying amount
+    build_note: Same table shape as PPE movement schedule; reuse the component.
+    requirement: |-
+      Provide a reconciliation of the carrying amount at the beginning and end of the period.
+- key: investments_in_subsidiaries
+  heading: Investments in subsidiaries
+  tick_state: manual
+  pieces:
+  - ref: F27-03
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - investments
+    wording: |-
+      Investments in subsidiaries are stated in the Company's financial statements at cost less any accumulated impairment losses. The carrying amount of each investment is reviewed for impairment whenever events or changes in circumstances indicate that it may not be recoverable, and an impairment loss is recognised in profit or loss where the carrying amount exceeds the recoverable amount.
+    build_note: Cost less impairment in almost all cases.
+    requirement: |-
+      Disclose the measurement basis for investments in subsidiaries, joint ventures and associates in separate financial statements - at cost, in accordance with FRS 109, or using the equity method - and any impairment recognised.
+  - ref: F27-01
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - investments
+    wording: |-
+      The Company is a wholly owned subsidiary of {PARENT}, incorporated in {COUNTRY}, which is also the Company's ultimate holding company. Consolidated financial statements have not been prepared as the Company is itself a wholly owned subsidiary. Consolidated financial statements complying with Financial Reporting Standards are prepared by the holding company and are available to the public at {ADDRESS}.
+    build_note: Relevant where the client is an intermediate holding company.
+    requirement: |-
+      Where a parent is exempt from preparing consolidated financial statements, disclose that fact, the reason, and the name and address of the parent that produces consolidated financial statements.
+  - ref: F27-02
+    output_form: Table
+    tick_state: manual
+    tb_keys:
+    - investments
+    wording: |-
+      Name of entity | Country of incorporation | Principal activity | Proportion of ownership interest
+    build_note: 'Table shape: name, country, principal activity, holding percentage.'
+    requirement: |-
+      List significant investments in subsidiaries, joint ventures and associates, including name, principal place of business and proportion of ownership.
+- key: inventories
+  heading: Inventories
+  tick_state: tb_driven
+  trigger_keys:
+  - inventories
+  pieces:
+  - ref: F2-01
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    tb_keys:
+    - inventories
+    wording: |-
+      Inventories are stated at the lower of cost and net realisable value. The cost incurred in bringing inventories to their present location and condition is accounted for as follows: raw materials, at purchase cost on a weighted average basis; and finished goods and work in progress, at the cost of direct materials and labour together with a proportion of manufacturing overheads based on normal operating capacity, assigned on a weighted average basis. Where necessary, an allowance is made for damaged, obsolete and slow-moving items to reduce the carrying value of inventories to the lower of cost and net realisable value. Net realisable value is the estimated selling price in the ordinary course of business, less the estimated costs of completion and the estimated costs necessary to make the sale.
+    build_note: FIFO or weighted average; must be selectable per client.
+    requirement: Disclose the accounting policy for inventories, including the cost formula used.
+  - ref: F2-02
+    output_form: Table
+    tick_state: tb_driven
+    tb_keys:
+    - inventories
+    wording: Raw materials | Work in progress | Finished goods | Total inventories
+    build_note: 'Table shape: raw materials, WIP, finished goods.'
+    requirement: |-
+      Disclose the total carrying amount of inventories and the amounts held in classifications appropriate to the entity.
+  - ref: F2-03
+    output_form: Figure in note
+    tick_state: tb_driven
+    wording: Inventories recognised as an expense in cost of sales
+    build_note: Usually equals cost of sales; confirm mapping.
+    requirement: Disclose the amount of inventories recognised as an expense during the period.
+  - ref: F2-04
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - inventories
+    wording: |-
+      Allowance for inventory obsolescence: at 1 January, charge for the year, written off, at 31 December
+    build_note: Suppress where no provision account movement.
+    requirement: |-
+      Disclose write-downs of inventories, any reversals, and the circumstances leading to them.
+  - ref: F2-06
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - inventories
+    wording: Inventories carried at fair value less costs to sell
+    build_note: Rare outside commodity broker-traders.
+    requirement: |-
+      Disclose the carrying amount of inventories carried at fair value less costs to sell.
+- key: provisions
+  heading: Provisions
+  tick_state: tb_driven
+  trigger_keys:
+  - provisions
+  pieces:
+  - ref: F37-06
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    tb_keys:
+    - provisions
+    wording: |-
+      Provisions are recognised when the Company has a present obligation, legal or constructive, as a result of a past event, it is probable that an outflow of resources embodying economic benefits will be required to settle the obligation, and the amount of the obligation can be estimated reliably. Provisions are reviewed at the end of each reporting period and adjusted to reflect the current best estimate. Where it is no longer probable that an outflow will be required, the provision is reversed. Where the effect of the time value of money is material, provisions are discounted using a current pre-tax rate that reflects, where appropriate, the risks specific to the liability, and the increase in the provision arising from the passage of time is recognised as a finance cost.
+    build_note: Policy sub-section. Observed practice pairs this with a named provision such as reinstatement
+      cost.
+    requirement: |-
+      Disclose the policy for recognising provisions, being the criteria for recognition, the basis of measurement, the requirement to review at each reporting date, and the treatment where the effect of discounting is material.
+  - ref: F37-01
+    output_form: Table
+    tick_state: tb_driven
+    tb_keys:
+    - provisions
+    wording: |-
+      At 1 January | Provision made during the year | Amounts utilised | Unused amounts reversed | At 31 December
+    build_note: Table shape by class of provision.
+    requirement: |-
+      For each class of provision, provide a reconciliation showing opening balance, additions, amounts used, unused amounts reversed and closing balance.
+  - ref: F37-02
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    tb_keys:
+    - provisions
+    wording: |-
+      The provision for reinstatement cost represents the estimated cost of restoring the Company's leased premises to their original condition at the end of the lease term, as required by the terms of the lease agreements. The obligation is expected to be settled at the expiry of the respective leases. The amount recognised is management's best estimate of the expenditure required, and is subject to uncertainty as to the eventual condition of the premises and the cost of restoration work at the time it is carried out.
+    build_note: Narrative paragraph per class.
+    requirement: |-
+      For each class of provision, describe the nature of the obligation, the expected timing of outflows, and the uncertainties involved.
+  - ref: F37-05
+    output_form: Figure in note
+    tick_state: manual
+    wording: Reimbursement receivable recognised as an asset
+    build_note: MANUAL.
+    requirement: |-
+      Disclose the amount of any expected reimbursement, and the asset recognised for it.
+  - ref: F115-08
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - provisions
+    wording: Provision for returns, refunds and warranties
+    build_note: MANUAL.
+    requirement: |-
+      Disclose obligations for returns, refunds, warranties and other similar obligations.
+- key: employee_benefit_costs
+  heading: Employee benefit costs
+  tick_state: tb_driven
+  trigger_keys:
+  - accruals
+  pieces:
+  - ref: F19-03
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    tb_keys:
+    - accruals
+    wording: |-
+      (a) Defined contribution plans. The Company makes contributions to the Central Provident Fund scheme in Singapore, a defined contribution pension scheme. Contributions to defined contribution pension schemes are recognised as an expense in the period in which the related service is performed. (b) Employee leave entitlement. Employee entitlements to annual leave are recognised as a liability when they accrue to employees. A liability is recognised for leave earned in respect of services rendered by employees up to the end of the reporting period, and for bonuses where the Company has a present legal or constructive obligation to pay and the amount can be estimated reliably.
+    build_note: Suppress where no leave accrual is recognised.
+    requirement: |-
+      Disclose the policy for accrued leave and other short-term accumulating benefits.
+  - ref: F19-01
+    output_form: Figure in note
+    tick_state: always
+    tb_keys:
+    - staff_salaries
+    wording: Salaries and bonuses | Other benefits | Total employee benefit costs
+    build_note: Staff cost breakdown table.
+    requirement: |-
+      Recognise and disclose short-term employee benefits, including the expense for the period.
+  - ref: F19-02
+    output_form: Figure in note
+    tick_state: always
+    tb_keys:
+    - cpf
+    wording: Contributions to Central Provident Fund
+    build_note: Central Provident Fund contributions in a Singapore set.
+    requirement: Disclose the amount recognised as an expense for defined contribution plans.
+- key: leases
+  heading: Leases
+  tick_state: tb_driven
+  trigger_keys:
+  - lease_liabilities
+  pieces:
+  - ref: F116-04
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - lease_liabilities
+    wording: Expenses relating to short-term leases
+    build_note: Feeds the FRS 116 para 54 lease table. Short-term lease expense is an expense, not part
+      of the lease liability.
+    requirement: Disclose the expense relating to short-term leases.
+  - ref: F116-05
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - lease_liabilities
+    wording: Expenses relating to leases of low-value assets
+    build_note: Feeds the FRS 116 para 54 lease table. Low-value election is made per class of asset and
+      is a client-level setting.
+    requirement: Disclose the expense relating to leases of low-value assets.
+  - ref: F116-06
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - lease_liabilities
+    wording: Expenses relating to variable lease payments not included in lease liabilities
+    build_note: Feeds the FRS 116 para 54 lease table. Variable payments not linked to an index are excluded
+      from the lease liability.
+    requirement: |-
+      Disclose the expense relating to variable lease payments not included in lease liabilities.
+  - ref: F116-07
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - lease_liabilities
+    wording: Total cash outflow for leases
+    build_note: Links to the cash flow statement.
+    requirement: Disclose the total cash outflow for leases.
+  - ref: F116-10
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - other_income
+    wording: Income from subleasing right-of-use assets
+    build_note: MANUAL.
+    requirement: Disclose income from subleasing right-of-use assets.
+  - ref: F116-11
+    output_form: Figure in note
+    tick_state: manual
+    wording: Gain or loss arising from sale and leaseback transactions
+    build_note: MANUAL.
+    requirement: Disclose gains or losses arising from sale and leaseback transactions.
+- key: right_of_use_assets
+  heading: Right-of-use assets
+  tick_state: tb_driven
+  trigger_keys:
+  - right_of_use_assets
+  pieces:
+  - ref: F116-01
+    output_form: Table
+    tick_state: tb_driven
+    tb_keys:
+    - right_of_use_assets
+    wording: Right-of-use assets by class of underlying asset | Net carrying amount
+    build_note: 'Table shape by class: property, motor vehicles, equipment.'
+    requirement: |-
+      Disclose the carrying amount of right-of-use assets at the end of the period, by class of underlying asset.
+  - ref: F116-02
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - right_of_use_assets
+    wording: Depreciation of right-of-use assets, by class of underlying asset
+    build_note: Feeds the FRS 116 para 54 lease table. Split by class of underlying asset, matching the
+      ROU asset classes.
+    requirement: |-
+      Disclose the depreciation charge for right-of-use assets by class of underlying asset.
+  - ref: F116-08
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - right_of_use_assets
+    wording: Additions to right-of-use assets during the year
+    build_note: Also feeds the FRS 7 non-cash transactions disclosure.
+    requirement: Disclose additions to right-of-use assets during the period.
+- key: lease_liabilities
+  heading: Lease liabilities
+  tick_state: tb_driven
+  trigger_keys:
+  - lease_liabilities
+  pieces:
+  - ref: F116-12
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    tb_keys:
+    - lease_liabilities
+    wording: |-
+      At inception of a contract the Company assesses whether the contract is, or contains, a lease. The lease term comprises the non-cancellable period of the lease, together with periods covered by an option to extend the lease where the Company is reasonably certain to exercise that option and periods covered by an option to terminate the lease where the Company is reasonably certain not to exercise that option. Lease liabilities are measured at the present value of the lease payments remaining at the commencement date, discounted using the Company's incremental borrowing rate because the interest rate implicit in the lease is not readily determinable.
+    build_note: Rate is a client-level input, not derivable from TB.
+    requirement: |-
+      Disclose the policy and judgements applied in determining the lease term and the incremental borrowing rate used.
+  - ref: F116-09
+    output_form: Table
+    tick_state: tb_driven
+    tb_keys:
+    - lease_liabilities
+    wording: |-
+      Within 1 year | 1 to 5 years | More than 5 years | Total undiscounted lease payments | Lease liabilities recognised
+    build_note: Must reconcile with the FRS 107 liquidity table.
+    requirement: |-
+      Provide a maturity analysis of lease liabilities separately from other financial liabilities.
+- key: leases_as_lessor
+  heading: Leases as lessor
+  tick_state: manual
+  pieces:
+  - ref: F116-13
+    output_form: Table
+    tick_state: manual
+    wording: Lease income | Maturity analysis of lease payments receivable
+    build_note: Rare in SME sets.
+    requirement: |-
+      Where the entity is a lessor, disclose lease income and a maturity analysis of lease payments receivable.
+- key: trade_receivables
+  heading: Trade receivables
+  tick_state: always
+  pieces:
+  - ref: F107-20
+    output_form: Figure in note
+    tick_state: always
+    tb_keys:
+    - trade_receivables
+    wording: Carrying amount of transferred assets | Associated liabilities
+    build_note: MANUAL. Relevant where invoice financing is used.
+    requirement: |-
+      Disclose transfers of financial assets that are not derecognised in their entirety.
+- key: cash_and_cash_equivalents
+  heading: Cash and cash equivalents
+  tick_state: always
+  pieces:
+  - ref: F7-06
+    output_form: Narrative paragraph
+    tick_state: always
+    tb_keys:
+    - cash_and_equivalents
+    wording: |-
+      Cash and cash equivalents comprise cash at bank and on hand, together with short-term deposits with an original maturity of three months or less that are readily convertible to known amounts of cash and subject to an insignificant risk of changes in value. For the purpose of the statement of cash flows, cash and cash equivalents are presented net of bank overdrafts repayable on demand where these form an integral part of the Company's cash management.
+    build_note: Short policy paragraph.
+    requirement: |-
+      Disclose the policy adopted in determining the composition of cash and cash equivalents.
+  - ref: F7-02
+    output_form: Figure in note
+    tick_state: always
+    tb_keys:
+    - cash_and_equivalents
+    wording: |-
+      Cash at bank and on hand | Fixed deposits | Cash and cash equivalents in the statement of cash flows
+    build_note: Simple table; auto-populated from mapped cash accounts.
+    requirement: |-
+      Disclose the components of cash and cash equivalents and reconcile them to the equivalent items in the statement of financial position.
+  - ref: F7-05
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - cash_and_equivalents
+    wording: Cash and bank balances restricted in use
+    build_note: Suppress unless a restricted cash account is mapped.
+    requirement: |-
+      Disclose the amount of cash and cash equivalent balances not available for use, with commentary.
+- key: assets_held_for_sale
+  heading: Assets held for sale
+  tick_state: manual
+  pieces:
+  - ref: F105-01
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - assets_held_for_sale
+    wording: |-
+      {ASSET} has been classified as held for sale following the directors' decision to dispose of it. The sale is expected to be completed within twelve months of the end of the reporting period and will be effected by way of an outright sale. The asset is measured at the lower of its carrying amount and fair value less costs to sell, and is presented separately from all other assets in the statement of financial position.
+    build_note: MANUAL. Rare in SME sets.
+    requirement: |-
+      Describe non-current assets classified as held for sale, the facts and circumstances of the sale, and the expected manner and timing of disposal.
+- key: share_capital
+  heading: Share capital
+  tick_state: always
+  pieces:
+  - ref: F1-33
+    output_form: Narrative paragraph
+    tick_state: always
+    tb_keys:
+    - share_capital
+    wording: |-
+      Proceeds from the issue of ordinary shares are recognised as share capital in equity. Incremental costs directly attributable to the issue of ordinary shares are deducted against share capital.
+    build_note: Short policy sub-section. Pairs with the share capital supporting note.
+    requirement: |-
+      Disclose the policy for share capital, being that proceeds from the issue of ordinary shares are recognised in equity and incremental costs directly attributable to the issue are deducted against share capital.
+  - ref: F32-02
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - share_capital
+    - long_term_borrowings
+    - short_term_borrowings
+    wording: |-
+      The Company's redeemable preference shares are classified as a financial liability because the Company has no unconditional right to avoid delivering cash on redemption. Distributions on these shares are recognised as interest expense in profit or loss.
+    build_note: Rare but material when present.
+    requirement: |-
+      Disclose the classification of instruments as financial liabilities or equity, including any redeemable preference shares.
+  - ref: F1-14
+    output_form: Table
+    tick_state: always
+    tb_keys:
+    - share_capital
+    wording: Issued and fully paid ordinary shares | Number of shares | Amount
+    build_note: Singapore companies have no par value.
+    requirement: |-
+      For each class of share capital, disclose the number of shares authorised, the number issued and fully paid and issued but not fully paid, par value or that the shares have no par value, a reconciliation of shares outstanding at the beginning and end of the period, the rights, preferences and restrictions attaching, shares held by the entity or its subsidiaries or associates, and shares reserved for issue under options and contracts for sale.
+- key: reserves
+  heading: Reserves
+  tick_state: tb_driven
+  trigger_keys:
+  - retained_earnings
+  pieces:
+  - ref: F1-15
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    tb_keys:
+    - retained_earnings
+    wording: |-
+      The retained earnings reserve comprises the cumulative profits of the Company that have not been distributed to shareholders. It is available for distribution to shareholders subject to the Company being able to pay its debts as they fall due.
+    build_note: Suppress where only share capital and retained earnings are present.
+    requirement: Describe the nature and purpose of each reserve within equity.
+- key: share_based_payment
+  heading: Share-based payment
+  tick_state: manual
+  pieces:
+  - ref: F102-01
+    output_form: Narrative paragraph
+    tick_state: manual
+    wording: |-
+      Under the Company's share option scheme, options are granted to employees at an exercise price determined at the date of grant and vest over a period of three years subject to continued employment. The options are equity settled and expire ten years after the date of grant. The expense recognised in the financial year was ${AMOUNT} (previous year: ${AMOUNT}).
+    build_note: MANUAL. Very rare in SME sets.
+    requirement: |-
+      Describe share-based payment arrangements, the number and weighted average exercise price of options, and the expense recognised in the period.
+- key: borrowings
+  heading: Borrowings
+  tick_state: manual
+  pieces:
+  - ref: F109-04
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - long_term_borrowings
+    - short_term_borrowings
+    wording: |-
+      Where the terms of a financial liability are modified and the modification is not substantial, the carrying amount of the liability is recalculated by discounting the modified contractual cash flows at the original effective interest rate, and the resulting adjustment is recognised in profit or loss. Where the modification is substantial, the original financial liability is derecognised and a new financial liability is recognised at fair value.
+    build_note: MANUAL.
+    requirement: |-
+      Disclose the treatment of modifications to financial liabilities that do not result in derecognition.
+  - ref: F1-23
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - long_term_borrowings
+    - short_term_borrowings
+    wording: Non-current liabilities subject to covenants
+    build_note: MANUAL. See FRS PS 2 paras 81-83 for the materiality test.
+    requirement: |-
+      Where non-current liabilities are subject to covenants, disclose information enabling users to understand the risk that they could become repayable within twelve months.
+  - ref: F107-19
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - long_term_borrowings
+    - short_term_borrowings
+    wording: |-
+      Amount in default | Terms breached | Whether remedied before the financial statements were authorised for issue
+    build_note: MANUAL.
+    requirement: |-
+      Disclose details of defaults and breaches of loan terms during the period, and whether they were remedied.
+- key: offsetting_of_financial_instruments
+  heading: Offsetting of financial instruments
+  tick_state: manual
+  pieces:
+  - ref: F32-01
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - trade_receivables
+    - cash_and_equivalents
+    - long_term_borrowings
+    wording: |-
+      Financial assets and financial liabilities are presented net in the statement of financial position only where the Company has a currently enforceable legal right to set off the recognised amounts and intends either to settle on a net basis or to realise the asset and settle the liability simultaneously.
+    build_note: MANUAL. Relevant where intercompany balances are netted.
+    requirement: |-
+      Offset a financial asset and financial liability only where there is a legally enforceable right of set-off and an intention to settle net.
+- key: fair_value_measurement
+  heading: Fair value measurement
+  tick_state: tb_driven
+  trigger_keys:
+  - cash_and_equivalents
+  - investments
+  - long_term_borrowings
+  - trade_receivables
+  pieces:
+  - ref: F113-01
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    tb_keys:
+    - investments
+    wording: |-
+      Fair value is the price that would be received to sell an asset, or paid to transfer a liability, in an orderly transaction between market participants at the measurement date. Where an asset or liability is measured or disclosed at fair value, the measurement assumes that the transaction takes place in the principal market for the asset or liability, or in the absence of a principal market, in the most advantageous market to which the Company has access.
+    build_note: Policy paragraph. Applies wherever any item is measured or disclosed at fair value.
+    requirement: |-
+      Disclose the policy for measuring fair value as the price that would be received to sell an asset or paid to transfer a liability in an orderly transaction between market participants at the measurement date.
+  - ref: F113-02
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - investments
+    wording: Level 1 | Level 2 | Level 3 | Total fair value
+    build_note: Levels 1, 2 and 3. Rare where all instruments are at amortised cost.
+    requirement: |-
+      For each class of asset and liability measured at fair value, disclose the fair value at the reporting date and the level of the fair value hierarchy within which it falls.
+  - ref: F113-03
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - investments
+    wording: |-
+      The fair value of the Company's financial assets and financial liabilities not measured at fair value has been determined using a discounted cash flow technique. The significant input is the discount rate, which is derived from observable market rates for instruments with similar terms and credit risk. There was no change in the valuation technique applied during the financial year.
+    build_note: Most SME fair values are Level 2 or 3, so this bites where it applies at all.
+    requirement: |-
+      For Level 2 and Level 3 measurements, describe the valuation techniques and inputs used, and any change in technique with the reason for it.
+  - ref: F113-04
+    output_form: Table
+    tick_state: manual
+    tb_keys:
+    - investments
+    wording: |-
+      At 1 January | Total gains or losses | Purchases | Sales | Transfers | At 31 December
+    build_note: MANUAL.
+    requirement: |-
+      For recurring Level 3 measurements, provide a reconciliation from opening to closing balances, showing gains and losses, purchases, sales and transfers.
+  - ref: F113-05
+    output_form: Narrative paragraph
+    tick_state: manual
+    tb_keys:
+    - investments
+    wording: |-
+      Fair value measurements falling within Level 3 of the fair value hierarchy are determined by management and reviewed by the directors at the end of each reporting period. An increase in the discount rate applied would result in a lower fair value measurement, and a decrease would result in a higher fair value measurement.
+    build_note: MANUAL.
+    requirement: |-
+      For recurring Level 3 measurements, describe the valuation processes used and provide a narrative sensitivity analysis to changes in unobservable inputs.
+  - ref: F113-06
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - trade_receivables
+    - cash_and_equivalents
+    - long_term_borrowings
+    wording: Carrying amount | Fair value | Level within the fair value hierarchy
+    build_note: Applies alongside FRS 107 para 25. Commonly overlooked in SME sets.
+    requirement: |-
+      For assets and liabilities not measured at fair value but whose fair value is disclosed, disclose the level of the fair value hierarchy and, for Level 2 and Level 3, the valuation technique and inputs.
+  - ref: F113-07
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - investments
+    wording: |-
+      Valuation technique | Significant inputs | Effect on profit or loss of recurring Level 3 measurements
+    build_note: Umbrella objective; drives the paragraphs above.
+    requirement: |-
+      Disclose information helping users assess the valuation techniques and inputs used, and the effect on profit or loss of recurring Level 3 measurements.
+- key: contingent_liabilities
+  heading: Contingent liabilities
+  tick_state: tb_driven
+  pieces:
+  - ref: F37-03
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    wording: |-
+      The Company had no material contingent liabilities at the end of the reporting period.
+    build_note: MANUAL. Not derivable from TB.
+    requirement: |-
+      For each class of contingent liability, describe its nature and, where practicable, an estimate of its financial effect and the uncertainties involved.
+- key: contingent_assets
+  heading: Contingent assets
+  tick_state: manual
+  pieces:
+  - ref: F37-04
+    output_form: Narrative paragraph
+    tick_state: manual
+    wording: |-
+      The Company had no contingent assets at the end of the reporting period in respect of which an inflow of economic benefits is considered probable.
+    build_note: MANUAL. Rare.
+    requirement: |-
+      Where an inflow of economic benefits is probable, describe the contingent asset and, where practicable, estimate its financial effect.
+- key: assets_pledged_as_security
+  heading: Assets pledged as security
+  tick_state: tb_driven
+  trigger_keys:
+  - long_term_borrowings
+  - ppe
+  - short_term_borrowings
+  pieces:
+  - ref: F16-06
+    output_form: Figure in note
+    tick_state: tb_driven
+    tb_keys:
+    - long_term_borrowings
+    - ppe
+    - short_term_borrowings
+    wording: Net carrying amount of property, plant and equipment pledged as security
+    build_note: MANUAL confirmation; commonly triggered where bank borrowings exist.
+    requirement: |-
+      Disclose the existence and amounts of restrictions on title, and property, plant and equipment pledged as security.
+  - ref: F2-05
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - inventories
+    - long_term_borrowings
+    - short_term_borrowings
+    wording: Carrying amount of inventories pledged as security
+    build_note: MANUAL.
+    requirement: Disclose the carrying amount of inventories pledged as security for liabilities.
+- key: commitments
+  heading: Commitments
+  tick_state: tb_driven
+  pieces:
+  - ref: F16-07
+    output_form: Figure in note
+    tick_state: tb_driven
+    wording: Capital commitments contracted for but not provided in the financial statements
+    build_note: MANUAL. See FRS PS 2 Example B - suppress where immaterial.
+    requirement: |-
+      Disclose the amount of contractual commitments for the acquisition of property, plant and equipment.
+- key: non_cash_transactions
+  heading: Non-cash transactions
+  tick_state: tb_driven
+  pieces:
+  - ref: F7-03
+    output_form: Figure in note
+    tick_state: tb_driven
+    wording: Additions to right-of-use assets | Other non-cash movements
+    build_note: Commonly ROU asset additions. MANUAL confirmation.
+    requirement: |-
+      Disclose investing and financing transactions that did not require the use of cash.
+- key: reconciliation_of_financing_liabilities
+  heading: Reconciliation of financing liabilities
+  tick_state: tb_driven
+  trigger_keys:
+  - lease_liabilities
+  - long_term_borrowings
+  - short_term_borrowings
+  pieces:
+  - ref: F7-04
+    output_form: Table
+    tick_state: tb_driven
+    tb_keys:
+    - lease_liabilities
+    - long_term_borrowings
+    - short_term_borrowings
+    wording: At 1 January | Cash flows | New leases | Accretion of interest | At 31 December
+    build_note: 'Table shape: opening, cash flows, new leases, accretion, closing.'
+    requirement: |-
+      Provide a reconciliation of the opening and closing balances of liabilities arising from financing activities, showing cash and non-cash changes.
+- key: dividends
+  heading: Dividends
+  tick_state: tb_driven
+  pieces:
+  - ref: F1-34
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    wording: |-
+      Dividends to the Company's shareholders are recognised when the dividends are approved for payment by the shareholders, and are deducted from retained earnings.
+    build_note: Policy sub-section. Suppress alongside the dividends supporting note.
+    requirement: |-
+      Disclose the policy for dividends, being that dividends to shareholders are recognised when approved for payment and are deducted from retained earnings.
+  - ref: F1-19
+    output_form: Figure in note
+    tick_state: tb_driven
+    wording: |-
+      Final tax exempt (one-tier) dividend paid in respect of the previous financial year
+    build_note: Suppress where no dividend account movement.
+    requirement: |-
+      Disclose dividends recognised as distributions to owners, and the related amount per share.
+  - ref: F10-03
+    output_form: Figure in note
+    tick_state: manual
+    wording: Dividend declared after the reporting period
+    build_note: MANUAL.
+    requirement: |-
+      Where dividends are declared after the reporting period, do not recognise a liability and disclose the amount.
+- key: related_party_disclosures
+  heading: Related party disclosures
+  tick_state: always
+  pieces:
+  - ref: F24-08
+    output_form: Narrative paragraph
+    tick_state: always
+    wording: |-
+      A related party is a person, or a close member of that person's family, who has control or joint control over the Company, has significant influence over it, or is a member of its key management personnel or of that of a parent; or an entity that is a member of the same group, an associate or joint venture of the Company or of a group member, controlled or jointly controlled by such a person, or over which such a person has significant influence.
+    build_note: Policy sub-section. Observed practice reproduces the definition in full; a short form
+      is acceptable.
+    requirement: |-
+      Disclose the definition of a related party applied by the entity, covering both persons and entities.
+  - ref: F24-01
+    output_form: Figure in note
+    tick_state: always
+    wording: Immediate holding company | Ultimate holding company | Country of incorporation
+    build_note: Always required if a parent exists, even with no transactions.
+    requirement: |-
+      Disclose the name of the parent and, where different, the ultimate controlling party, whether or not transactions occurred.
+- key: related_party_transactions
+  heading: Related party transactions
+  tick_state: tb_driven
+  pieces:
+  - ref: F24-06
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    wording: |-
+      Include the following sentence only where equivalence to arm's length terms can actually be substantiated: "The terms of the above transactions are equivalent to those that prevail in arm's length transactions." Where equivalence cannot be demonstrated, omit the sentence and describe the terms factually instead.
+    build_note: Guard this paragraph. Common boilerplate error in SME sets.
+    requirement: |-
+      Only state that related party transactions were made on terms equivalent to arm's length transactions where those terms can be substantiated.
+  - ref: F24-03
+    output_form: Narrative + table
+    tick_state: always
+    wording: |-
+      The following significant transactions took place between the Company and its related parties during the financial year, on terms agreed between the parties. Outstanding balances at the end of the reporting period are unsecured, interest free and repayable on demand, and settlement is expected to be made in cash. No guarantees have been given or received in respect of these balances.
+    build_note: 'Table shape: transactions and balances by category.'
+    requirement: |-
+      For each category of related party, disclose the nature of the relationship, the amount of transactions, outstanding balances, their terms and conditions, and any guarantees given or received.
+- key: related_party_balances
+  heading: Related party balances
+  tick_state: tb_driven
+  pieces:
+  - ref: F24-04
+    output_form: Figure in note
+    tick_state: tb_driven
+    wording: Allowance for doubtful debts on related party balances | Charge for the year
+    build_note: Suppress where no provision movement.
+    requirement: |-
+      Disclose provisions for doubtful debts related to outstanding related party balances, and the expense recognised in the period for bad or doubtful debts due from related parties.
+- key: key_management_personnel_compensation
+  heading: Key management personnel compensation
+  tick_state: always
+  pieces:
+  - ref: F24-09
+    output_form: Narrative paragraph
+    tick_state: always
+    wording: |-
+      Key management personnel are those persons having authority and responsibility for planning, directing and controlling the activities of the Company, whether directly or indirectly, including any director. The directors of the Company are considered to be its key management personnel.
+    build_note: Policy sub-section. Determines the population for the compensation disclosure.
+    requirement: |-
+      Disclose who the entity treats as key management personnel, being those persons having authority and responsibility for planning, directing and controlling its activities.
+  - ref: F24-02
+    output_form: Table
+    tick_state: always
+    wording: |-
+      Salaries and bonuses | Contributions to Central Provident Fund | Directors' fees | Total key management personnel compensation
+    build_note: Table shape by category. Materially wider than the SE requirement.
+    requirement: |-
+      Disclose key management personnel compensation in total and analysed by category, covering short-term benefits, post-employment benefits, other long-term benefits, termination benefits and share-based payment.
+  - ref: F24-07
+    output_form: Figure in note
+    tick_state: manual
+    wording: Key management personnel services provided by a management entity
+    build_note: Relevant where a corporate shareholder charges management fees.
+    requirement: |-
+      Disclose amounts incurred for the provision of key management personnel services supplied by a separate management entity.
+- key: research_and_development_expenditure
+  heading: Research and development expenditure
+  tick_state: manual
+  pieces:
+  - ref: F38-04
+    output_form: Figure in note
+    tick_state: manual
+    wording: Research and development expenditure recognised as an expense
+    build_note: Suppress where no R&D account mapped.
+    requirement: |-
+      Disclose the aggregate research and development expenditure recognised as an expense in the period.
+- key: financial_instruments_by_category
+  heading: Financial instruments by category
+  tick_state: always
+  pieces:
+  - ref: F107-01
+    output_form: Table
+    tick_state: always
+    wording: Financial assets at amortised cost | Financial liabilities at amortised cost
+    build_note: 'Table shape: by category, current and prior year. Key SE-to-FRS gap.'
+    requirement: |-
+      Disclose the carrying amounts of each category of financial asset and financial liability, either in the statement of financial position or in the notes.
+  - ref: F107-02
+    output_form: Figure in note
+    tick_state: always
+    tb_keys:
+    - trade_receivables
+    wording: |-
+      Trade and other receivables | Cash and bank balances | Total financial assets at amortised cost
+    build_note: Sums the accounts mapped to receivables and cash. Must agree to the SOFP totals for those
+      lines.
+    requirement: Disclose the carrying amount of financial assets measured at amortised cost.
+  - ref: F107-03
+    output_form: Figure in note
+    tick_state: always
+    tb_keys:
+    - long_term_borrowings
+    - short_term_borrowings
+    wording: |-
+      Trade and other payables | Lease liabilities | Borrowings | Total financial liabilities at amortised cost
+    build_note: Sums the accounts mapped to payables, borrowings and lease liabilities. Must agree to
+      the SOFP totals.
+    requirement: |-
+      Disclose the carrying amount of financial liabilities measured at amortised cost.
+- key: fair_value_of_financial_instruments
+  heading: Fair value of financial instruments
+  tick_state: always
+  pieces:
+  - ref: F107-16
+    output_form: Figure in note
+    tick_state: always
+    tb_keys:
+    - trade_receivables
+    - cash_and_equivalents
+    - long_term_borrowings
+    wording: Carrying amount | Fair value
+    build_note: Usually satisfied by a statement that carrying amount approximates fair value.
+    requirement: |-
+      Disclose the fair value of each class of financial asset and liability in a way that permits comparison with its carrying amount.
+  - ref: F107-17
+    output_form: Figure in note
+    tick_state: manual
+    tb_keys:
+    - trade_receivables
+    - cash_and_equivalents
+    - long_term_borrowings
+    wording: Level 1 | Level 2 | Level 3 | Total
+    build_note: The fair value hierarchy requirement sits in FRS 113, not FRS 107. Overlaps F113-02 and
+      F113-03; do not emit twice.
+    requirement: |-
+      Disclose the level of the fair value hierarchy within which each fair value measurement falls, and for Level 2 and Level 3, the valuation techniques and inputs used.
+- key: financial_risk_management_objectives_and_policies
+  heading: Financial risk management objectives and policies
+  tick_state: always
+  pieces:
+  - ref: F107-23
+    output_form: Figure in note
+    tick_state: always
+    wording: |-
+      The Company is exposed to financial risks arising from its operations and its use of financial instruments. The key financial risks are credit risk, liquidity risk, foreign currency risk and interest rate risk. The directors review and agree the policies and procedures for managing each of these risks. There has been no change to the Company's exposure to these risks, or to the manner in which it manages and measures them, during the financial year.
+    build_note: Container note. Carries an introductory paragraph naming the risks; the individual risk
+      disclosures sit under it as sub-sections.
+    requirement: |-
+      Disclose information that enables users of the financial statements to evaluate the nature and extent of risks arising from financial instruments to which the entity is exposed at the end of the reporting period.
+  subsections:
+  - key: credit_risk
+    heading: Credit risk
+    tick_state: always
+    pieces:
+    - ref: F107-08
+      output_form: Narrative paragraph
+      tick_state: always
+      tb_keys:
+      - trade_receivables
+      wording: |-
+        The Company applies the simplified approach permitted under FRS 109 in measuring expected credit losses on trade receivables, recognising a loss allowance equal to lifetime expected credit losses at each reporting date. The allowance is estimated using a provision matrix based on the Company's historical credit loss experience for each ageing band, adjusted for forward-looking information about the specific debtors and the economic conditions in which they operate. For other financial assets measured at amortised cost, the loss allowance is measured at an amount equal to twelve-month expected credit losses, unless credit risk has increased significantly since initial recognition, in which case lifetime expected credit losses are recognised. A financial asset is written off when there is no reasonable expectation of recovering the balance.
+      build_note: Materially wider than SFRS for SE. Major gap in the SE-derived index.
+      requirement: |-
+        Explain the inputs, assumptions and estimation techniques used to measure expected credit losses, including how forward-looking information is incorporated.
+    - ref: F107-07
+      output_form: Figure in note
+      tick_state: always
+      tb_keys:
+      - trade_receivables
+      wording: |-
+        Maximum exposure to credit risk | Trade receivables | Other receivables | Cash and bank balances
+      build_note: Core credit risk note.
+      requirement: |-
+        Disclose information about credit risk exposure, including the maximum exposure to credit risk at the reporting date and how credit risk is managed.
+    - ref: F107-10
+      output_form: Figure in note
+      tick_state: always
+      wording: |-
+        Current | 1 to 30 days past due | 31 to 60 days | 61 to 90 days | More than 90 days | Gross carrying amount | Expected loss rate | Loss allowance
+      build_note: Provision matrix table. Ageing buckets must be a TB or ledger input.
+      requirement: |-
+        Disclose credit risk exposure by credit risk rating grade, or by ageing where a provision matrix is used.
+    - ref: F107-11
+      output_form: Figure in note
+      tick_state: manual
+      wording: Collateral held as security | Fair value of collateral
+      build_note: MANUAL.
+      requirement: |-
+        Disclose collateral held as security and other credit enhancements, and their financial effect.
+  - key: liquidity_risk
+    heading: Liquidity risk
+    tick_state: always
+    pieces:
+    - ref: F107-12
+      output_form: Table
+      tick_state: always
+      tb_keys:
+      - long_term_borrowings
+      - short_term_borrowings
+      wording: |-
+        Within 1 year | 1 to 5 years | More than 5 years | Total undiscounted contractual cash flows | Carrying amount
+      build_note: 'Table shape: within 1 year, 1-5 years, over 5 years. Needs maturity attribute.'
+      requirement: |-
+        Provide a maturity analysis of financial liabilities showing the remaining contractual maturities on an undiscounted basis.
+    - ref: F107-13
+      output_form: Narrative paragraph
+      tick_state: always
+      wording: |-
+        The Company manages liquidity risk by monitoring forecast and actual cash flows and by maintaining sufficient cash and bank balances to meet its obligations as they fall due. The directors are satisfied that the Company has adequate resources to meet its liabilities as they fall due for at least twelve months from the end of the reporting period.
+      build_note: Narrative paragraph.
+      requirement: Describe how liquidity risk inherent in financial liabilities is managed.
+  - key: foreign_currency_risk
+    heading: Foreign currency risk
+    tick_state: tb_driven
+    pieces:
+    - ref: F107-15
+      output_form: Figure in note
+      tick_state: tb_driven
+      wording: |-
+        Exposure by currency | Effect on profit before tax of a reasonably possible strengthening or weakening
+      build_note: 'PREREQUISITE: currency attribute on TB accounts to auto-populate.'
+      requirement: |-
+        Provide a sensitivity analysis for foreign currency risk, disclosing exposures by currency and the effect of reasonably possible movements.
+  - key: interest_rate_risk
+    heading: Interest rate risk
+    tick_state: tb_driven
+    trigger_keys:
+    - long_term_borrowings
+    - short_term_borrowings
+    pieces:
+    - ref: F107-14
+      output_form: Figure in note
+      tick_state: tb_driven
+      tb_keys:
+      - long_term_borrowings
+      - short_term_borrowings
+      wording: Effect on profit before tax of a reasonably possible change in interest rates
+      build_note: Suppress where all borrowings are fixed rate or none exist.
+      requirement: |-
+        Provide a sensitivity analysis for interest rate risk showing the effect on profit or loss and equity of reasonably possible changes in interest rates.
+  - key: concentration_of_risk
+    heading: Concentration of risk
+    tick_state: tb_driven
+    pieces:
+    - ref: F107-18
+      output_form: Figure in note
+      tick_state: tb_driven
+      wording: Concentration of trade receivables by customer or by industry
+      build_note: 'Common: reliance on a small number of customers.'
+      requirement: |-
+        Disclose concentrations of risk, describing how they are determined and the shared characteristic that identifies each concentration.
+- key: hedge_accounting
+  heading: Hedge accounting
+  tick_state: manual
+  pieces:
+  - ref: F109-05
+    output_form: Narrative paragraph
+    tick_state: manual
+    wording: |-
+      The Company does not apply hedge accounting and holds no derivative financial instruments.
+    build_note: MANUAL. Very rare in SME sets.
+    requirement: Disclose the hedge accounting policy and the entity's risk management strategy.
+- key: capital_management
+  heading: Capital management
+  tick_state: always
+  pieces:
+  - ref: F1-22
+    output_form: Figure in note
+    tick_state: always
+    tb_keys:
+    - long_term_borrowings
+    - short_term_borrowings
+    wording: Total equity | Net debt | Gearing ratio
+    build_note: Standard short paragraph for an SME; keep entity-specific.
+    requirement: |-
+      Disclose objectives, policies and processes for managing capital, and the entity's view of what it manages as capital.
+- key: first_time_adoption_of_frs
+  heading: First-time adoption of FRS
+  tick_state: manual
+  pieces:
+  - ref: F101-04
+    output_form: Narrative paragraph
+    tick_state: manual
+    wording: |-
+      In preparing its opening statement of financial position on transition to Financial Reporting Standards, the Company elected to apply the deemed cost exemption, measuring items of property, plant and equipment at their carrying amount under the previous framework at the date of transition. The mandatory exceptions applied were those relating to estimates and to the classification and measurement of financial assets.
+    build_note: MANUAL. Material where a client moves from SFRS for SE to Full FRS.
+    requirement: |-
+      Disclose the optional exemptions and mandatory exceptions applied on first-time adoption.
+  - ref: F101-02
+    output_form: Narrative paragraph
+    tick_state: manual
+    wording: |-
+      These are the Company's first financial statements prepared in accordance with Financial Reporting Standards in Singapore. The effect of the transition on the Company's reported financial position, financial performance and cash flows is explained in the reconciliations set out below.
+    build_note: MANUAL narrative.
+    requirement: |-
+      Explain how the transition to Financial Reporting Standards affected the reported financial position, financial performance and cash flows.
+  - ref: F101-03
+    output_form: Table
+    tick_state: manual
+    wording: |-
+      Equity under the previous framework | Effect of transition | Equity under FRS | Total comprehensive income under the previous framework | Effect of transition | Total comprehensive income under FRS
+    build_note: 'Table shape: line item, previous GAAP, adjustment, FRS.'
+    requirement: |-
+      Provide reconciliations of equity and of total comprehensive income between the previous framework and Financial Reporting Standards, for the date of transition and the comparative period.
+- key: events_occurring_after_the_reporting_period
+  heading: Events occurring after the reporting period
+  tick_state: tb_driven
+  pieces:
+  - ref: F10-02
+    output_form: Narrative paragraph
+    tick_state: tb_driven
+    wording: |-
+      There were no material events after the reporting period requiring adjustment to, or disclosure in, these financial statements.
+    build_note: MANUAL. Default paragraph states no material events, replaced if any.
+    requirement: |-
+      For material non-adjusting events, disclose the nature of the event and an estimate of its financial effect, or state that an estimate cannot be made.
+- key: prior_period_errors
+  heading: Prior period errors
+  tick_state: manual
+  pieces:
+  - ref: F8-05
+    output_form: Narrative paragraph
+    tick_state: manual
+    wording: |-
+      In the current financial year the Company identified an error affecting the financial statements of the previous financial year. The comparative figures have been restated to correct the error, and the effect on each affected line item is set out below.
+    build_note: MANUAL. Also drives the third balance sheet column requirement.
+    requirement: |-
+      For prior period errors, disclose the nature of the error and the correction made to each line item affected for each prior period presented.
+- key: changes_in_accounting_estimates
+  heading: Changes in accounting estimates
+  tick_state: manual
+  pieces:
+  - ref: F8-04
+    output_form: Narrative paragraph
+    tick_state: manual
+    wording: |-
+      During the financial year the Company revised its estimate of the useful lives of certain items of property, plant and equipment to reflect the pattern in which their future economic benefits are expected to be consumed. The effect of the revision is an increase in the depreciation charge for the current financial year of ${AMOUNT}, and the revision will affect the depreciation charge in future periods over the remaining useful lives of the assets concerned.
+    build_note: 'MANUAL trigger only. Most common: revision of useful lives.'
+    requirement: |-
+      Disclose the nature and amount of a change in an accounting estimate affecting the current period or expected to affect future periods.

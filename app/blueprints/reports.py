@@ -1,5 +1,6 @@
 """Audit report builder, preview and PDF export."""
 import io
+import re
 from datetime import datetime
 
 from flask import (Blueprint, abort, current_app, flash, jsonify, redirect,
@@ -7,8 +8,8 @@ from flask import (Blueprint, abort, current_app, flash, jsonify, redirect,
 from flask_login import current_user, login_required
 
 from ..extensions import db
-from ..models import (AuditReport, AuditReportSection, FinancialYear,
-                      ReportFigureOverride, StatementLine)
+from ..models import (AuditReport, AuditReportSection, FinancialStatement,
+                      FinancialYear, ReportFigureOverride, StatementLine)
 from ..services import provenance as provenance_service, readiness
 from ..services import reports as report_service
 from ..services import statements as statement_service
@@ -35,7 +36,7 @@ def _assemble(report, chips=False):
 
     return [report_service.section_payload(section, customer, financial_year,
                                            chips=chips)
-            for section in report.sections
+            for section in report_service.ordered_sections(report)
             if section.is_enabled]
 
 
@@ -57,10 +58,28 @@ def builder(fy_id):
     # A closed engagement renders the finished document, not an editor.
     editable = not financial_year.is_closed
 
+    gaps = report_service.content_gaps(report, financial_year)
+
+    # The account checklist in "add a note" is scoped to whichever accounts
+    # are actually behind a flagged MISSING gap, not the whole trial
+    # balance - an auditor filling a gap should see a handful of relevant
+    # accounts, not everything on the books. Falls back to the full list
+    # only when there is no flagged gap to scope to, so the checklist isn't
+    # left empty for a note that has nothing to do with a gap.
+    gap_account_keys = {k for g in gaps["missing"] for k in g.get("keys", [])}
+    all_accounts = report_service.mapped_accounts(financial_year)
+    available_accounts = ([a for a in all_accounts if a["key"] in gap_account_keys]
+                          if gap_account_keys else all_accounts)
+
     return render_template("reports/builder.html",
                            report=report, fy=financial_year,
                            editable=editable,
                            payloads=_assemble(report, chips=editable),
+                           ordered_sections=report_service.ordered_sections(report),
+                           note_numbers=report_service.note_number_map(report),
+                           content_gaps=gaps,
+                           available_accounts=available_accounts,
+                           attachable_notes=report_service.attachable_notes(report),
                            customer=financial_year.customer,
                            final_version=financial_year.final_version,
                            tb_approved_at=financial_year.tb_approved_at,
@@ -304,34 +323,108 @@ def add_section(report_id):
         return jsonify({"ok": False, "error": "Give the note a title."}), 400
     title = title[:255]
 
-    # Placed last by default, which for a set of accounts means after the
-    # existing notes and before nothing - the preparer drags it where it
-    # belongs, the same as every other section.
-    last = max((s.sort_order or 0) for s in report.sections) if report.sections else 0
+    # Where it sits: standing alone at the end (unchanged default), or
+    # attached under an existing note as a sub-item - "11.1" rather than a
+    # bare number at the bottom, when the auditor is filling a gap that
+    # belongs beside a specific note rather than writing something new.
+    parent = None
+    parent_id = payload.get("parent_section_id")
+    if parent_id:
+        parent = db.session.get(AuditReportSection, int(parent_id))
+        if not parent or parent.report_id != report.id or not parent.is_enabled:
+            return jsonify({"ok": False,
+                            "error": "That note isn't available to attach to."}), 400
 
     existing = {s.section_key for s in report.sections}
     index = 1
     while f"{CUSTOM_PREFIX}{index}" in existing:
         index += 1
 
+    if parent:
+        sort_order = max((c.sort_order or 0 for c in parent.children), default=0) + 1
+    else:
+        # Placed last by default, which for a set of accounts means after
+        # the existing notes and before nothing - the preparer drags it
+        # where it belongs, the same as every other section.
+        sort_order = (max((s.sort_order or 0) for s in report.sections)
+                     if report.sections else 0) + 1
+
+    # Real figures instead of hand-typed ones: whichever trial balance
+    # lines the auditor ticked become an actual table, built the same way
+    # every catalogue note's table already is - traceable to source, not a
+    # number retyped into free text.
+    account_keys = [k for k in (payload.get("account_keys") or [])
+                    if isinstance(k, str)]
+    valid_keys = {a["key"] for a in report_service.mapped_accounts(
+        report.financial_year)}
+    account_keys = [k for k in account_keys if k in valid_keys]
+    data_binding = None
+    if account_keys:
+        data_binding = {"note_table_specs": [
+            {"source": "accounts", "keys": account_keys, "heading": "", "total": ""}
+        ]}
+
     section = AuditReportSection(
         report_id=report.id,
         section_key=f"{CUSTOM_PREFIX}{index}",
         title=title,
         section_type="free_text",
-        sort_order=last + 1,
+        sort_order=sort_order,
         is_enabled=True,
+        parent_section_id=parent.id if parent else None,
         # Deliberately not empty. An empty note renders as a heading with
         # nothing under it and looks like a fault; a visible prompt says the
         # note is waiting to be written.
         content_html="<p>Write this note here.</p>",
+        data_binding=data_binding,
     )
     db.session.add(section)
+    db.session.flush()
+
+    # "Add to the library": the same note, written once, proposed to every
+    # future engagement from then on - not retyped each time the same gap
+    # is flagged. Manual by default; nothing an auditor writes for one
+    # client's specific situation should silently start appearing on every
+    # other client's report without a person choosing to include it.
+    library_note = None
+    if payload.get("save_scope") == "library":
+        from ..models import NoteLibraryEntry
+        base_key = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_") or "note"
+        key = base_key
+        i = 2
+        while NoteLibraryEntry.query.filter_by(key=key).first():
+            key = f"{base_key}_{i}"
+            i += 1
+
+        piece = {
+            "ref": f"CUSTOM-{key}",
+            "output_form": "Table" if account_keys else "Narrative paragraph",
+            "tick_state": "manual",
+            "tb_keys": account_keys,
+            "wording": "",
+            "build_note": "Added by an auditor through the report builder, "
+                          "not the FRS spreadsheet.",
+            "requirement": "",
+        }
+        library_note = NoteLibraryEntry(
+            key=key, heading=title, tick_state="manual", sort_order=999,
+            trigger_keys=None, pieces=[piece], subsections=[],
+            source="auditor_added", added_by=current_user.id,
+            added_reason=(f"Added while preparing "
+                          f"{report.financial_year.customer.name} "
+                          f"{report.financial_year.year_label}."),
+        )
+        db.session.add(library_note)
+
     record("report_section", None, "add",
-           after={"report": report.id, "title": title})
+           after={"report": report.id, "title": title,
+                 "parent_section_id": parent.id if parent else None,
+                 "account_keys": account_keys,
+                 "saved_to_library": bool(library_note)})
     db.session.commit()
 
-    return jsonify({"ok": True, "section_id": section.id})
+    return jsonify({"ok": True, "section_id": section.id,
+                    "library_key": library_note.key if library_note else None})
 
 
 @bp.route("/api/section/<int:section_id>", methods=["DELETE"])
@@ -352,10 +445,25 @@ def delete_section(section_id):
         return jsonify({"ok": False,
                         "error": "This engagement is closed. Reopen it "
                                  "first."}), 400
+    if section.children:
+        return jsonify({"ok": False,
+                        "error": "This note has its own sub-note attached "
+                                 "(\"" + section.children[0].title + "\"). "
+                                 "Delete that first."}), 400
 
     ReportFigureOverride.query.filter_by(
         report_id=section.report_id,
         section_key=section.section_key).delete(synchronize_session=False)
+
+    # Don't leave a statement line pointing at a note that no longer
+    # exists - it printed a number before, it must print nothing now.
+    linked_lines = (StatementLine.query
+                    .join(FinancialStatement)
+                    .filter(FinancialStatement.financial_year_id == section.report.financial_year_id)
+                    .filter(StatementLine.note_ref == section.section_key)
+                    .all())
+    for line in linked_lines:
+        line.note_ref = None
 
     record("report_section", section.id, "delete",
            before={"title": section.title})
@@ -466,6 +574,7 @@ def preview(report_id):
                            fy=report.financial_year,
                            customer=report.financial_year.customer,
                            payloads=_assemble(report),
+                           note_numbers=report_service.note_number_map(report),
                            for_pdf=False)
 
 
@@ -491,6 +600,7 @@ def export_word(report_id):
                            fy=financial_year,
                            customer=financial_year.customer,
                            payloads=_assemble(report),
+                           note_numbers=report_service.note_number_map(report),
                            for_pdf=True)
 
     try:
@@ -529,6 +639,7 @@ def export(report_id):
                            fy=report.financial_year,
                            customer=report.financial_year.customer,
                            payloads=_assemble(report),
+                           note_numbers=report_service.note_number_map(report),
                            for_pdf=True)
 
     if not report_service.weasyprint_available():

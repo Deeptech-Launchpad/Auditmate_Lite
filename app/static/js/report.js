@@ -95,31 +95,58 @@
    * is certainly right beats two that agree most of the time.
    */
 
-  const addForm = document.getElementById('add-section');
-  if (addForm) {
-    addForm.addEventListener('submit', async event => {
-      event.preventDefault();
-      const field = document.getElementById('new-section-title');
-      const title = (field.value || '').trim();
-      if (!title) { field.focus(); return; }
+  const openBtn = document.getElementById('open-add-note');
+  const addForm = document.getElementById('add-note-form');
+  if (openBtn && addForm) {
+    const parentSelect = document.getElementById('anf-parent');
+    const submitBtn = document.getElementById('anf-submit');
+    const cancelBtn = document.getElementById('anf-cancel');
+    const titleField = document.getElementById('anf-title');
 
-      const button = addForm.querySelector('button');
-      button.disabled = true;
+    openBtn.addEventListener('click', () => {
+      openBtn.hidden = true;
+      addForm.hidden = false;
+      titleField.focus();
+    });
+    cancelBtn.addEventListener('click', () => {
+      addForm.hidden = true;
+      openBtn.hidden = false;
+      titleField.value = '';
+      addForm.querySelectorAll('input[type="checkbox"]').forEach(el => { el.checked = false; });
+      addForm.querySelector('input[name="anf-scope"][value="engagement"]').checked = true;
+      parentSelect.value = '';
+    });
+
+    submitBtn.addEventListener('click', async () => {
+      const title = (titleField.value || '').trim();
+      if (!title) { titleField.focus(); return; }
+
+      const parentId = parentSelect.value || null;
+
+      const accountKeys = Array.from(
+        addForm.querySelectorAll('input[name="anf-account"]:checked'))
+        .map(el => el.value);
+      const scope = addForm.querySelector('input[name="anf-scope"]:checked').value;
+
+      submitBtn.disabled = true;
       try {
         const response = await fetch(
           `/reports/api/report/${addForm.dataset.reportId}/section`,
           { method: 'POST', headers: csrfHeaders(),
-            body: JSON.stringify({ title }) });
+            body: JSON.stringify({
+              title, parent_section_id: parentId,
+              account_keys: accountKeys, save_scope: scope,
+            }) });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) {
           window.alert(data.error || 'Could not add the note.');
-          button.disabled = false;
+          submitBtn.disabled = false;
           return;
         }
         window.location.reload();
       } catch (err) {
         window.alert('Could not add the note.');
-        button.disabled = false;
+        submitBtn.disabled = false;
       }
     });
   }

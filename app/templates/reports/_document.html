@@ -239,7 +239,7 @@
                 {% endif %}
                 <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}{% if line.is_detail %} detail{% endif %}">
                   <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ stmt_label(line) }}</td>
-                  {% if show_notes %}<td class="notes">{{ line.note_ref or '' }}</td>{% endif %}
+                  {% if show_notes %}<td class="notes">{{ note_numbers.get(line.note_ref, '') if note_numbers else '' }}</td>{% endif %}
                   {{ stmt_amount(line) }}
                   {{ amount_cell(line.amount_previous) }}
                 </tr>
@@ -261,7 +261,7 @@
 
     {# ---------------------------------------------- notes / narrative -- #}
     {% else %}
-      {% set is_note = section.section_key.startswith('note_') %}
+      {% set is_note = section.section_key.startswith('note_') or section.section_key.startswith('custom_') %}
       {{ page_header(
            'Notes to the Financial Statements' if is_note else section.title,
            ('- ' ~ (fy.end_date|datefmt('%d %B %Y'))) if is_note else '',
@@ -277,9 +277,15 @@
         report can never quietly disagree with the statements behind it.
       #}
       {% if is_note %}
-        <h3 class="note-title"{% if editable %} contenteditable="true"
+        {# The number is computed fresh on every render and must never be
+           saved back as text - so it sits outside the editable span, not
+           inside it. Putting both in one contenteditable node let an
+           editor's save write the number into the stored title, which then
+           got a second number prepended next render, compounding forever. #}
+        {% set _n = note_numbers.get(section.section_key) if note_numbers else None %}
+        <h3 class="note-title">{% if _n %}<span class="note-num">{{ _n }}.</span> {% endif %}<span{% if editable %} contenteditable="true"
             data-section-id="{{ section.id }}" data-field="title"
-            data-placeholder="Section title"{% endif %}>{{ section.title }}</h3>
+            data-placeholder="Section title"{% endif %}>{{ section.title }}</span></h3>
       {% endif %}
 
       <div class="rpt-body"{% if editable %} contenteditable="true"

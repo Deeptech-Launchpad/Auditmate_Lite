@@ -97,10 +97,68 @@
   </div>
 </div>
 
-{% if readiness and readiness.missing %}
+{% set _balance_error = (readiness.missing|selectattr('key', 'equalto', 'balance_check')|list|first) if readiness else None %}
+{% if _balance_error %}
+  <div class="card" style="margin-bottom:16px;border-left:3px solid #c0392b;background:#fdf2f1">
+    <div class="card-head">
+      <h2 style="color:#c0392b">The trial balance does not balance</h2>
+    </div>
+    <div class="card-body">
+      <p class="small" style="margin-top:0">{{ _balance_error.why }}</p>
+      <ul class="small">
+        {% for line in _balance_error.detail %}<li>{{ line }}</li>{% endfor %}
+      </ul>
+      <p class="muted small" style="margin-bottom:0">{{ _balance_error.how_to_get }}
+        Shown here before the notes below, per the firm's own rule — check
+        this first.</p>
+    </div>
+  </div>
+{% endif %}
+
+{% if content_gaps and content_gaps.has_gaps %}
+  <div class="card" style="margin-bottom:16px;border-left:3px solid #c0392b;background:#fdf2f1">
+    <div class="card-head">
+      <h2 style="color:#c0392b">
+        {{ content_gaps.missing|length + content_gaps.thin|length }} note(s) need the auditor's own wording
+      </h2>
+    </div>
+    <div class="card-body">
+      <p class="small" style="margin-top:0">
+        Drawn strictly from the FRS disclosure library — nothing here is
+        written by the system. Where the library has nothing, or next to
+        nothing, that is shown as-is rather than filled in. Add the missing
+        wording yourself, the same way you add any note not on the list,
+        before approving.
+      </p>
+
+      {% for gap in content_gaps.missing %}
+        <div class="gap-row">
+          <span class="pill pill-red">MISSING</span>
+          <div class="gap-body">
+            <div class="gap-title">{{ gap.lines|join(', ') }}</div>
+            <div class="gap-detail muted small">{{ gap.detail }}</div>
+          </div>
+        </div>
+      {% endfor %}
+
+      {% for gap in content_gaps.thin %}
+        <div class="gap-row">
+          <span class="pill pill-amber">THIN</span>
+          <div class="gap-body">
+            <div class="gap-title">{{ gap.note }}</div>
+            <div class="gap-detail muted small">{{ gap.detail }}</div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{% set _other_missing = (readiness.missing|rejectattr('key', 'equalto', 'balance_check')|list) if readiness else [] %}
+{% if _other_missing %}
   <div class="card" style="margin-bottom:16px;border-left:3px solid #c47f0a">
     <div class="card-head">
-      <h2>{{ readiness.missing|length }} thing(s) missing</h2>
+      <h2>{{ _other_missing|length }} thing(s) missing</h2>
       <span class="hint">{{ readiness.have }} of {{ readiness.total }} in place</span>
     </div>
     <div class="card-body">
@@ -113,12 +171,12 @@
           <tr><th>Affects</th><th>Needs</th><th>How to get it</th></tr>
         </thead>
         <tbody>
-          {% for item in readiness.missing %}
+          {% for item in _other_missing %}
             <tr>
               <td class="small"><span class="strong">{{ item.serves }}</span></td>
               <td class="small">{{ item.needs }}</td>
               <td class="small muted">
-                {{ item.get }}
+                {{ item.how_to_get }}
                 <div class="muted small" style="margin-top:4px">{{ item.why }}</div>
               </td>
             </tr>
@@ -127,7 +185,7 @@
       </table>
     </div>
   </div>
-{% elif readiness %}
+{% elif readiness and not _balance_error %}
   <div class="alert alert-success">
     Everything the statements need is in place — all
     {{ readiness.total }} checks.
@@ -143,16 +201,17 @@
     </div>
     <div class="card-body">
       <div id="section-list" data-report-id="{{ report.id }}">
-        {% for section in report.sections %}
-        <div class="section-item {{ '' if section.is_enabled else 'disabled' }}"
-             draggable="{{ 'true' if editable else 'false' }}"
+        {% for section in ordered_sections %}
+        <div class="section-item {{ '' if section.is_enabled else 'disabled' }} {{ 'section-child' if section.parent_section_id else '' }}"
+             draggable="{{ 'true' if (editable and not section.parent_section_id) else 'false' }}"
              data-section-id="{{ section.id }}">
           <span class="handle">⠿</span>
           <input type="checkbox" class="toggle" {% if section.is_enabled %}checked{% endif %}
                  {% if not editable %}disabled{% endif %}
                  data-section-id="{{ section.id }}">
           <span class="stitle">
-            {{ section.title }}
+            {% set _n = note_numbers.get(section.section_key) if note_numbers else None %}
+            {% if _n %}<span class="note-num">{{ _n }}.</span> {% endif %}{{ section.title }}
             <div class="stype">{{ section.section_type|replace('_', ' ') }}</div>
           </span>
           {% if section.section_type != 'statement' %}
@@ -177,16 +236,62 @@
          anticipates, and without this it gets typed into the Word file
          afterwards - so the app's copy and the delivered copy disagree from
          that moment on. #}
-      <form id="add-section" class="add-section"
-            data-report-id="{{ report.id }}">
-        <input type="text" id="new-section-title" maxlength="255"
-               placeholder="Add a note that is not in the list…"
-               aria-label="Title of the new note">
-        <button type="submit" class="btn btn-sm">+ Add</button>
-      </form>
+      <button type="button" id="open-add-note" class="btn btn-sm" style="width:100%">
+        + Add a note that is not in the list
+      </button>
+
+      <div id="add-note-form" class="add-note-form" hidden
+           data-report-id="{{ report.id }}">
+        <label class="anf-field">
+          <span class="anf-label">Title</span>
+          <input type="text" id="anf-title" maxlength="255"
+                 placeholder="e.g. Deposits and other receivables">
+        </label>
+
+        <label class="anf-field">
+          <span class="anf-label">Where does this go?</span>
+          <select id="anf-parent" class="anf-select">
+            <option value="">New note, on its own at the end of the list</option>
+            {% for n in attachable_notes %}
+              <option value="{{ n.id }}">Sub-note under {{ n.number }}. {{ n.title }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <fieldset class="anf-field">
+          <span class="anf-label">Pull figures from these accounts (optional)</span>
+          <div class="anf-accounts">
+            {% for a in available_accounts %}
+              <label class="anf-check">
+                <input type="checkbox" name="anf-account" value="{{ a.key }}">
+                {{ a.label }} <span class="muted">({{ a.amount|stmt }})</span>
+              </label>
+            {% else %}
+              <p class="muted small">No mapped accounts on this trial balance yet.</p>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <fieldset class="anf-field">
+          <span class="anf-label">Save this for</span>
+          <label class="anf-radio">
+            <input type="radio" name="anf-scope" value="engagement" checked>
+            This engagement only
+          </label>
+          <label class="anf-radio">
+            <input type="radio" name="anf-scope" value="library">
+            The library, for every future client
+          </label>
+        </fieldset>
+
+        <div class="anf-actions">
+          <button type="button" id="anf-cancel" class="btn btn-sm">Cancel</button>
+          <button type="button" id="anf-submit" class="btn btn-sm btn-primary">Add note</button>
+        </div>
+      </div>
       <p class="muted small" style="margin:8px 0 0">
-        It starts empty and switched on, at the end of the list. Drag it into
-        place, then click it in the preview to write it.
+        It starts switched on. Drag a stand-alone note into place, then click
+        it in the preview to write it.
       </p>
       {% endif %}
     </div>

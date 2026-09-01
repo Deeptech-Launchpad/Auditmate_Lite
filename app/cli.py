@@ -23,6 +23,7 @@ def register_cli(app):
     app.cli.add_command(xero_report)
     app.cli.add_command(check_beta)
     app.cli.add_command(seed_beta)
+    app.cli.add_command(seed_note_library)
     app.cli.add_command(setup_production)
 
 
@@ -789,6 +790,43 @@ def seed_beta(remove):
     click.echo("")
     click.echo(f"  flask check-beta {current.id}")
     click.echo(f"  http://127.0.0.1:5000/trial-balance/fy/{current.id}")
+
+
+@click.command("seed-note-library")
+@with_appcontext
+def seed_note_library():
+    """Load the FRS notes catalogue into note_library_entries.
+
+    One-time. The library moved from a static config file to a database
+    table so an auditor's "save to the library" from the report builder
+    has somewhere real to write to - a file the running app cannot safely
+    edit is not an editable library. Run once per database; does nothing
+    if the table already holds rows, so it is safe to run again.
+    """
+    import yaml
+    from pathlib import Path
+    from .extensions import db
+    from .models import NoteLibraryEntry
+
+    if NoteLibraryEntry.query.count():
+        raise click.ClickException(
+            "note_library_entries already has rows - not reseeding. "
+            "Add notes through the app, or clear the table first if you "
+            "really mean to start over.")
+
+    path = Path(current_app.config["CONFIG_DIR"]) / "notes_catalogue.yaml"
+    catalogue = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+
+    for order, n in enumerate(catalogue):
+        db.session.add(NoteLibraryEntry(
+            key=n["key"], heading=n["heading"], tick_state=n["tick_state"],
+            sort_order=order, trigger_keys=n.get("trigger_keys"),
+            pieces=n.get("pieces") or [], subsections=n.get("subsections") or [],
+            source="spreadsheet",
+        ))
+    db.session.commit()
+    click.echo(f"Seeded {len(catalogue)} notes into note_library_entries.")
+
 
 @click.command("setup-production")
 @click.option("--email", default="jey@deeptechskills.com", show_default=True)

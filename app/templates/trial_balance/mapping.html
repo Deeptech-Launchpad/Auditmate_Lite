@@ -5,7 +5,7 @@
   <span class="sep">/</span>
   <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
   <span class="sep">/</span>
-  <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">Trial Balance</a>
+  <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">Extracted Financials</a>
   <span class="sep">/</span>
   <span class="current">Mapping</span>
 {% endblock %}
@@ -21,7 +21,7 @@
     </p>
   </div>
   <div class="page-actions">
-    <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn">← Trial Balance</a>
+    <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn">← Extracted Financials</a>
   </div>
 </div>
 
