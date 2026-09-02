@@ -89,6 +89,8 @@ def builder(fy_id):
                            attachable_notes=report_service.attachable_notes(report),
                            prior_disclosed=report_service.prior_year_disclosed(
                                financial_year),
+                           prior_dropped=report_service.prior_notes_dropped(
+                               report, financial_year),
                            customer=financial_year.customer,
                            final_version=financial_year.final_version,
                            tb_approved_at=financial_year.tb_approved_at,

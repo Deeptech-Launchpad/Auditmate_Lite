@@ -17,7 +17,7 @@ from flask import current_app
 
 from ..extensions import db
 from ..models import (AuditReport, AuditReportSection, FinancialStatement,
-                      TrialBalanceAccount)
+                      PriorYearNote, TrialBalanceAccount)
 from . import notes as notes_service
 
 NOTE_PREFIX = "note__"
@@ -356,8 +356,6 @@ def prior_year_wording(financial_year):
     carried into, and is surfaced on the document review screen instead so it
     is seen rather than lost.
     """
-    from ..models import PriorYearNote
-
     out = {}
     for note in (PriorYearNote.query
                  .filter_by(financial_year_id=financial_year.id)
@@ -436,6 +434,79 @@ def prior_year_disclosed(financial_year) -> set:
     """
     return {f"{NOTE_PREFIX}{key}"
             for key in prior_year_wording(financial_year)}
+
+
+def prior_notes_dropped(report, financial_year):
+    """Notes disclosed last year that this year's accounts do not carry.
+
+    The firm's rule, and it is the right one: a note that was in last year's
+    accounts and is not in this year's is not necessarily wrong - companies
+    repay loans and dispose of subsidiaries - but it must never happen
+    silently. Last year the company told its readers something; dropping it
+    without a word is the one outcome nobody can review.
+
+    Returns a row per dropped note with the reason it is not there, so the
+    preparer confirms the omission rather than discovering it after signing.
+    """
+    catalogue = {n["key"]: n for n in load_notes_catalogue()}
+    present = _present_keys(financial_year)
+    sections = {s.section_key: s for s in report.sections}
+
+    dropped = []
+    for prior in (PriorYearNote.query
+                  .filter_by(financial_year_id=financial_year.id)
+                  .order_by(PriorYearNote.id).all()):
+
+        label = prior.title
+        if prior.note_number:
+            label = f"{prior.note_number}. {prior.title}"
+
+        # Nothing in the library matches it. The strongest case for saying
+        # something: there is no note here to tick even if the preparer
+        # wanted to, so silence would leave them no way to notice.
+        if not prior.matched_key:
+            dropped.append({
+                "label": label,
+                "reason": ("The FRS library has no note matching this "
+                           "heading. If it still applies, add it as a note "
+                           "of your own."),
+                "severity": "missing",
+            })
+            continue
+
+        section = sections.get(f"{NOTE_PREFIX}{prior.matched_key}")
+        if section is None:
+            dropped.append({
+                "label": label,
+                "reason": ("Last year's note has no counterpart in this "
+                           "report."),
+                "severity": "missing",
+            })
+            continue
+
+        if section.is_enabled:
+            continue                               # carried - nothing to say
+
+        note = catalogue.get(prior.matched_key) or {}
+        triggers = [k for k in (note.get("trigger_keys") or [])]
+        tick_state = note.get("tick_state")
+
+        if tick_state == "tb_driven" and triggers:
+            missing_keys = ", ".join(triggers)
+            reason = (f"Switched off because this year's trial balance has "
+                      f"no {missing_keys}. If that is right, the disclosure "
+                      f"ends with the balance; if not, the account is "
+                      f"missing or unmapped.")
+        elif tick_state == "manual":
+            reason = ("A manual note - it is never switched on by itself. "
+                      "Tick it if it still applies this year.")
+        else:
+            reason = "Switched off in this report."
+
+        dropped.append({"label": label, "reason": reason,
+                        "severity": "off", "section_id": section.id})
+
+    return dropped
 
 
 def ordered_sections(report, *, top_level_only=False):

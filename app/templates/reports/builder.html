@@ -154,6 +154,40 @@
   </div>
 {% endif %}
 
+{% if prior_dropped %}
+  {# Last year said something this year does not. Often correct - a loan is
+     repaid, an asset sold - but never something to discover after signing,
+     so every omission states its reason and is confirmed rather than found. #}
+  <div class="card" style="margin-bottom:16px;border-left:3px solid #c47f0a;background:#fffaf2">
+    <div class="card-head">
+      <h2 style="color:#b3760a">
+        {{ prior_dropped|length }} note(s) disclosed last year are not in this year's accounts
+      </h2>
+      <span class="hint">read from last year's signed accounts</span>
+    </div>
+    <div class="card-body">
+      <p class="small" style="margin-top:0">
+        Dropping a disclosure is often right — the balance it explained is
+        gone. It is only wrong when nobody meant to. Check each one still
+        deserves to be out before you approve.
+      </p>
+      {% for row in prior_dropped %}
+        <div class="gap-row">
+          {% if row.severity == 'missing' %}
+            <span class="pill pill-red">NO NOTE</span>
+          {% else %}
+            <span class="pill pill-amber">OFF</span>
+          {% endif %}
+          <div class="gap-body">
+            <div class="gap-title">{{ row.label }}</div>
+            <div class="gap-detail muted small">{{ row.reason }}</div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
 {% set _other_missing = (readiness.missing|rejectattr('key', 'equalto', 'balance_check')|list) if readiness else [] %}
 {% if _other_missing %}
   <div class="card" style="margin-bottom:16px;border-left:3px solid #c47f0a">
