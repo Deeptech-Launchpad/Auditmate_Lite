@@ -162,7 +162,7 @@ def build_statement(financial_year_id: int, statement_type: str,
             prior = {line.line_key: line.effective_amount
                      for line in earlier.lines}
 
-    if not prior:
+    if not prior and not financial_year.is_first_year:
         # No previous engagement in Auditmate - which is every client's first
         # year here, so it is the normal case rather than the exception. The
         # comparative column is required DATA, not a check: without it the

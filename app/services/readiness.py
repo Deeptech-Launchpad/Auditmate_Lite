@@ -115,7 +115,11 @@ REQUIREMENTS = [
         "why": ("Without them there is no second column at all. This is not "
                 "a check that might flag a difference; the statements cannot "
                 "be issued without it."),
-        "test": lambda fy: _prior_figures(fy),
+        # Unless this is the company's first period since incorporation,
+        # when there is no prior year to have figures for and demanding
+        # last year's accounts would be asking for a document that cannot
+        # exist.
+        "test": lambda fy: fy.is_first_year or _prior_figures(fy),
     },
     {
         "key": "receivables_ageing",

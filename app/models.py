@@ -256,6 +256,22 @@ class FinancialYear(db.Model):
     # Links to the prior year so statements can show comparatives.
     previous_year_id = db.Column(db.Integer, db.ForeignKey("financial_years.id"))
 
+    # The company's FIRST financial period since incorporation.
+    #
+    # Not the same thing as "no previous year linked", which is why it has to
+    # be asked rather than inferred. A year with nothing before it in
+    # Auditmate is usually just a client the firm has audited for a decade
+    # and only now moved onto this tool - that engagement still needs a
+    # comparative column and still wants last year's signed accounts. A true
+    # first year needs neither, and saying so is a statement about the
+    # company, not about what happens to be in our database.
+    #
+    # Four things follow from it, all of them wrong if guessed:
+    # no comparative column, no prior-year documents demanded, comparative
+    # note wording for a period that may not be twelve months, and opening
+    # balances of nil.
+    is_first_year = db.Column(db.Boolean, default=False, nullable=False)
+
     shared_at = db.Column(db.DateTime)
     approved_at = db.Column(db.DateTime)
     approved_by_name = db.Column(db.String(160))
@@ -299,6 +315,9 @@ class FinancialYear(db.Model):
     tb_approved_at = db.Column(db.DateTime)
     tb_approved_by_name = db.Column(db.String(160))
 
+    prior_notes = db.relationship(
+        "PriorYearNote", back_populates="financial_year",
+        cascade="all, delete-orphan")
     versions = db.relationship(
         "StatementVersion", back_populates="financial_year",
         cascade="all, delete-orphan",
@@ -1389,7 +1408,8 @@ class PriorYearNote(db.Model):
     confidence = db.Column(db.Float, default=1.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    financial_year = db.relationship("FinancialYear")
+    financial_year = db.relationship("FinancialYear",
+                                     back_populates="prior_notes")
     source_document = db.relationship("Document")
 
     def __repr__(self):

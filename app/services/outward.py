@@ -202,6 +202,12 @@ def previous_year(financial_year):
     most recent earlier year end stand in, and a year with no end date
     cannot be ordered at all so it is left out rather than guessed at.
     """
+    # A first period since incorporation has nothing before it. Said by the
+    # preparer, not inferred - so it also stops the date fallback below from
+    # finding an earlier engagement and quietly comparing against it.
+    if financial_year.is_first_year:
+        return None
+
     if financial_year.previous_year_id:
         linked = db.session.get(FinancialYear, financial_year.previous_year_id)
         if linked is not None:

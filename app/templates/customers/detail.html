@@ -30,6 +30,36 @@
         <span class="hint">Each year is a separate engagement workspace</span>
       </div>
       <div class="card-body">
+        {% macro fy_admin(year) %}
+          {# Period dates live here, not only on the customer profile: a
+             changed year end gives a long or short period, and that is
+             exactly when the comparative wording has to change. #}
+          <form method="post" class="fy-admin"
+                action="{{ url_for('customers.edit_year', customer_id=customer.id, fy_id=year.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="small">From
+              <input type="date" name="start_date"
+                     value="{{ year.start_date.isoformat() if year.start_date }}">
+            </label>
+            <label class="small">To
+              <input type="date" name="end_date"
+                     value="{{ year.end_date.isoformat() if year.end_date }}">
+            </label>
+            <label class="small fy-first" title="No comparative column, no prior-year documents demanded, opening balances nil.">
+              <input type="checkbox" name="is_first_year" value="1"
+                     {% if year.is_first_year %}checked{% endif %}>
+              First financial year
+            </label>
+            <button type="submit" class="btn btn-sm">Save</button>
+          </form>
+          <form method="post" class="fy-admin"
+                action="{{ url_for('customers.delete_year', customer_id=customer.id, fy_id=year.id) }}"
+                onsubmit="return confirm('Delete {{ year.year_label }} and everything filed under it — documents, trial balance, statements? This cannot be undone.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-danger">Delete year</button>
+          </form>
+        {% endmacro %}
+
         {% macro fy_pill(year) %}
           {% if year.report and year.report.status == 'final' %}
             <span class="pill pill-purple"><span class="dot"></span>Report generated</span>
@@ -47,20 +77,27 @@
         {% elif customer.financial_years|length <= 2 %}
           <div class="fy-grid">
             {% for year in customer.financial_years %}
-            <a class="fy-card"
-               href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=year.id) }}">
-              <div class="fy-head">
-                <span class="fy-label">{{ year.year_label }}</span>
-                {{ fy_pill(year) }}
-              </div>
-              <div class="fy-dates">
-                {{ year.start_date|datefmt }} — {{ year.end_date|datefmt }}
-              </div>
-              <div class="fy-stats">
-                <span>{{ year.documents|length }} documents</span>
-                <span>{{ year.statements|length }} statements</span>
-              </div>
-            </a>
+            <div class="fy-card">
+              <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=year.id) }}">
+                <div class="fy-head">
+                  <span class="fy-label">
+                    {{ year.year_label }}
+                    {% if year.is_first_year %}
+                      <span class="pill pill-grey">first year</span>
+                    {% endif %}
+                  </span>
+                  {{ fy_pill(year) }}
+                </div>
+                <div class="fy-dates">
+                  {{ year.start_date|datefmt }} — {{ year.end_date|datefmt }}
+                </div>
+                <div class="fy-stats">
+                  <span>{{ year.documents|length }} documents</span>
+                  <span>{{ year.statements|length }} statements</span>
+                </div>
+              </a>
+              {{ fy_admin(year) }}
+            </div>
             {% endfor %}
           </div>
         {% else %}
@@ -77,7 +114,12 @@
             {% for year in customer.financial_years %}
             <div class="fy-detail" data-fy-id="{{ year.id }}" {{ 'hidden' if not loop.first else '' }}>
               <div class="fy-head">
-                <span class="fy-label">{{ year.year_label }}</span>
+                <span class="fy-label">
+                  {{ year.year_label }}
+                  {% if year.is_first_year %}
+                    <span class="pill pill-grey">first year</span>
+                  {% endif %}
+                </span>
                 {{ fy_pill(year) }}
               </div>
               <div class="fy-dates">
@@ -91,6 +133,7 @@
                  class="btn btn-primary btn-sm" style="margin-top:12px">
                 Open workspace →
               </a>
+              {{ fy_admin(year) }}
             </div>
             {% endfor %}
           </div>

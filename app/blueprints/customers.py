@@ -205,6 +205,109 @@ def add_year(customer_id):
                             fy_id=financial_year.id))
 
 
+def _year_is_deletable(financial_year):
+    """Why this year cannot be deleted, or None when it can.
+
+    The firm set the bar: blocked only where a generated document already
+    exists against it. Everything else - uploads, a built trial balance,
+    mappings - is work in progress, and refusing to delete it would leave a
+    mistyped year label stuck on the customer forever.
+    """
+    if financial_year.report is not None:
+        return ("an audit report has been generated against it. Delete the "
+                "report first if this year really is a mistake.")
+    if financial_year.is_closed:
+        return "it is closed. A closed engagement is part of the audit record."
+    return None
+
+
+@bp.route("/<int:customer_id>/fy/<int:fy_id>/delete", methods=["POST"])
+@login_required
+def delete_year(customer_id, fy_id):
+    """Remove a financial year and everything filed under it."""
+    customer = db.session.get(Customer, customer_id) or abort(404)
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+    if financial_year.customer_id != customer.id:
+        abort(404)
+
+    blocked = _year_is_deletable(financial_year)
+    if blocked:
+        flash(f"{financial_year.year_label} cannot be deleted — {blocked}",
+              "error")
+        return redirect(url_for("customers.detail", customer_id=customer.id))
+
+    # A later year points back at this one for its comparatives. Left alone,
+    # the delete would fail on the foreign key; repointed silently, that year
+    # would compare itself against a different period without saying so. So
+    # the link is cut and the year that loses it is named.
+    orphaned = FinancialYear.query.filter_by(previous_year_id=fy_id).all()
+    for year in orphaned:
+        year.previous_year_id = None
+
+    label = financial_year.year_label
+    record("financial_year", fy_id, "delete",
+           before={"label": label, "customer": customer.name})
+    db.session.delete(financial_year)
+    db.session.commit()
+
+    message = f"{label} deleted, with everything filed under it."
+    if orphaned:
+        names = ", ".join(y.year_label for y in orphaned)
+        message += (f" {names} no longer has a prior year linked — its "
+                    f"comparatives now need last year's signed accounts.")
+    flash(message, "success" if not orphaned else "warning")
+    return redirect(url_for("customers.detail", customer_id=customer.id))
+
+
+@bp.route("/<int:customer_id>/fy/<int:fy_id>/edit", methods=["POST"])
+@login_required
+def edit_year(customer_id, fy_id):
+    """Change a year's period dates, or mark it as the company's first."""
+    customer = db.session.get(Customer, customer_id) or abort(404)
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+    if financial_year.customer_id != customer.id:
+        abort(404)
+
+    before = {"start": str(financial_year.start_date),
+              "end": str(financial_year.end_date),
+              "is_first_year": financial_year.is_first_year}
+
+    start_raw = (request.form.get("start_date") or "").strip()
+    end_raw = (request.form.get("end_date") or "").strip()
+
+    try:
+        start = date.fromisoformat(start_raw) if start_raw else None
+        end = date.fromisoformat(end_raw) if end_raw else None
+    except ValueError:
+        flash("Enter both dates as YYYY-MM-DD.", "error")
+        return redirect(url_for("customers.detail", customer_id=customer.id))
+
+    if start and end and start >= end:
+        flash("The period must start before it ends.", "error")
+        return redirect(url_for("customers.detail", customer_id=customer.id))
+
+    if start:
+        financial_year.start_date = start
+    if end:
+        financial_year.end_date = end
+
+    # A first year has nothing before it by definition, so any inherited
+    # link is wrong and would put a comparative column on accounts that
+    # must not have one.
+    financial_year.is_first_year = bool(request.form.get("is_first_year"))
+    if financial_year.is_first_year:
+        financial_year.previous_year_id = None
+
+    record("financial_year", fy_id, "edit", before=before,
+           after={"start": str(financial_year.start_date),
+                  "end": str(financial_year.end_date),
+                  "is_first_year": financial_year.is_first_year})
+    db.session.commit()
+
+    flash(f"{financial_year.year_label} updated.", "success")
+    return redirect(url_for("customers.detail", customer_id=customer.id))
+
+
 @bp.route("/<int:customer_id>/fy/<int:fy_id>")
 @login_required
 def workspace(customer_id, fy_id):

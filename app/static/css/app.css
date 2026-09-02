@@ -326,7 +326,24 @@ table.data .muted { color: var(--text-muted); font-size: 12.5px; }
   border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
   background: var(--surface); transition: border-color .12s, box-shadow .12s;
 }
-.fy-card:hover { border-color: var(--brand); box-shadow: var(--shadow); text-decoration: none; }
+/* The card holds its own admin controls now, so the link is the inner
+   anchor rather than the card itself - a delete button inside a link is
+   not something to hand an auditor. */
+.fy-card:hover { border-color: var(--brand); box-shadow: var(--shadow); }
+.fy-card > a { display: block; text-decoration: none; color: inherit; }
+.fy-card > a:hover { text-decoration: none; }
+
+.fy-admin {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+.fy-admin label { display: flex; gap: 4px; align-items: center;
+                  color: var(--text-muted); }
+.fy-admin input[type="date"] {
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
+  font: inherit; font-size: 12px;
+}
+.fy-admin .fy-first { cursor: help; }
 .fy-card .fy-head, .fy-detail .fy-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .fy-card .fy-label, .fy-detail .fy-label { font-size: 16px; font-weight: 650; color: var(--text); }
 .fy-card .fy-dates, .fy-detail .fy-dates { font-size: 12px; color: var(--text-faint); margin-bottom: 12px; }

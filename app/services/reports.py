@@ -657,6 +657,21 @@ def content_gaps(report, financial_year):
                           f"actually is."),
             })
 
+    # A first period needs wording the library has no note for. Rather than
+    # invent it - the rule everywhere else here - it is named as a gap the
+    # preparer fills, the same as any other.
+    if financial_year.is_first_year:
+        thin.append({
+            "note": "Comparative information (first period)",
+            "detail": ("This is the company's first financial period, so "
+                       "there is no comparative column and the usual "
+                       "comparative wording does not apply. State the period "
+                       "covered — from incorporation to the year end, which "
+                       "may be longer or shorter than twelve months — in the "
+                       "corporate information note. The FRS library has no "
+                       "note for this, so it is yours to write."),
+        })
+
     return {"missing": grouped_missing, "thin": thin,
             "has_gaps": bool(grouped_missing or thin)}
 
