@@ -210,8 +210,11 @@ def ensure_report(financial_year) -> AuditReport:
         ))
         order += 1
 
+    period = (financial_year.start_date, financial_year.end_date)
     for note in load_notes_catalogue():
-        db.session.add(_build_note_section(note, present, order, report.id))
+        db.session.add(_build_note_section(
+            note, present, order, report.id,
+            first_year=bool(financial_year.is_first_year), period=period))
         order += 1
 
     db.session.commit()
@@ -268,7 +271,33 @@ def _note_triggered(note, present):
 TABLE_FORMS = {"Table", "Figure in note", "Narrative + table"}
 
 
-def _assemble_note_content(note, present):
+def _first_period_wording(period):
+    """The comparative-information paragraph for a first financial period.
+
+    States the period, because whether it ran to twelve months is exactly
+    what a reader cannot assume of a first set of accounts and exactly what
+    the firm asked to see said. Where the dates are not known yet the
+    sentence is left for the preparer rather than guessed at.
+    """
+    start, end = period if period else (None, None)
+    if start and end:
+        months = round(((end - start).days + 1) / 30.44)
+        length = (f"a period of approximately {months} months"
+                  if months != 12 else "a twelve-month period")
+        covered = (f"from {start.strftime('%d %B %Y')} to "
+                   f"{end.strftime('%d %B %Y')}, being {length}")
+    else:
+        covered = ("from the date of incorporation to the financial year "
+                   "end [state the period]")
+
+    return (f"These financial statements cover the period {covered}, and are "
+            f"the Company's first financial statements since incorporation. "
+            f"Accordingly, no comparative figures are presented, and the "
+            f"amounts reported are not necessarily comparable with those of "
+            f"a subsequent full financial year.")
+
+
+def _assemble_note_content(note, present, first_year=False, period=None):
     """Build a note's starting text and figure tables from whichever of its
     pieces are triggered right now.
 
@@ -314,6 +343,18 @@ def _assemble_note_content(note, present):
         add_piece(piece)
 
     for sub in note.get("subsections", []):
+        # A first period since incorporation. The library's own comparative
+        # wording covers reclassified comparatives, which cannot apply when
+        # there are no comparatives at all - printing it would state
+        # something untrue about the accounts. The first-year counterpart is
+        # substituted instead, and it names the actual period, because
+        # whether that period is twelve months is the whole point of saying
+        # it. Auditor-editable afterwards like any other note text.
+        if sub.get("key") == "comparative_information" and first_year:
+            html_parts.append(f"<h4>{sub['heading']}</h4>")
+            html_parts.append(f"<p>{_first_period_wording(period)}</p>")
+            continue
+
         if not _piece_triggered(sub.get("tick_state"), sub.get("trigger_keys"),
                                 present):
             continue
@@ -334,8 +375,10 @@ def _assemble_note_content(note, present):
     return "\n".join(html_parts), table_specs
 
 
-def _build_note_section(note, present, sort_order, report_id):
-    content_html, table_specs = _assemble_note_content(note, present)
+def _build_note_section(note, present, sort_order, report_id,
+                        first_year=False, period=None):
+    content_html, table_specs = _assemble_note_content(
+        note, present, first_year=first_year, period=period)
     return AuditReportSection(
         report_id=report_id,
         section_key=f"{NOTE_PREFIX}{note['key']}",
@@ -404,7 +447,9 @@ def carry_forward_prior_wording(report, financial_year) -> int:
         # Untouched means identical to what the library would generate right
         # now. Recomputed rather than remembered, so a section is correctly
         # treated as edited even if it was changed before this existed.
-        default_html, _specs = _assemble_note_content(note, present)
+        default_html, _specs = _assemble_note_content(
+            note, present, first_year=bool(financial_year.is_first_year),
+            period=(financial_year.start_date, financial_year.end_date))
         current = (section.content_html or "").strip()
         if current and current != (default_html or "").strip():
             continue
