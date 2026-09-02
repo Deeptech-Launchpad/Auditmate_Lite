@@ -258,6 +258,20 @@
           <div class="t-label">Difference</div>
           <div class="t-value" id="total-diff">—</div>
         </div>
+
+        {# Last year's own check. Its rows are kept out of this year's
+           arithmetic, so without this they would be verified by nothing -
+           and a comparative column that does not balance is as wrong as a
+           current one. Hidden until the document actually carries one. #}
+        <div class="t-item t-prior" id="prior-totals"
+             {{ 'hidden' if not prior_balance else '' }}>
+          <div class="t-label">Last year</div>
+          <div class="t-value small">
+            Dr <span id="prior-debit">—</span> ·
+            Cr <span id="prior-credit">—</span> ·
+            diff <span id="prior-diff">—</span>
+          </div>
+        </div>
       </div>
       <div>
         <span class="muted small" id="save-status">Changes save automatically</span>

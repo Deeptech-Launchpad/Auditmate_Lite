@@ -286,10 +286,18 @@ def review(document_id):
     # total is: they are not part of this year's arithmetic. Two years summed
     # together never balance, and the difference that produces is noise the
     # auditor would go looking for a cause of.
+    def _live(rows):
+        return [_Row(i) for i in rows
+                if i.status != "discarded"
+                and not looks_like_total_label(i.label)]
+
     balance = reconcile_trial_balance(
-        [_Row(i) for i in items
-         if i.status != "discarded" and i.period != "previous"
-         and not looks_like_total_label(i.label)])
+        _live([i for i in items if i.period != "previous"]))
+
+    # Checked separately rather than not at all. Excluding last year from
+    # this year's arithmetic is right; leaving its rows unverified is not.
+    prior_rows = _live([i for i in items if i.period == "previous"])
+    prior_balance = reconcile_trial_balance(prior_rows) if prior_rows else None
 
     flagged = sum(1 for i in items if i.needs_review and i.status == "auto")
 
@@ -304,8 +312,8 @@ def review(document_id):
         document=document,
         fy=document.financial_year,
         customer=document.financial_year.customer,
-        items=items, balance=balance, flagged=flagged,
-        prior_notes=prior_notes,
+        items=items, balance=balance, prior_balance=prior_balance,
+        flagged=flagged, prior_notes=prior_notes,
     )
 
 

@@ -43,43 +43,67 @@
 
   /* ---------------------------------------------------------- totals ---- */
 
-  function recalcTotals() {
-    let debit = 0, credit = 0, hasDC = false;
+  /* Each year is totalled on its own. Summing both together produces a
+     difference that is pure arithmetic noise - but excluding last year and
+     then checking nothing would leave its rows unverified, and a prior-year
+     column that does not balance is exactly as wrong as a current one. */
+  function totalsFor(wantPrevious) {
+    let debit = 0, credit = 0, hasDC = false, rows = 0;
 
     grid.querySelectorAll('tbody tr').forEach(row => {
       // Discarded rows are excluded by the auditor; the document's own
       // total is excluded because adding it would count the document twice.
       if (row.classList.contains('row-discarded')) return;
       if (row.dataset.total === '1') return;
-      // Last year's rows balance among themselves, not against this year's.
-      // Adding both years together produces a difference that is pure
-      // arithmetic noise and sends the auditor hunting a real imbalance
-      // that is not there.
+
       const periodCell = row.querySelector('[data-field="period"]');
-      if (periodCell && periodCell.value === 'previous') return;
+      const isPrevious = !!periodCell && periodCell.value === 'previous';
+      if (isPrevious !== wantPrevious) return;
+
+      rows += 1;
       const d = parseNumber(row.querySelector('[data-field="debit"]').value);
       const c = parseNumber(row.querySelector('[data-field="credit"]').value);
       if (d !== null) { debit += d; hasDC = true; }
       if (c !== null) { credit += c; hasDC = true; }
     });
 
-    const debitEl = document.getElementById('total-debit');
-    const creditEl = document.getElementById('total-credit');
-    const diffEl = document.getElementById('total-diff');
+    return { debit, credit, hasDC, rows, difference: debit - credit };
+  }
 
-    if (!hasDC) {
+  function paint(prefix, totals) {
+    const debitEl = document.getElementById(prefix + '-debit');
+    const creditEl = document.getElementById(prefix + '-credit');
+    const diffEl = document.getElementById(prefix + '-diff');
+    if (!debitEl) return;
+
+    if (!totals.hasDC) {
       debitEl.textContent = creditEl.textContent = diffEl.textContent = '—';
       diffEl.style.color = '';
       return;
     }
 
-    const difference = debit - credit;
-    debitEl.textContent = formatMoney(debit);
-    creditEl.textContent = formatMoney(credit);
-    diffEl.textContent = formatMoney(difference);
-    diffEl.style.color = Math.abs(difference) < 0.01 ? 'var(--green)' : 'var(--red)';
+    debitEl.textContent = formatMoney(totals.debit);
+    creditEl.textContent = formatMoney(totals.credit);
+    diffEl.textContent = formatMoney(totals.difference);
+    diffEl.style.color = Math.abs(totals.difference) < 0.01
+      ? 'var(--green)' : 'var(--red)';
+  }
 
-    updateBanner(debit, credit, difference);
+  function recalcTotals() {
+    const current = totalsFor(false);
+    paint('total', current);
+
+    // Last year's block appears only once there are last-year rows to put
+    // in it - most documents carry one period and should not be given an
+    // empty second set of totals to read past.
+    const prior = totalsFor(true);
+    const priorBlock = document.getElementById('prior-totals');
+    if (priorBlock) {
+      priorBlock.hidden = prior.rows === 0;
+      if (prior.rows) paint('prior', prior);
+    }
+
+    updateBanner(current.debit, current.credit, current.difference);
   }
 
   /* The banner at the top of the page is rendered by the server. Left alone
