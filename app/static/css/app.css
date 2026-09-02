@@ -327,10 +327,19 @@ table.data .muted { color: var(--text-muted); font-size: 12.5px; }
   background: var(--surface); transition: border-color .12s, box-shadow .12s;
 }
 .fy-card:hover { border-color: var(--brand); box-shadow: var(--shadow); text-decoration: none; }
-.fy-card .fy-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.fy-card .fy-label { font-size: 16px; font-weight: 650; color: var(--text); }
-.fy-card .fy-dates { font-size: 12px; color: var(--text-faint); margin-bottom: 12px; }
-.fy-card .fy-stats { display: flex; gap: 16px; font-size: 12.5px; color: var(--text-muted); }
+.fy-card .fy-head, .fy-detail .fy-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.fy-card .fy-label, .fy-detail .fy-label { font-size: 16px; font-weight: 650; color: var(--text); }
+.fy-card .fy-dates, .fy-detail .fy-dates { font-size: 12px; color: var(--text-faint); margin-bottom: 12px; }
+.fy-card .fy-stats, .fy-detail .fy-stats { display: flex; gap: 16px; font-size: 12.5px; color: var(--text-muted); }
+
+/* ------------------------------------------------ fy picker (3+ years) */
+
+.fy-picker .field { margin-bottom: 16px; }
+.fy-detail {
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 18px;
+  background: var(--surface);
+}
+.fy-detail[hidden] { display: none; }
 
 /* ---------------------------------------------------------- AI notices */
 

@@ -30,24 +30,28 @@
         <span class="hint">Each year is a separate engagement workspace</span>
       </div>
       <div class="card-body">
-        {% if customer.financial_years %}
+        {% macro fy_pill(year) %}
+          {% if year.report and year.report.status == 'final' %}
+            <span class="pill pill-purple"><span class="dot"></span>Report generated</span>
+          {% elif year.tb_is_approved %}
+            <span class="pill pill-green"><span class="dot"></span>Approved</span>
+          {% else %}
+            <span class="pill pill-blue"><span class="dot"></span>In progress</span>
+          {% endif %}
+        {% endmacro %}
+
+        {% if not customer.financial_years %}
+          <div class="empty" style="padding:30px">
+            <p>No financial years yet. Add one below to start work.</p>
+          </div>
+        {% elif customer.financial_years|length <= 2 %}
           <div class="fy-grid">
             {% for year in customer.financial_years %}
             <a class="fy-card"
                href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=year.id) }}">
               <div class="fy-head">
                 <span class="fy-label">{{ year.year_label }}</span>
-                {% if year.status == 'in_progress' %}
-                  <span class="pill pill-blue"><span class="dot"></span>In progress</span>
-                {% elif year.status == 'statements_shared' %}
-                  <span class="pill pill-amber"><span class="dot"></span>Shared</span>
-                {% elif year.status == 'approved' %}
-                  <span class="pill pill-green"><span class="dot"></span>Approved</span>
-                {% elif year.status == 'report_generated' %}
-                  <span class="pill pill-purple"><span class="dot"></span>Report done</span>
-                {% else %}
-                  <span class="pill pill-grey">{{ year.status_label }}</span>
-                {% endif %}
+                {{ fy_pill(year) }}
               </div>
               <div class="fy-dates">
                 {{ year.start_date|datefmt }} — {{ year.end_date|datefmt }}
@@ -60,8 +64,35 @@
             {% endfor %}
           </div>
         {% else %}
-          <div class="empty" style="padding:30px">
-            <p>No financial years yet. Add one below to start work.</p>
+          <div class="fy-picker">
+            <div class="field" style="max-width:280px">
+              <label for="fy-select">Financial year</label>
+              <select id="fy-select" onchange="document.querySelectorAll('.fy-detail').forEach(function(el){el.hidden = el.dataset.fyId !== this.value}, this)">
+                {% for year in customer.financial_years %}
+                <option value="{{ year.id }}">{{ year.year_label }} · {{ year.start_date|datefmt }} — {{ year.end_date|datefmt }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            {% for year in customer.financial_years %}
+            <div class="fy-detail" data-fy-id="{{ year.id }}" {{ 'hidden' if not loop.first else '' }}>
+              <div class="fy-head">
+                <span class="fy-label">{{ year.year_label }}</span>
+                {{ fy_pill(year) }}
+              </div>
+              <div class="fy-dates">
+                {{ year.start_date|datefmt }} — {{ year.end_date|datefmt }}
+              </div>
+              <div class="fy-stats">
+                <span>{{ year.documents|length }} documents</span>
+                <span>{{ year.statements|length }} statements</span>
+              </div>
+              <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=year.id) }}"
+                 class="btn btn-primary btn-sm" style="margin-top:12px">
+                Open workspace →
+              </a>
+            </div>
+            {% endfor %}
           </div>
         {% endif %}
       </div>
