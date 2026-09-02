@@ -235,9 +235,14 @@ def review(document_id):
     # not keep counting against the check that tells them whether the
     # document balances - otherwise removing a duplicate appears to change
     # nothing, and the figure they are chasing never moves.
+    # Last year's rows are excluded for the same reason the document's own
+    # total is: they are not part of this year's arithmetic. Two years summed
+    # together never balance, and the difference that produces is noise the
+    # auditor would go looking for a cause of.
     balance = reconcile_trial_balance(
         [_Row(i) for i in items
-         if i.status != "discarded" and not looks_like_total_label(i.label)])
+         if i.status != "discarded" and i.period != "previous"
+         and not looks_like_total_label(i.label)])
 
     flagged = sum(1 for i in items if i.needs_review and i.status == "auto")
 
@@ -329,6 +334,12 @@ def update_line_item(item_id):
 
     if "label" in payload:
         item.label = (payload["label"] or "").strip()
+    if "period" in payload:
+        # Only ever the two the grid offers. Anything else would be silently
+        # treated as current by the trial balance build, which is the one
+        # direction this must never fail in.
+        item.period = ("previous" if payload["period"] == "previous"
+                       else "current")
     if "amount" in payload:
         item.amount = _parse_decimal(payload["amount"])
     if "debit" in payload:

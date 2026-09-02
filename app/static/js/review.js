@@ -51,6 +51,12 @@
       // total is excluded because adding it would count the document twice.
       if (row.classList.contains('row-discarded')) return;
       if (row.dataset.total === '1') return;
+      // Last year's rows balance among themselves, not against this year's.
+      // Adding both years together produces a difference that is pure
+      // arithmetic noise and sends the auditor hunting a real imbalance
+      // that is not there.
+      const periodCell = row.querySelector('[data-field="period"]');
+      if (periodCell && periodCell.value === 'previous') return;
       const d = parseNumber(row.querySelector('[data-field="debit"]').value);
       const c = parseNumber(row.querySelector('[data-field="credit"]').value);
       if (d !== null) { debit += d; hasDC = true; }
@@ -187,7 +193,7 @@
     const field = input.dataset.field;
     let value = input.value.trim();
 
-    if (field !== 'label') {
+    if (field !== 'label' && field !== 'period') {
       const n = parseNumber(value);
       value = n === null ? '' : String(n);
       input.value = n === null ? '' : formatMoney(n);
@@ -199,6 +205,15 @@
     saveRow(row, field, value);
     recalcTotals();
   }, true);
+
+  // A dropdown commits on change, not on blur.
+  grid.addEventListener('change', event => {
+    const input = event.target;
+    if (!input.classList || !input.classList.contains('period-cell')) return;
+    if (readOnly) return;
+    saveRow(input.closest('tr'), 'period', input.value);
+    recalcTotals();
+  });
 
   // Enter moves down the column; Escape reverts the cell.
   grid.addEventListener('keydown', event => {

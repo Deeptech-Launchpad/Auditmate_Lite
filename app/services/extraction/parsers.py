@@ -76,20 +76,95 @@ def _identify_columns(header_cells):
     if mapping["debit"] is not None and mapping["credit"] is not None:
         mapping["amount"] = None
 
-    # Anything left over headed with a year or a date is last year's column,
-    # printed beside this one to compare against. A header that names its own
-    # side - "DEBIT - YEAR TO DATE" - was claimed above and never reaches
-    # here, so only genuinely unclaimed columns can be marked.
+    # Which of the remaining columns are this year and which are last year.
+    #
+    # A dated column is not automatically the comparative. A balance sheet
+    # headed "31 Dec 2024 | 31 Dec 2023" has a year over BOTH columns, and
+    # treating every dated column as last year's left the current figures
+    # with no column at all - the row was then dropped for having no amount,
+    # which is how a two-column sheet could extract nothing. So the years are
+    # read and compared: the latest is this year, everything earlier is a
+    # comparative. Only a column that says in words that it is a comparative
+    # is taken on its word without a year.
+    dated = []
+    worded = set()
     for idx, cell in enumerate(header_cells):
         if idx in (mapping["label"], mapping["debit"], mapping["credit"],
-                   mapping["amount"], mapping["code"]):
+                   mapping["amount"], mapping["code"], mapping["type"]):
             continue
         text = str(cell or "").strip().lower()
-        if text and (_YEAR.search(text)
-                     or any(w in text for w in COMPARATIVE_WORDS)):
-            mapping["comparative"].add(idx)
+        if not text:
+            continue
+        if any(w in text for w in COMPARATIVE_WORDS):
+            worded.add(idx)
+            continue
+        found = _YEAR.search(text)
+        if found:
+            dated.append((int(found.group()), idx))
+
+    mapping["comparative"].update(worded)
+
+    if dated:
+        latest = max(year for year, _ in dated)
+        for year, idx in dated:
+            if year < latest:
+                mapping["comparative"].add(idx)
+            elif mapping["amount"] is None and mapping["debit"] is None:
+                # This year's column, and nothing else claimed the figures.
+                mapping["amount"] = idx
 
     return mapping
+
+
+def _comparative_row(cells, cols, source_ref, current):
+    """The same account's prior-year figure, as its own row.
+
+    Until this existed the comparative column was detected and then thrown
+    away - safe, in that last year's figure could not be reported as this
+    year's, but it meant a two-column trial balance carried no comparatives
+    at all and the prior-year column of every statement had to come from
+    somewhere else.
+
+    Emitted as a separate row carrying period="previous" rather than as an
+    extra field on the current row, because that is what everything
+    downstream already understands: the trial balance build filters on it,
+    and prior_year.py reads by it.
+    """
+    columns = sorted(cols.get("comparative") or ())
+    if not columns or current is None:
+        return None
+
+    value = None
+    for idx in columns:
+        if idx < len(cells):
+            value = parse_amount(cells[idx])
+            if value is not None:
+                break
+    if value is None:
+        return None
+
+    # Which side last year's figure sits on is not stated by a bare
+    # comparative column, so it follows this year's row for the same
+    # account - the only evidence available, and right whenever the account
+    # has not changed sides.
+    debit = credit = amount = None
+    if current.debit is not None:
+        debit = value
+    elif current.credit is not None:
+        credit = value
+    else:
+        amount = value
+
+    return ExtractedRow(
+        label=current.label,
+        raw_label=current.raw_label,
+        amount=amount, debit=debit, credit=credit,
+        account_code=current.account_code,
+        account_type=current.account_type,
+        period="previous",
+        raw_values=current.raw_values,
+        source_ref=dict(source_ref or {}, column="comparative"),
+    )
 
 
 def _row_from_cells(cells, cols, source_ref):
@@ -372,6 +447,13 @@ def extract_xlsx(path: Path, sheets=None) -> ExtractionResult:
 
             result.rows.append(extracted)
 
+            # Last year's figure for the same account, where the sheet
+            # prints one. Appended straight after its own current-year row
+            # so the two read together in the review grid.
+            prior = _comparative_row(cells, cols, source_ref, extracted)
+            if prior:
+                result.rows.append(prior)
+
     workbook.close()
     return result
 
@@ -419,9 +501,13 @@ def extract_csv(path: Path) -> ExtractionResult:
                 "amount": None, "code": None}
 
     for offset, row in enumerate(rows[start:], start=start):
-        extracted = _row_from_cells(row, cols, {"row": offset + 1})
+        source_ref = {"row": offset + 1}
+        extracted = _row_from_cells(row, cols, source_ref)
         if extracted:
             result.rows.append(extracted)
+            prior = _comparative_row(row, cols, source_ref, extracted)
+            if prior:
+                result.rows.append(prior)
 
     return result
 
@@ -452,10 +538,13 @@ def extract_docx(path: Path) -> ExtractionResult:
                     "amount": None, "code": None}
 
         for offset, cells in enumerate(grid[start:], start=start):
-            extracted = _row_from_cells(
-                cells, cols, {"table": table_idx + 1, "row": offset + 1})
+            source_ref = {"table": table_idx + 1, "row": offset + 1}
+            extracted = _row_from_cells(cells, cols, source_ref)
             if extracted:
                 result.rows.append(extracted)
+                prior = _comparative_row(cells, cols, source_ref, extracted)
+                if prior:
+                    result.rows.append(prior)
 
     # Keep the body text so the AI fallback has context if tables were empty.
     result.raw_text = "\n".join(p.text for p in document.paragraphs if p.text.strip())
@@ -492,10 +581,14 @@ def extract_pdf(path: Path) -> ExtractionResult:
                             "amount": None, "code": None}
 
                 for offset, cells in enumerate(table[start:], start=start):
-                    extracted = _row_from_cells(
-                        cells, cols, {"page": page_no, "row": offset + 1})
+                    source_ref = {"page": page_no, "row": offset + 1}
+                    extracted = _row_from_cells(cells, cols, source_ref)
                     if extracted:
                         result.rows.append(extracted)
+                        prior = _comparative_row(cells, cols, source_ref,
+                                                 extracted)
+                        if prior:
+                            result.rows.append(prior)
 
     result.raw_text = "\n".join(text_chunks)
 

@@ -161,8 +161,17 @@ aggregate, or skip rows.
 `credit`. If it has a single amount column, populate `amount` only.
 - Negative numbers may appear in parentheses, e.g. (1,234.00) means -1234.00.
 - Amounts may carry Cr/Dr suffixes or S$ prefixes - return clean numbers.
-- If a document shows two year columns, mark the prior-year rows as \
-period="previous".
+- PERIODS. Read the column headings before reading any figure. Where a \
+document prints more than one dated column - "31 Dec 2024" beside "31 Dec \
+2023", or "Current Year" beside "Prior Year" - every figure belongs to \
+exactly one of them, and you must say which. Emit ONE ROW PER ACCOUNT PER \
+PERIOD: the account's current-year figure with period="current", and a \
+second row, same label, carrying its prior-year figure with \
+period="previous". The latest date is the current year; every earlier date \
+is a comparative. Never emit two rows for the same account without \
+distinguishing them, and never merge two years' figures into one row. A \
+prior-year balance recorded as this year's goes straight onto the face of \
+the financial statements.
 - Skip page headers, footers and page numbers. DO keep genuine total lines, \
 labelled exactly as the document labels them.
 - Set `confidence` honestly per row. If a figure is blurred, ambiguous, or you \
