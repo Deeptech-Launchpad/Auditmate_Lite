@@ -76,6 +76,33 @@ class AIExtraction(BaseModel):
                     "ambiguity, totals that don't add up")
 
 
+class AIPriorNote(BaseModel):
+    note_number: Optional[str] = Field(
+        default=None,
+        description="The note number as printed, e.g. '3' or '3(a)'. Null for "
+                    "an unnumbered section such as corporate information.")
+    title: str = Field(description="The note heading, as printed")
+    body_text: str = Field(
+        description="The note's full narrative text, verbatim. Keep the "
+                    "company's own wording exactly - do not summarise, "
+                    "paraphrase, tidy or shorten it.")
+    confidence: float = Field(
+        default=0.9,
+        description="0.0-1.0 that this note was read correctly. Score below "
+                    "0.8 if the page was blurred or the text ran across a "
+                    "column or page break you had to infer.")
+
+
+class AIPriorNotes(BaseModel):
+    notes: List[AIPriorNote] = Field(
+        description="Every note found, in the order printed")
+    unreadable: Optional[str] = Field(
+        default=None,
+        description="Say so plainly if the notes could not be read at all, "
+                    "or only partly - e.g. 'pages 6-8 are a scan too faint "
+                    "to read'. Null when everything was readable.")
+
+
 class AIAccountMapping(BaseModel):
     label: str = Field(description="The original account label given to you")
     line_key: str = Field(description="The statement line key you are mapping it to")
@@ -238,6 +265,91 @@ def extract_with_ai(path: Path, file_type: str, category: str = "other",
         result.error = f"AI extraction failed ({provider.LABEL}): {exc}"
 
     return result
+
+
+PRIOR_NOTES_SYSTEM_PROMPT = """You read the notes to the financial statements \
+out of a set of signed Singapore company accounts, so that next year's \
+accounts can show what was disclosed last year.
+
+You are reading NARRATIVE, not figures. Another process already reads the \
+numbers; your job is the words.
+
+Rules:
+- Return every note, including unnumbered front sections such as corporate \
+information / general information, and the accounting policy notes.
+- Reproduce each note's wording VERBATIM. Do not summarise, paraphrase, \
+modernise, correct grammar, or shorten. The point of reading these is to \
+recover the company's own sentences - a tidied version is worthless.
+- Where a note contains a table of figures, keep the surrounding narrative \
+and leave the table out. The figures come from elsewhere.
+- Keep the note number exactly as printed, including any sub-letter: "3", \
+"3(a)", "12.1". Leave it null for a section printed without a number.
+- Company-specific sentences matter most: principal activities and the SSIC \
+description, credit terms granted to customers, useful lives and \
+depreciation rates, the basis of any estimate. Never drop these.
+- If you cannot read part of the document - a faint scan, a missing page - \
+say which part in `unreadable` rather than inventing what it probably said. \
+An honest gap is useful; a plausible fabrication is dangerous."""
+
+
+def extract_prior_year_notes(path: Path, file_type: str,
+                             raw_text: str = "") -> dict:
+    """Read the note wording out of last year's signed accounts.
+
+    Returns {"ok", "notes": [...], "unreadable": str|None, "error": str|None}.
+    Figures are not touched here - `extract_with_ai` already reads those, and
+    the comparative column is built from them.
+    """
+    try:
+        provider = get_provider()
+    except ValueError as exc:
+        return {"ok": False, "notes": [], "unreadable": None,
+                "error": str(exc)}
+
+    if not provider.available():
+        return {"ok": False, "notes": [], "unreadable": None,
+                "error": f"No API key configured for {provider.LABEL}."}
+
+    parts = []
+    if file_type == "pdf":
+        parts.append({"type": "pdf", "data": path.read_bytes()})
+    elif file_type == "image":
+        suffix = path.suffix.lower()
+        mime = "image/png" if suffix == ".png" else "image/jpeg"
+        parts.append({"type": "image", "data": path.read_bytes(), "mime": mime})
+    elif raw_text:
+        parts.append({"type": "text",
+                      "text": f"Document contents:\n\n{raw_text[:100000]}"})
+    else:
+        return {"ok": False, "notes": [], "unreadable": None,
+                "error": "Nothing to send to the AI provider"}
+
+    parts.append({
+        "type": "text",
+        "text": ("Read the notes to the financial statements out of these "
+                 "signed accounts. Return each note's number, heading and "
+                 "full narrative text, word for word."),
+    })
+
+    try:
+        parsed = provider.structured_call(
+            PRIOR_NOTES_SYSTEM_PROMPT, parts, AIPriorNotes, max_tokens=32000)
+    except Exception as exc:                       # noqa: BLE001
+        log.exception("Prior-year note extraction failed")
+        return {"ok": False, "notes": [], "unreadable": None,
+                "error": f"Could not read the notes ({provider.LABEL}): {exc}"}
+
+    notes = [{"note_number": (n.note_number or "").strip() or None,
+              "title": n.title.strip(),
+              "body_text": n.body_text,
+              "confidence": max(0.0, min(1.0, n.confidence))}
+             for n in parsed.notes if n.title and n.title.strip()]
+
+    log.info("%s read %d prior-year note(s) from %s",
+             provider.LABEL, len(notes), path.name)
+
+    return {"ok": bool(notes), "notes": notes,
+            "unreadable": parsed.unreadable, "error": None}
 
 
 # --------------------------------------------------------------------------

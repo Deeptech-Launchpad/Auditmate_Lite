@@ -1340,3 +1340,50 @@ class AuditLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     user = db.relationship("User")
+
+
+class PriorYearNote(db.Model):
+    """A note read out of last year's signed accounts.
+
+    Last year's figures were already treated as required data rather than
+    evidence (see services/prior_year.py). Its *words* are data too, and were
+    being thrown away: which notes the company actually disclosed, and the
+    sentences specific to it - principal activities, credit terms, useful
+    lives. Those are not boilerplate a library can supply, because they
+    describe this company and no other.
+
+    Stored per financial year rather than per customer: a note's wording can
+    change between years, and the auditor needs to see what was said in the
+    year being compared against, not the most recent version of it.
+
+    Nothing here is used without a human. This is what last year said, offered
+    to the preparer as a starting point - never written into a note unseen.
+    """
+
+    __tablename__ = "prior_year_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    financial_year_id = db.Column(db.Integer,
+                                  db.ForeignKey("financial_years.id"),
+                                  nullable=False, index=True)
+    source_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
+
+    # As printed last year: "3", "3(a)", or blank on an unnumbered section
+    # like the corporate information that precedes the numbered notes.
+    note_number = db.Column(db.String(20))
+    title = db.Column(db.String(255), nullable=False)
+    body_text = db.Column(db.Text)
+
+    # The library note this appears to correspond to, when one matches.
+    # Nullable on purpose: a company-specific note that our library has never
+    # heard of is exactly the kind we must not silently drop.
+    matched_key = db.Column(db.String(80), index=True)
+
+    confidence = db.Column(db.Float, default=1.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    financial_year = db.relationship("FinancialYear")
+    source_document = db.relationship("Document")
+
+    def __repr__(self):
+        return f"<PriorYearNote {self.note_number} {self.title!r}>"

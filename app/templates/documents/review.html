@@ -255,6 +255,42 @@
     </div>
   </div>
 </div>
+
+{% if prior_notes %}
+{# Last year's words, read out of the signed accounts alongside its figures.
+   Shown but not editable: this is a record of what was disclosed, and the
+   preparer edits their own note, never last year's. #}
+<div class="card" style="margin-top:18px">
+  <div class="card-head">
+    <h2>Note wording read from this document</h2>
+    <span class="hint">{{ prior_notes|length }} note(s) — last year's own words</span>
+  </div>
+  <div class="card-body">
+    <p class="muted small" style="margin-top:0">
+      Kept verbatim so the company-specific sentences survive — principal
+      activities, credit terms, useful lives. Nothing here is written into
+      this year's notes on its own.
+    </p>
+    {% for note in prior_notes %}
+    <div style="padding:12px 0;border-top:1px solid #f0f2f5">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+        <span class="strong">
+          {% if note.note_number %}{{ note.note_number }}. {% endif %}{{ note.title }}
+        </span>
+        {% if note.matched_key %}
+          <span class="pill pill-green">✓ matches {{ note.matched_key }}</span>
+        {% else %}
+          <span class="pill pill-amber">No library match</span>
+        {% endif %}
+      </div>
+      {% if note.body_text %}
+        <p class="small" style="margin:6px 0 0;white-space:pre-wrap;color:var(--text-muted)">{{ note.body_text }}</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

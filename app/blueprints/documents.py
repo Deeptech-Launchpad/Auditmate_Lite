@@ -9,7 +9,7 @@ from flask_login import current_user, login_required
 
 from ..extensions import db
 from ..models import (DOCUMENT_CATEGORIES, Document, ExtractedLineItem,
-                      FinancialYear, TrialBalanceAccount)
+                      FinancialYear, PriorYearNote, TrialBalanceAccount)
 from ..services import storage
 from ..services.audit import record
 from ..services.categorise import detect_category
@@ -170,6 +170,7 @@ def analyse(fy_id):
         return redirect(url_for("documents.index", fy_id=fy_id))
 
     analysed = failed = rows = ai_count = 0
+    unreadable_notes = []
 
     for document in documents:
         result = enqueue("extract_document", {"document_id": document.id})
@@ -180,6 +181,13 @@ def analyse(fy_id):
                 ai_count += 1
         else:
             failed += 1
+
+        # Reported even when the figures read perfectly: a note that could
+        # not be read is not a note that was never disclosed, and only the
+        # preparer can tell the difference.
+        if result.get("notes_unreadable"):
+            unreadable_notes.append(
+                f"{document.original_filename}: {result['notes_unreadable']}")
 
     record("financial_year", fy_id, "analyse_documents",
            after={"analysed": analysed, "failed": failed, "rows": rows},
@@ -195,6 +203,8 @@ def analyse(fy_id):
     if failed:
         flash(f"{failed} document(s) could not be read. Open each one to see "
               f"why.", "error" if not analysed else "warning")
+    for warning in unreadable_notes:
+        flash(f"Notes only partly read — {warning}", "warning")
 
     return redirect(url_for("documents.index", fy_id=fy_id))
 
@@ -231,12 +241,19 @@ def review(document_id):
 
     flagged = sum(1 for i in items if i.needs_review and i.status == "auto")
 
+    # Last year's note wording, where this is the signed accounts. Read-only
+    # here: this screen is for checking what was read, not for editing it.
+    prior_notes = (PriorYearNote.query
+                   .filter_by(source_document_id=document.id)
+                   .order_by(PriorYearNote.id).all())
+
     return render_template(
         "documents/review.html",
         document=document,
         fy=document.financial_year,
         customer=document.financial_year.customer,
         items=items, balance=balance, flagged=flagged,
+        prior_notes=prior_notes,
     )
 
 

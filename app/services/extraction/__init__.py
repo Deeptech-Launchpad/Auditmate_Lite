@@ -16,6 +16,7 @@ Whatever the engine, every row lands in the same Review & Correct screen.
 """
 import hashlib
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -67,6 +68,59 @@ def _should_use_ai(result: ExtractionResult, file_type: str) -> tuple:
         return True, f"low rule-based confidence ({result.confidence:.2f})"
 
     return False, "rule-based extraction was reliable"
+
+
+def _normalise_heading(text: str) -> str:
+    """A note heading reduced to comparable words."""
+    text = re.sub(r"^[\d\s.()a-z]{0,10}", "", (text or "").lower().strip())
+    return re.sub(r"[^a-z ]+", " ", text).strip()
+
+
+def _read_prior_year_notes(document, path, file_type, raw_text) -> str:
+    """Read and store the note wording from a set of signed accounts.
+
+    Returns a short message for the caller to surface, or None. Never raises:
+    a document whose figures read perfectly must not be marked failed because
+    its narrative could not be read.
+    """
+    from ..extraction.ai import extract_prior_year_notes, ai_available
+    from ...models import NoteLibraryEntry, PriorYearNote
+
+    if not ai_available():
+        return None
+
+    try:
+        outcome = extract_prior_year_notes(path, file_type, raw_text=raw_text)
+    except Exception:                              # noqa: BLE001
+        log.exception("Prior-year note extraction raised")
+        return "The notes in this document could not be read."
+
+    if not outcome.get("ok"):
+        return outcome.get("error") or "The notes in this document could not be read."
+
+    # Match each note to a library entry by heading, so the preparer is shown
+    # last year's wording against the right note. No match is fine and is
+    # left null - a company-specific note our library never had is precisely
+    # the one worth keeping.
+    library = {_normalise_heading(entry.heading): entry.key
+               for entry in NoteLibraryEntry.query.all()}
+
+    PriorYearNote.query.filter_by(source_document_id=document.id).delete()
+
+    for note in outcome["notes"]:
+        db.session.add(PriorYearNote(
+            financial_year_id=document.financial_year_id,
+            source_document_id=document.id,
+            note_number=note["note_number"],
+            title=note["title"][:255],
+            body_text=note["body_text"],
+            matched_key=library.get(_normalise_heading(note["title"])),
+            confidence=note["confidence"],
+        ))
+
+    log.info("Document %s: stored %d prior-year note(s)",
+             document.id, len(outcome["notes"]))
+    return outcome.get("unreadable")
 
 
 def extract_document(document_id: int) -> dict:
@@ -148,6 +202,15 @@ def extract_document(document_id: int) -> dict:
         from ..identify import identify_document
         identified, identified_reason, _changed = identify_document(document)
 
+    # --- Stage 3b: last year's words, not just its figures ------------------
+    # Only for the signed accounts, and only when they carry narrative. The
+    # comparative FIGURES are read above like any other document; this reads
+    # what the company actually said in its notes, which nothing else does.
+    notes_note = None
+    if document.category in ("signed_accounts", "prior_signed_accounts"):
+        notes_note = _read_prior_year_notes(document, path, file_type,
+                                            result.raw_text)
+
     document.extraction_status = "extracted" if result.rows else "failed"
     document.extraction_engine = engine_used
     document.extraction_confidence = result.confidence
@@ -172,4 +235,9 @@ def extract_document(document_id: int) -> dict:
         "balance": balance,
         "category": identified,
         "category_reason": identified_reason,
+        # Set when the notes were read but something in them could not be -
+        # a faint scan, a missing page. Shown to the preparer rather than
+        # swallowed, because a note silently absent reads as a note that was
+        # never disclosed.
+        "notes_unreadable": notes_note,
     }
