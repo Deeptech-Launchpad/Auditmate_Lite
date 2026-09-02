@@ -573,6 +573,12 @@ table.fin tr.overridden input.amount { background: var(--amber-light); border-co
   font-size: 10px; text-transform: uppercase; letter-spacing: .4px;
   color: var(--text-faint); font-weight: 700;
 }
+/* What last year's accounts said about a note. "Carried" is the stronger
+   claim - this note's words came from them - so it reads in the brand
+   colour; "disclosed" is context only, and stays quiet. */
+.section-item .prior-tag { color: var(--text-muted); font-weight: 700; }
+.section-item .prior-tag.carried { color: var(--brand); }
+
 .section-item.dragging { opacity: .4; border-style: dashed; }
 .section-item.section-child {
   margin-left: 22px; width: calc(100% - 22px);

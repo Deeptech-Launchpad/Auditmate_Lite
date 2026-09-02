@@ -55,6 +55,13 @@ def builder(fy_id):
 
     report = report_service.ensure_report(financial_year)
 
+    # Last year's own sentences, into notes still holding library boilerplate.
+    # Idempotent, and never touches a note the preparer has written in.
+    carried = report_service.carry_forward_prior_wording(report, financial_year)
+    if carried:
+        flash(f"{carried} note(s) start from last year's wording — check each "
+              f"one still describes the company.", "info")
+
     # A closed engagement renders the finished document, not an editor.
     editable = not financial_year.is_closed
 
@@ -80,6 +87,8 @@ def builder(fy_id):
                            content_gaps=gaps,
                            available_accounts=available_accounts,
                            attachable_notes=report_service.attachable_notes(report),
+                           prior_disclosed=report_service.prior_year_disclosed(
+                               financial_year),
                            customer=financial_year.customer,
                            final_version=financial_year.final_version,
                            tb_approved_at=financial_year.tb_approved_at,

@@ -212,7 +212,18 @@
           <span class="stitle">
             {% set _n = note_numbers.get(section.section_key) if note_numbers else None %}
             {% if _n %}<span class="note-num">{{ _n }}.</span> {% endif %}{{ section.title }}
-            <div class="stype">{{ section.section_type|replace('_', ' ') }}</div>
+            <div class="stype">
+              {{ section.section_type|replace('_', ' ') }}
+              {# What last year's accounts say about this note. "Carried"
+                 means its text came from them; "last year" means they
+                 disclosed it but this year's figures decide whether it
+                 appears - see prior_year_disclosed(). #}
+              {% if section.prior_note_id %}
+                · <span class="prior-tag carried">carried from last year</span>
+              {% elif prior_disclosed and section.section_key in prior_disclosed %}
+                · <span class="prior-tag">disclosed last year</span>
+              {% endif %}
+            </div>
           </span>
           {% if section.section_type != 'statement' %}
             <button class="icon-btn edit-btn" data-section-id="{{ section.id }}"

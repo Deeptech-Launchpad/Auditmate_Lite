@@ -1014,6 +1014,13 @@ class AuditReportSection(db.Model):
     content_html = db.Column(db.Text)
     data_binding = db.Column(JSON)
 
+    # Set when this note's text was carried forward from last year's signed
+    # accounts rather than the FRS library. Recorded rather than merged in
+    # silently: carried wording is last year's claim about this company, and
+    # the preparer has to be told which sentences they are inheriting so
+    # they can confirm they are still true.
+    prior_note_id = db.Column(db.Integer, db.ForeignKey("prior_year_notes.id"))
+
     # A sub-note the auditor attached to an existing note - "11.1" rather
     # than its own top-level number. NULL for every ordinary note. Ordering
     # among several children of the same parent is still their own

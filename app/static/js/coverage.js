@@ -55,6 +55,28 @@
       + '</tbody></table></div>';
   }
 
+  // Documents read but held back from the accounts. Shown even when coverage
+  // is otherwise clean: a file that was read and then deliberately not used
+  // looks, on every other screen, exactly like one that was used.
+  function notUsedBlock(data) {
+    const rows = data.not_used || [];
+    if (!rows.length) return '';
+    return '<div class="cv-group">'
+      + '<h3>Read, but not built into the accounts '
+      + '<span class="cv-count">' + rows.length + '</span></h3>'
+      + '<p class="muted small">Their figures were extracted successfully. '
+      + 'This is why each one is not in the statements.</p>'
+      + '<table class="cv-table"><thead><tr>'
+      + '<th>Document</th><th class="cv-num">Rows</th><th>Why not used</th>'
+      + '</tr></thead><tbody>'
+      + rows.map(r => '<tr>'
+          + '<td>' + r.filename + '<div class="cv-key">' + r.category + '</div></td>'
+          + '<td class="cv-num">' + r.rows + '</td>'
+          + '<td class="cv-fix">' + r.reason + '</td>'
+          + '</tr>').join('')
+      + '</tbody></table></div>';
+  }
+
   let suggestions = {};
 
   function render(data) {
@@ -69,7 +91,8 @@
       body.innerHTML = '<div class="cv-clean">'
         + '<strong>Every account reaches the report.</strong> '
         + 'All ' + data.accounts_total + ' accounts in the approved trial '
-        + 'balance appear in a statement. Nothing was dropped.</div>';
+        + 'balance appear in a statement. Nothing was dropped.</div>'
+        + notUsedBlock(data);
       return;
     }
 
@@ -100,6 +123,7 @@
               'No standard key, so nothing knows where to put it. Fix these '
               + 'on the Trial Balance page.',
               data.unmapped, fix)
+      + notUsedBlock(data)
       + '<div class="cv-actions">'
       + '<button type="button" class="btn" id="cv-suggest">Suggest where these belong</button>'
       + '<a class="btn" href="/trial-balance/fy/' + fyId + '">Open Trial Balance</a>'

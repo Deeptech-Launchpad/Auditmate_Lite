@@ -149,6 +149,73 @@ def _template_keys():
     return consumed
 
 
+# Documents describing last year. They never build this year's accounts and
+# are not meant to - which is not the same as being unused.
+PRIOR_YEAR_CATEGORIES = {"signed_accounts", "prior_trial_balance",
+                         "prior_cash_flow"}
+
+
+def _documents_not_used(financial_year):
+    """Documents that were read but whose figures never reached the accounts.
+
+    The firm asked for this directly: "if a value was extracted but not used,
+    the generation screen should say why." Silence here is the worst answer -
+    a document read successfully and then quietly ignored looks identical, on
+    every screen, to one that was used.
+
+    None of these are faults. Holding a document back is deliberate: exactly
+    one document builds the accounts and the rest check them, or the money in
+    them is counted twice. But deliberate is not the same as unexplained.
+    """
+    from .trial_balance import choose_sources
+
+    documents = list(financial_year.documents)
+    if not documents:
+        return []
+
+    sources, evidence = choose_sources(documents)
+    source_names = ", ".join(sorted({d.category_label for d in sources})) \
+        or "another document"
+    evidence_ids = {d.id for d in evidence}
+
+    out = []
+    for document in documents:
+        rows = len(document.line_items)
+        if not rows:
+            continue
+
+        # Last year's documents are not evidence held back - they are used,
+        # just somewhere else. Saying "not used" of a document that fills the
+        # whole comparative column would be a false statement to an auditor,
+        # and the wrong kind of false: one that invites them to go looking
+        # for a problem that is not there.
+        if document.category in PRIOR_YEAR_CATEGORIES:
+            reason = ("Used for the comparative column, not for this year's "
+                      "accounts — it describes last year.")
+            if document.category == "signed_accounts":
+                reason = ("Used for the comparative column and its note "
+                          "wording, not for this year's accounts — it "
+                          "describes last year.")
+        elif document.review_status != "verified":
+            reason = ("Not verified yet — verify it and the accounts rebuild "
+                      "with its figures in.")
+        elif document.id in evidence_ids:
+            reason = (f"Held back on purpose to check the accounts against. "
+                      f"{source_names} builds them; adding this one too would "
+                      f"count the same money twice.")
+        else:
+            continue
+
+        out.append({
+            "id": document.id,
+            "filename": document.original_filename,
+            "category": document.category_label,
+            "rows": rows,
+            "reason": reason,
+        })
+    return out
+
+
 def coverage(financial_year_id):
     """Reconcile the trial balance against what the report presents.
 
@@ -200,9 +267,11 @@ def coverage(financial_year_id):
         return float(sum((abs(Decimal(str(r["net"]))) for r in rows), ZERO))
 
     missing = unmapped + orphaned
+    not_used = _documents_not_used(financial_year)
 
     return {
         "ok": True,
+        "not_used": not_used,
         "accounts_total": len(accounts),
         "presented": len(presented),
         "unmapped": unmapped,

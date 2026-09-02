@@ -348,6 +348,96 @@ def _build_note_section(note, present, sort_order, report_id):
     )
 
 
+def prior_year_wording(financial_year):
+    """Last year's note wording, keyed by the library note it matched.
+
+    Read out of the signed accounts by the extraction layer (point 2). Only
+    matched notes are returned here: an unmatched note has no section to be
+    carried into, and is surfaced on the document review screen instead so it
+    is seen rather than lost.
+    """
+    from ..models import PriorYearNote
+
+    out = {}
+    for note in (PriorYearNote.query
+                 .filter_by(financial_year_id=financial_year.id)
+                 .order_by(PriorYearNote.id).all()):
+        if note.matched_key and note.body_text:
+            out.setdefault(note.matched_key, note)
+    return out
+
+
+def carry_forward_prior_wording(report, financial_year) -> int:
+    """Offer last year's sentences as the starting text of this year's notes.
+
+    Runs on every builder load and is idempotent. Returns how many sections
+    were filled this time.
+
+    The rule that matters: it only ever writes into a note still holding the
+    library's untouched default. The moment a preparer types anything, that
+    note is theirs and this leaves it alone forever - carrying last year's
+    wording over an auditor's own words would be destroying work, and doing
+    it silently on a page load would be worse.
+
+    Nor does it enable anything. Whether a note appears is decided by whether
+    the figure it explains is present, which is a question about THIS year;
+    last year's disclosure has no vote. See `prior_year_disclosed`.
+    """
+    wording = prior_year_wording(financial_year)
+    if not wording:
+        return 0
+
+    present = _present_keys(financial_year)
+    catalogue = {n["key"]: n for n in load_notes_catalogue()}
+    filled = 0
+
+    for section in report.sections:
+        if not section.section_key.startswith(NOTE_PREFIX):
+            continue
+        if section.prior_note_id:                  # already carried
+            continue
+
+        key = section.section_key[len(NOTE_PREFIX):]
+        note = catalogue.get(key)
+        prior = wording.get(key)
+        if not note or prior is None:
+            continue
+
+        # Untouched means identical to what the library would generate right
+        # now. Recomputed rather than remembered, so a section is correctly
+        # treated as edited even if it was changed before this existed.
+        default_html, _specs = _assemble_note_content(note, present)
+        current = (section.content_html or "").strip()
+        if current and current != (default_html or "").strip():
+            continue
+
+        section.content_html = prior.body_text
+        section.prior_note_id = prior.id
+        filled += 1
+
+    if filled:
+        db.session.commit()
+        log.info("FY %s: carried %d note(s) forward from last year's accounts",
+                 financial_year.id, filled)
+    return filled
+
+
+def prior_year_disclosed(financial_year) -> set:
+    """Section keys whose note this company disclosed last year.
+
+    Returned already prefixed so a caller can test `section.section_key in
+    ...` directly, rather than re-deriving the prefix and getting it wrong.
+
+    Shown against the tick list so the preparer can see what last year's
+    accounts covered. Deliberately NOT wired into whether a note is ticked:
+    a company that repaid its bank loan should not receive a borrowings note
+    this year merely because it needed one last year. Last year informs the
+    preparer; it does not decide the accounts.
+    """
+    return {f"{NOTE_PREFIX}{key}"
+            for key in prior_year_wording(financial_year)}
+
+
 def ordered_sections(report, *, top_level_only=False):
     """`report.sections` regrouped so a sub-note always sits directly after
     its parent, whatever its own sort_order says relative to unrelated
