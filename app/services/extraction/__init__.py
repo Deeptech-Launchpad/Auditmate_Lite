@@ -123,6 +123,73 @@ def _read_prior_year_notes(document, path, file_type, raw_text) -> str:
     return outcome.get("unreadable")
 
 
+def auto_verify(document) -> tuple:
+    """Decide whether this document still needs a human to review it.
+
+    The firm's position, and it is right: the trial balance is not something
+    to prepare, it is something to read. Their accounting software already
+    produced it, it already balances, and making them re-check every row of
+    it on one screen before seeing the same rows on another is work this
+    tool exists to remove.
+
+    So the rule is about CONTENT, not document type:
+
+      * The trial balance itself never needs review. It is the authority
+        everything else is checked against.
+      * A document whose accounts are already in the trial balance does not
+        either. It is supporting detail for figures that already tally.
+      * A document carrying accounts the trial balance has never heard of
+        does - those would change the accounts, and that is a decision.
+
+    Returns (verified, reason). Verified documents still appear in Review &
+    Correct; nothing is hidden. They simply stop blocking the way forward.
+    """
+    from ...models import TrialBalanceAccount
+    from .base import looks_like_total_label
+
+    # Only the trial balance itself. A balance sheet or P&L can BUILD the
+    # accounts when no trial balance was sent, but it is a presented
+    # statement rather than the ledger's own listing, so it still gets a
+    # look before it becomes the accounts.
+    if document.category == "trial_balance":
+        return True, "the trial balance itself - read, not prepared"
+
+    accounts = TrialBalanceAccount.query.filter_by(
+        financial_year_id=document.financial_year_id).all()
+    if not accounts:
+        # Nothing to match against yet. Not a failure - the trial balance
+        # simply has not arrived. Left for review, and re-checked whenever
+        # the document is read again.
+        return False, None
+
+    known_codes = {(a.account_code or "").strip().lower()
+                   for a in accounts if a.account_code}
+    known_names = {_normalise_heading(a.account_name) for a in accounts}
+
+    unknown = []
+    for item in document.line_items:
+        if item.status == "discarded" or looks_like_total_label(item.label):
+            continue
+        code = (item.account_code or "").strip().lower()
+        if code and code in known_codes:
+            continue
+        if _normalise_heading(item.label or "") in known_names:
+            continue
+        unknown.append(item.label)
+
+    if unknown:
+        # Named, not merely counted. "3 accounts need review" tells the
+        # preparer to go looking; naming them is the finding itself, and
+        # the firm asked for a difference to be shown rather than to be a
+        # reason to stop - the accounts are still built either way.
+        shown = ", ".join(f"“{label}”" for label in unknown[:3] if label)
+        if len(unknown) > 3:
+            shown += f" and {len(unknown) - 3} more"
+        return False, (f"not in the trial balance: {shown}")
+
+    return True, ("every account in it is already in the trial balance")
+
+
 def extract_document(document_id: int) -> dict:
     """Extract one document end to end and save the line items.
 
@@ -218,8 +285,22 @@ def extract_document(document_id: int) -> dict:
         result.error or "No line items found")
     document.ai_used = ai_used
     document.page_count = result.page_count
+    auto_verified = False
+    differs = None
+    # The rows above are still pending; auto_verify reads them back off the
+    # document, so they have to be in the session's view first.
+    db.session.flush()
     if document.review_status == "pending" and result.rows:
-        document.review_status = "in_review"
+        # A document the auditor has already ruled on is never re-decided
+        # here; only one that has not been looked at yet.
+        verified, why = auto_verify(document)
+        if verified:
+            document.review_status = "verified"
+            document.reviewed_at = datetime.utcnow()
+            auto_verified = why
+        else:
+            document.review_status = "in_review"
+            differs = why
 
     db.session.commit()
 
@@ -240,4 +321,10 @@ def extract_document(document_id: int) -> dict:
         # swallowed, because a note silently absent reads as a note that was
         # never disclosed.
         "notes_unreadable": notes_note,
+        # Why this document did not need a human before the accounts could
+        # be built. None means it still does.
+        "auto_verified": auto_verified,
+        # Named accounts this document carries that the trial balance does
+        # not - a difference to show, never a reason to stop.
+        "differs": differs,
     }

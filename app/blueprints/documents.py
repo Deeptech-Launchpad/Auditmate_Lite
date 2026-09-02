@@ -171,6 +171,7 @@ def analyse(fy_id):
 
     analysed = failed = rows = ai_count = 0
     unreadable_notes = []
+    differences = []
 
     for document in documents:
         result = enqueue("extract_document", {"document_id": document.id})
@@ -189,22 +190,68 @@ def analyse(fy_id):
             unreadable_notes.append(
                 f"{document.original_filename}: {result['notes_unreadable']}")
 
+        # A difference is a finding to show, not a reason to stop. The
+        # accounts are built regardless; this names what did not match so
+        # the preparer rules on it rather than hunting for it.
+        if result.get("differs"):
+            differences.append(
+                f"{document.original_filename} — {result['differs']}")
+
     record("financial_year", fy_id, "analyse_documents",
            after={"analysed": analysed, "failed": failed, "rows": rows},
            commit=True)
+
+    # The trial balance is read, not prepared. Where the documents already
+    # carry one, the accounts are built here rather than behind a separate
+    # button the preparer has to know to press - that step is the one the
+    # firm said they could not understand the purpose of.
+    built = None
+    if analysed and not financial_year.tb_is_approved:
+        from ..services import trial_balance as tb_service
+        outcome = tb_service.build(fy_id, user_id=current_user.id)
+        if outcome.get("ok"):
+            built = outcome
+
+            # A supporting document read BEFORE the trial balance existed had
+            # nothing to be matched against and was left for review. Now
+            # there is something, so it is asked again - otherwise the order
+            # the files happened to be uploaded in decides how much work the
+            # preparer is given.
+            from ..services.extraction import auto_verify
+            for document in financial_year.documents:
+                if document.review_status != "in_review":
+                    continue
+                verified, why = auto_verify(document)
+                if verified:
+                    document.review_status = "verified"
+                    document.reviewed_at = datetime.utcnow()
+                elif why:
+                    # First moment this can be said at all: before the build
+                    # there was no trial balance to be absent from.
+                    differences.append(
+                        f"{document.original_filename} — {why}")
+            db.session.commit()
 
     if analysed:
         message = (f"Analysed {analysed} document(s) and read {rows} line "
                    f"items.")
         if ai_count:
             message += f" {ai_count} needed AI to read."
-        message += " Review each one, then mark it verified."
+        if built:
+            message += (f" Extracted financials built: {built['accounts']} "
+                        f"accounts from "
+                        f"{', '.join(built['built_from'])}.")
+            if built.get("unmapped"):
+                message += (f" {built['unmapped']} still need mapping to a "
+                            f"statement line.")
         flash(message, "success")
     if failed:
         flash(f"{failed} document(s) could not be read. Open each one to see "
               f"why.", "error" if not analysed else "warning")
     for warning in unreadable_notes:
         flash(f"Notes only partly read — {warning}", "warning")
+    for difference in differences:
+        flash(f"Difference to rule on — {difference}", "warning")
 
     return redirect(url_for("documents.index", fy_id=fy_id))
 
