@@ -65,6 +65,71 @@ def _evidence_amount(item) -> Decimal:
     return ZERO
 
 
+def check_ledger_totals(document, accounts, customer_id):
+    """Total a general ledger by account and hold it against the accounts.
+
+    The firm asked for this: "where a ledger account has no trial balance
+    counterpart, or the totals per account do not agree, flag it as a
+    difference." It is deliberately NOT the line-by-line comparison this
+    module refuses to do elsewhere - the ledger's rows are named after
+    suppliers and matching them one by one produced thousands of findings
+    that were not findings. Totalled by account first, it is one comparison
+    per account instead of one per transaction.
+
+    Restricted to profit and loss accounts, and that restriction is the whole
+    reason this can be trusted. A ledger states MOVEMENTS during the year; a
+    trial balance states BALANCES at the end of it, and the two differ by the
+    opening balance. Income and expense accounts open at nil every year, so
+    for them movement and balance are the same number and a difference is
+    real. A balance sheet account carries its opening balance forward, and
+    the client's own ledger export gives one opening figure for the bank -
+    not one per account - so there is nothing to add back. Reporting those
+    would flag every account that started the year with a balance, which is
+    most of them, and a check that cries wolf that often stops being read.
+    """
+    ours = {}
+    for account in accounts:
+        if account.statement_type != "profit_and_loss":
+            continue
+        if not account.standard_key:
+            continue
+        ours[account.standard_key] = (ours.get(account.standard_key, ZERO)
+                                      + _net(account))
+    if not ours:
+        return []
+
+    rows = (ExtractedLineItem.query
+            .filter_by(document_id=document.id)
+            .filter(ExtractedLineItem.status != "discarded")
+            .filter(or_(ExtractedLineItem.period.is_(None),
+                        ExtractedLineItem.period != "previous"))
+            .all())
+
+    theirs = {}
+    for item in rows:
+        label = (item.label or "").strip()
+        if not label or looks_like_total_label(label):
+            continue
+        rule = match_label(label, customer_id)
+        key = rule["line_key"] if rule else None
+        if not key or key not in ours:
+            continue
+        theirs[key] = theirs.get(key, ZERO) + _evidence_amount(item)
+
+    findings = []
+    for key, ledger_total in sorted(theirs.items()):
+        difference = ledger_total - ours[key]
+        if abs(difference) <= TOLERANCE:
+            continue
+        findings.append({
+            "line_key": key,
+            "ledger": ledger_total,
+            "accounts": ours[key],
+            "difference": difference,
+        })
+    return findings
+
+
 def check_document(document, accounts, customer_id):
     """Compare one evidence document against the built accounts.
 
@@ -213,11 +278,23 @@ def check(financial_year):
                                  if f["status"] == "unmapped_account"),
         })
 
+    # The ledger, totalled by account rather than compared line by line.
+    ledgers = []
+    for document in held_back:
+        if (document.category or "") != "general_ledger":
+            continue
+        findings = check_ledger_totals(document, accounts,
+                                       financial_year.customer_id)
+        if findings:
+            ledgers.append({"document": document, "findings": findings})
+
     if not documents and not held_back:
         return None
 
     return {
         "documents": documents,
+        "ledgers": ledgers,
+        "ledger_differs": sum(len(l["findings"]) for l in ledgers),
         "held_back": held_back,
         "agrees": sum(d["agrees"] for d in documents),
         "differs": sum(d["differs"] for d in documents),

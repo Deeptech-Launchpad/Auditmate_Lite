@@ -417,6 +417,48 @@
   </div>
   {% endif %}
 
+  {# The ledger totalled by account. Only income and expense accounts appear:
+     those open at nil each year, so their movement IS their balance and a
+     difference is real. A balance sheet account carries its opening balance
+     forward and cannot be compared this way, so it is not shown at all
+     rather than reported as a difference it is not. #}
+  {% for entry in checks.ledgers %}
+  <div style="padding:10px 16px;border-top:1px solid #f0f2f5">
+    <div class="muted small" style="margin-bottom:6px">
+      {{ entry.document.original_filename }} · totalled by account
+      <span class="pill pill-amber">{{ entry.findings|length }} differ</span>
+    </div>
+    <table class="data compact">
+      <thead>
+        <tr>
+          <th>Account</th>
+          <th class="right">Per the ledger</th>
+          <th class="right">Per the accounts</th>
+          <th class="right">Difference</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in entry.findings %}
+        <tr>
+          <td>{{ f.line_key|replace('_', ' ')|title }}</td>
+          <td class="right mono">{{ '{:,.2f}'.format(f.ledger) }}</td>
+          <td class="right mono">{{ '{:,.2f}'.format(f.accounts) }}</td>
+          <td class="right mono" style="color:var(--red)">
+            {{ '{:,.2f}'.format(f.difference) }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="muted small" style="margin-top:6px">
+      Income and expense accounts only — these start each year at nil, so the
+      ledger's movement and the trial balance's figure should be the same
+      number. Balance sheet accounts carry an opening balance and cannot be
+      compared this way.
+    </div>
+  </div>
+  {% endfor %}
+
   {% for entry in checks.documents %}
   <div style="padding:10px 16px">
     <div class="muted small" style="margin-bottom:6px">
