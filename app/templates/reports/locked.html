@@ -23,9 +23,9 @@
       <h3>Locked until the statements are approved</h3>
       <p style="max-width:520px;margin:0 auto 20px">
         The audit report pulls its figures from the approved financial
-        statements, so it stays locked until the client has signed them off.
+        statements, so it stays locked until the trial balance is approved.
         This ordering is deliberate — it prevents a report being issued against
-        numbers the customer has not yet agreed.
+        numbers that have not been signed off.
       </p>
 
       <div class="progress-rail" style="max-width:560px;margin:0 auto 24px">
@@ -39,7 +39,7 @@
           <span class="text">Extracted Financials</span>
         </div>
         <div class="rail-line"></div>
-        <div class="rail-step {{ 'active' if fy.tb_versions else '' }}">
+        <div class="rail-step active">
           <span class="bullet">3</span>
           <span class="text">Approval</span>
         </div>
@@ -55,13 +55,6 @@
         <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn btn-primary">
           Go to the trial balance →
         </a>
-      {% elif not fy.tb_versions %}
-        <p class="muted small">
-          Next step: send the trial balance to {{ customer.name }} to verify.
-        </p>
-        <a href="{{ url_for('trial_balance.review', fy_id=fy.id) }}" class="btn btn-primary">
-          Send for verification →
-        </a>
       {% elif fy.pending_tb_changes %}
         <p class="muted small">
           {{ fy.pending_tb_changes }} customer change(s) still need your
@@ -72,8 +65,9 @@
         </a>
       {% else %}
         <p class="muted small">
-          The customer has responded. Next step: approve the trial balance —
-          that generates the statements and unlocks this report.
+          Next step: approve the trial balance — that generates the
+          statements and unlocks this report. Sending it to the customer for
+          verification first is optional, not required.
         </p>
         <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn btn-primary">
           Approve the trial balance →

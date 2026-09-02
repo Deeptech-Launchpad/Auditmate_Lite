@@ -18,14 +18,12 @@
     </p>
   </div>
   <div class="page-actions">
-    {% if fy.status == 'in_progress' %}
-      <span class="pill pill-blue"><span class="dot"></span>In progress</span>
-    {% elif fy.status == 'statements_shared' %}
-      <span class="pill pill-amber"><span class="dot"></span>Statements shared</span>
-    {% elif fy.status == 'approved' %}
-      <span class="pill pill-green"><span class="dot"></span>Approved</span>
-    {% elif fy.status == 'report_generated' %}
+    {% if fy.report and fy.report.status == 'final' %}
       <span class="pill pill-purple"><span class="dot"></span>Report generated</span>
+    {% elif fy.tb_is_approved %}
+      <span class="pill pill-green"><span class="dot"></span>Approved</span>
+    {% else %}
+      <span class="pill pill-blue"><span class="dot"></span>In progress</span>
     {% endif %}
   </div>
 </div>
@@ -35,7 +33,8 @@
     {% set has_docs = documents|length > 0 %}
     {% set has_verified = verified_count > 0 %}
     {% set has_statements = statements|length > 0 %}
-    {% set is_approved = fy.is_approved %}
+    {% set is_approved = fy.tb_is_approved %}
+    {% set report_final = fy.report and fy.report.status == 'final' %}
 
     <div class="progress-rail">
       <div class="rail-step {{ 'done' if has_verified else ('active' if has_docs else '') }}">
@@ -56,8 +55,8 @@
       </div>
       <div class="rail-line {{ 'done' if is_approved else '' }}"></div>
 
-      <div class="rail-step {{ 'done' if fy.status == 'report_generated' else ('active' if is_approved else '') }}">
-        <span class="bullet">{{ '✓' if fy.status == 'report_generated' else '4' }}</span>
+      <div class="rail-step {{ 'done' if report_final else ('active' if is_approved else '') }}">
+        <span class="bullet">{{ '✓' if report_final else '4' }}</span>
         <span class="text">Audit Report</span>
       </div>
     </div>
@@ -99,16 +98,17 @@
     </div>
   </a>
 
-  <a class="statement-card" href="{{ url_for('statements.versions', fy_id=fy.id) }}">
-    <div class="st-name">✉ Customer Review</div>
+  <a class="statement-card" href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">
+    <div class="st-name">✓ Approval</div>
     <div class="st-meta">
-      {% if fy.final_version %}
-        <span class="pill pill-green">✓ v{{ fy.final_version.version_no }} final</span>
-      {% elif fy.versions %}
-        {{ fy.versions|length }} version(s) ·
-        latest {{ fy.latest_version.status_label|lower }}
+      {% if fy.tb_is_approved %}
+        <span class="pill pill-green">✓ Approved</span>
+        {% if fy.tb_approved_by_name %}
+          <br><span class="muted small">by {{ fy.tb_approved_by_name }}
+            {% if fy.tb_approved_at %} · {{ fy.tb_approved_at|datefmt }}{% endif %}</span>
+        {% endif %}
       {% else %}
-        Not sent yet
+        Not approved yet
       {% endif %}
       {% if not has_statements %}
         <br><span class="muted small">Generate the statements first</span>
@@ -119,10 +119,10 @@
   <a class="statement-card" href="{{ url_for('reports.builder', fy_id=fy.id) }}">
     <div class="st-name">▧ Audit Report</div>
     <div class="st-meta">
-      {% if fy.final_version %}
-        Unlocked — built from v{{ fy.final_version.version_no }}
+      {% if fy.tb_is_approved %}
+        Unlocked
       {% else %}
-        Locked until a version is marked final
+        Locked until the trial balance is approved
       {% endif %}
     </div>
   </a>
