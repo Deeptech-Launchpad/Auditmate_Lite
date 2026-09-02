@@ -349,14 +349,28 @@ def _build_context(financial_year_id: int, statement_type: str) -> dict:
                        + prior_value("balance_sheet", "working_capital"))
         prior_accum = prior_value("balance_sheet", "retained_earnings")
 
-        # With no comparative year on file, the trial balance's own figures
-        # ARE the opening balances - they were brought forward. Falling back
-        # to zero would invent a share issue and a retained-earnings movement
-        # that never happened, and the statement would not reconcile.
         context["closing_share_capital"] = closing_share
-        context["opening_share_capital"] = prior_share or closing_share
-        context["opening_retained_earnings"] = prior_accum or base_value(
-            "balance_sheet", "retained_earnings")
+
+        if financial_year.is_first_year:
+            # A first period since incorporation opens at nil, and the
+            # fallback below would be exactly wrong here. Carrying the
+            # closing figures back as openings would show no share issue and
+            # no movement in retained earnings - when in a first year the
+            # shares WERE issued and the profit WAS earned inside the
+            # period, and both belong in the statement of changes in equity
+            # as movements. Nil is not a missing comparative here; it is the
+            # fact.
+            context["opening_share_capital"] = ZERO
+            context["opening_retained_earnings"] = ZERO
+        else:
+            # With no comparative year on file, the trial balance's own
+            # figures ARE the opening balances - they were brought forward.
+            # Falling back to zero would invent a share issue and a
+            # retained-earnings movement that never happened, and the
+            # statement would not reconcile.
+            context["opening_share_capital"] = prior_share or closing_share
+            context["opening_retained_earnings"] = prior_accum or base_value(
+                "balance_sheet", "retained_earnings")
 
     if statement_type == "cash_flow":
         # Opening and closing cash are facts, not derivations: closing cash
