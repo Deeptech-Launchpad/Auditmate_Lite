@@ -41,6 +41,10 @@ DOCUMENT_CATEGORIES = [
     ("trial_balance", "Trial Balance"),
     ("balance_sheet", "Balance Sheet"),
     ("profit_and_loss", "Profit & Loss / Income Statement"),
+    # One of the four primary statements. Not in TB_SOURCE_PRECEDENCE: it is
+    # derived from the others and carries movements, not a list of balances,
+    # so it can never build the accounts.
+    ("cash_flow", "Cash Flow Statement"),
     ("general_ledger", "General Ledger"),
     # Last year's finished accounts. Not evidence like the others - it is
     # also required DATA: the prior-year column of every statement comes
@@ -52,6 +56,7 @@ DOCUMENT_CATEGORIES = [
     # year. It exists for the comparative column and for the opening-balance
     # check against what was signed.
     ("prior_trial_balance", "Trial Balance (prior year)"),
+    ("prior_cash_flow", "Cash Flow Statement (prior year)"),
     ("bank_statement", "Bank Statement"),
     ("vendor_invoice", "Vendor Invoice"),
     ("customer_invoice", "Customer Invoice"),
@@ -59,7 +64,10 @@ DOCUMENT_CATEGORIES = [
     ("payables", "Accounts Payable Listing"),
     ("receivables", "Accounts Receivable Listing"),
     ("fixed_asset_register", "Fixed Asset Register"),
-    ("tax_document", "Tax Document"),
+    # Named for what the firm actually files here. The GST balance is checked
+    # against a return filed under this category (see readiness.py), so the
+    # label has to say so rather than leaving the preparer guessing.
+    ("tax_document", "Tax Document / GST Return"),
     ("other", "Other"),
 ]
 

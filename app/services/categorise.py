@@ -52,6 +52,10 @@ RULES = [
         r"\bbalance sheet\b", r"\bbalancesheet\b",
         r"\bstatement of financial position\b",
     ]),
+    ("cash_flow", [
+        r"\bcash flow\b", r"\bcashflow\b", r"\bstatement of cash flows\b",
+        r"\bcash flow statement\b",
+    ]),
     ("signed_accounts", [
         r"\bsigned accounts\b", r"\bfinancial statements\b",
         r"\bunaudited financial statements\b", r"\baudited accounts\b",
