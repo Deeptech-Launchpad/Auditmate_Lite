@@ -206,11 +206,17 @@ def analyse(fy_id):
     # button the preparer has to know to press - that step is the one the
     # firm said they could not understand the purpose of.
     built = None
+    build_error = None
     if analysed and not financial_year.tb_is_approved:
         from ..services import trial_balance as tb_service
         outcome = tb_service.build(fy_id, user_id=current_user.id)
         if outcome.get("ok"):
             built = outcome
+        else:
+            # A document was just read successfully and the accounts still
+            # did not appear - that is the one outcome nobody can debug from
+            # the screen. Silence here reads as success; it must not.
+            build_error = outcome.get("error") or "the trial balance could not be built"
 
             # A supporting document read BEFORE the trial balance existed had
             # nothing to be matched against and was left for review. Now
@@ -245,6 +251,9 @@ def analyse(fy_id):
                 message += (f" {built['unmapped']} still need mapping to a "
                             f"statement line.")
         flash(message, "success")
+    if build_error:
+        flash(f"Read successfully, but the trial balance could not be built "
+              f"from it: {build_error}", "warning")
     if failed:
         flash(f"{failed} document(s) could not be read. Open each one to see "
               f"why.", "error" if not analysed else "warning")
