@@ -167,6 +167,34 @@ class AIAccountMappings(BaseModel):
 # Availability
 # --------------------------------------------------------------------------
 
+def explain(exc, label: str) -> str:
+    """A provider failure in words an auditor can act on.
+
+    The SDK raises the API's whole JSON body - seven hundred characters of
+    quota metrics and doc links - and putting that on screen tells a preparer
+    nothing except that something broke. What they need is which of the three
+    things it is: wait, come back tomorrow, or call someone.
+    """
+    text = str(exc)
+    low = text.lower()
+
+    if "resource_exhausted" in low or "429" in text:
+        per_day = "perday" in low.replace("_", "").replace(" ", "")
+        return (f"the daily {label} quota is used up - it resets tomorrow"
+                if per_day else
+                f"{label} is being called too quickly - try again in a minute")
+    if "unavailable" in low or "503" in text:
+        return f"{label} is busy right now - try again shortly"
+    if "permission" in low or "api key" in low or "401" in text or "403" in text:
+        return f"the {label} key was refused - check it in the settings"
+    if "deadline" in low or "timeout" in low:
+        return f"{label} took too long to answer"
+
+    # Unrecognised: keep it, but not all of it.
+    first = text.strip().splitlines()[0]
+    return first[:200]
+
+
 def ai_available() -> bool:
     """True when the configured provider has a key."""
     try:
@@ -320,7 +348,7 @@ def extract_with_ai(path: Path, file_type: str, category: str = "other",
 
     except Exception as exc:                       # noqa: BLE001
         log.exception("AI extraction failed")
-        result.error = f"AI extraction failed ({provider.LABEL}): {exc}"
+        result.error = f"Could not read the figures - {explain(exc, provider.LABEL)}."
 
     return result
 
@@ -393,7 +421,7 @@ def extract_company_profile(path: Path, file_type: str,
     except Exception as exc:                       # noqa: BLE001
         log.exception("Company profile extraction failed")
         return {"ok": False, "profile": {},
-                "error": f"Could not read this document ({provider.LABEL}): {exc}"}
+                "error": f"Could not read this document - {explain(exc, provider.LABEL)}."}
 
     profile = parsed.model_dump()
     log.info("%s read a company profile for %r (confidence %.2f)",
@@ -477,7 +505,7 @@ def extract_prior_year_notes(path: Path, file_type: str,
     except Exception as exc:                       # noqa: BLE001
         log.exception("Prior-year note extraction failed")
         return {"ok": False, "notes": [], "unreadable": None,
-                "error": f"Could not read the notes ({provider.LABEL}): {exc}"}
+                "error": f"Could not read the notes - {explain(exc, provider.LABEL)}."}
 
     notes = [{"note_number": (n.note_number or "").strip() or None,
               "title": n.title.strip(),

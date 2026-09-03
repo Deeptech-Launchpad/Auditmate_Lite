@@ -446,9 +446,23 @@ def reextract(document_id):
            after={"engine": result.get("engine"), "rows": result.get("rows")},
            commit=True)
 
-    if result.get("ok"):
-        engine = "AI (Claude)" if result.get("ai_used") else result.get("engine")
-        flash(f"Re-extracted {result.get('rows')} rows using {engine}.", "success")
+    if result.get("unchanged"):
+        # Read nothing new, but the document still holds an earlier read. A
+        # success banner here told the auditor a re-read had worked when
+        # every call behind it had failed on quota.
+        held = result.get("notes_held") or 0
+        kept = (f" The {held} note(s) read earlier are unchanged."
+                if held else " Nothing already read has been lost.")
+        flash(f"{result['unchanged']}{kept}", "warning")
+    elif result.get("ok"):
+        engine = "AI" if result.get("ai_used") else result.get("engine")
+        parts = []
+        if result.get("rows"):
+            parts.append(f"{result['rows']} rows")
+        if result.get("notes"):
+            parts.append(f"{result['notes']} note(s) of wording")
+        what = " and ".join(parts) or "no line items"
+        flash(f"Re-read this document: {what}, using {engine}.", "success")
     else:
         flash(f"Extraction failed: {result.get('error')}", "error")
 

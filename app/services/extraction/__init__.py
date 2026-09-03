@@ -310,29 +310,36 @@ def extract_document(document_id: int) -> dict:
     # comparative FIGURES are read above like any other document; this reads
     # what the company actually said in its notes, which nothing else does.
     notes_note = None
-    notes_read = 0
+    notes_new = 0
     if document.category in NOTE_BEARING:
-        notes_read, notes_note = _read_prior_year_notes(
+        notes_new, notes_note = _read_prior_year_notes(
             document, path, file_type, result.raw_text)
 
     # Read means read. Last year's signed accounts are wanted for their
     # WORDING, and a set of notes carries no figures at all - so judging the
     # document on line items alone reports a document that did exactly what
     # was asked of it as a failure, and hides the notes it did produce.
-    if notes_read == 0 and document.category in NOTE_BEARING:
+    notes_held = notes_new
+    if notes_new == 0 and document.category in NOTE_BEARING:
         # A failed re-read must not erase the standing of one that worked.
         # The notes from the last good read are still stored - only a
         # successful read replaces them - so the document is not unread.
         from ...models import PriorYearNote
-        notes_read = PriorYearNote.query.filter_by(
+        notes_held = PriorYearNote.query.filter_by(
             source_document_id=document.id).count()
 
-    got_something = bool(result.rows) or notes_read > 0
+    # Two different questions, and answering only the first turned a run
+    # where every call failed into a green success banner. What the document
+    # HOLDS decides its status; what this RUN did decides what to say about
+    # it, and a failure that changed nothing still has to be said out loud.
+    read_now = bool(result.rows) or notes_new > 0
+    got_something = bool(result.rows) or notes_held > 0
+    failure = result.error or ai_error
     document.extraction_status = "extracted" if got_something else "failed"
     document.extraction_engine = engine_used
     document.extraction_confidence = result.confidence
     document.extraction_error = None if got_something else (
-        result.error or ai_error or "No line items found")
+        failure or "No line items found")
     document.ai_used = ai_used
     document.page_count = result.page_count
     auto_verified = False
@@ -359,6 +366,13 @@ def extract_document(document_id: int) -> dict:
         # Notes count as a read. Judging on rows alone reported a set of
         # signed accounts that gave up all its wording as unreadable.
         "ok": got_something,
+        # Set when this run read nothing new but the document still holds
+        # what an earlier run read. The caller has to say so: silence here
+        # reads as "done", and the auditor never learns the re-read failed.
+        "unchanged": (failure or "Nothing new could be read.")
+                     if got_something and not read_now else None,
+        "notes": notes_new,
+        "notes_held": notes_held,
         "rows": len(result.rows),
         "engine": engine_used,
         "ai_used": ai_used,
