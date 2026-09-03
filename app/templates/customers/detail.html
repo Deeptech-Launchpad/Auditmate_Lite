@@ -169,8 +169,12 @@
       <div class="card-body">
         {% macro row(label, value) %}
           <div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #f0f2f5">
-            <span class="muted small">{{ label }}</span>
-            <span class="small right" style="max-width:60%">{{ value or '—' }}</span>
+            <span class="muted small" style="flex:none">{{ label }}</span>
+            {# An email address or a UEN is one unbroken word, and a flex
+               child will not shrink below its content unless told to - so
+               without these it runs out past the edge of the card. #}
+            <span class="small right"
+                  style="max-width:60%;min-width:0;overflow-wrap:anywhere">{{ value or '—' }}</span>
           </div>
         {% endmacro %}
 
