@@ -377,6 +377,13 @@ class FinancialYear(db.Model):
         another file all change what the trial balance SHOULD say - but the
         trial balance itself does not move until it is rebuilt. Without this
         the auditor sees old figures with nothing telling them so.
+
+        Only a document that could BUILD the accounts counts. Exactly one
+        kind does - see TB_SOURCE_PRECEDENCE and trial_balance.choose_sources
+        - and everything else is evidence held against the figures rather
+        than a figure. Last year's signed accounts saying something new about
+        last year does not make this year's trial balance wrong, and telling
+        the preparer to rebuild over it sends them to do nothing.
         """
         if not self.tb_accounts:
             return False
@@ -386,6 +393,9 @@ class FinancialYear(db.Model):
             return False
         for document in self.documents:
             if document.review_status != "verified":
+                continue
+            if (document.category not in TB_SOURCE_PRECEDENCE
+                    and document.file_type != "xero"):
                 continue
             changed = document.reviewed_at or document.uploaded_at
             if changed and changed > built:
