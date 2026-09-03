@@ -19,6 +19,8 @@ def register_cli(app):
     app.cli.add_command(check_config)
     app.cli.add_command(check_email)
     app.cli.add_command(check_ai)
+    app.cli.add_command(compare_gemma)
+    app.cli.add_command(seed_feedback)
     app.cli.add_command(check_xero)
     app.cli.add_command(xero_report)
     app.cli.add_command(check_beta)
@@ -503,6 +505,124 @@ def check_ai():
     else:
         click.echo(f"  FAILED: {result['error']}")
         raise SystemExit(1)
+
+
+@click.command("compare-gemma")
+@with_appcontext
+def compare_gemma():
+    """Run a synthetic trial balance through Gemini and Gemma, side by side.
+
+    Only ever sends made-up data, never a real client document, so this is
+    safe to run against a free-tier key while evaluating whether Gemma reads
+    and maps documents well enough to be worth self-hosting on our own VPS.
+    """
+    import time
+    from pathlib import Path
+    from .services.extraction.ai import extract_with_ai
+    from .services.extraction.providers import get_provider
+
+    SYNTHETIC_TB = """Sample Testing Pte Ltd - Trial Balance for the year ended 31 December 2025
+
+Account                          Debit           Credit
+Cash at Bank - DBS               45,230.00
+Trade Debtors                    128,900.50
+Sundry Creditors                                  62,140.00
+Provision for Income Tax                          (8,500.00)
+Directors' Remuneration          96,000.00
+Staff Salaries                   210,450.75
+Turnover                                          612,300.00 Cr
+Rental Expense                   36,000.00
+Bank Loan - OCBC                                  150,000.00
+Share Capital                                     50,000.00
+Retained Earnings b/f                             95,000.00
+"""
+
+    original_provider = current_app.config.get("AI_PROVIDER")
+    results = {}
+    try:
+        for name in ("gemini", "gemma"):
+            provider = get_provider(name)
+            if not provider.available():
+                extra = " and GEMMA_MODEL" if name == "gemma" else ""
+                click.echo(f"{name}: SKIPPED - set {name.upper()}_API_KEY"
+                           f"{extra} in .env")
+                continue
+            current_app.config["AI_PROVIDER"] = name
+            click.echo(f"Running {provider.LABEL} ({provider.model_name()}) ...")
+            start = time.time()
+            results[name] = (extract_with_ai(
+                Path(f"synthetic-trial-balance-{name}.txt"),
+                file_type="other", category="trial_balance",
+                raw_text=SYNTHETIC_TB), time.time() - start)
+    finally:
+        current_app.config["AI_PROVIDER"] = original_provider
+
+    if not results:
+        raise SystemExit(1)
+
+    click.echo("")
+    for name in ("gemini", "gemma"):
+        if name not in results:
+            continue
+        result, elapsed = results[name]
+        click.echo("=" * 78)
+        click.echo(f"{name.upper()}  ({elapsed:.1f}s)")
+        click.echo("-" * 78)
+        if result.error:
+            click.echo(f"  ERROR: {result.error}")
+            continue
+        click.echo(f"  {len(result.rows)} row(s) extracted\n")
+        for row in result.rows:
+            if row.debit is not None:
+                side = f"Dr {row.debit:,.2f}"
+            elif row.credit is not None:
+                side = f"Cr {row.credit:,.2f}"
+            else:
+                side = f"{(row.amount or 0):,.2f}"
+            flag = "  <- LOW CONFIDENCE" if row.confidence < 0.8 else ""
+            click.echo(f"    {row.label:<35}{side:<18}"
+                       f"conf={row.confidence:.2f}{flag}")
+        click.echo("")
+
+    click.echo("Note: this only tests reading/mapping quality. Both calls "
+               "above still went to Google's cloud - self-hosting on our "
+               "own VPS is the separate step that actually keeps data off "
+               "external servers.")
+
+
+@click.command("seed-feedback")
+@click.option("--remove", is_flag=True, help="Delete the demo engagement.")
+@with_appcontext
+def seed_feedback(remove):
+    """Demo data that exercises every fix from beta feedback round 2."""
+    from .services import seed_feedback as seeder
+    from .models import User
+
+    if remove:
+        click.echo(f"Removed {seeder.CUSTOMER_NAME}." if seeder.remove()
+                   else f"{seeder.CUSTOMER_NAME} is not there.")
+        return
+
+    user = User.query.order_by(User.id).first()
+    if user is None:
+        click.echo("Create a user first: flask create-admin")
+        raise SystemExit(1)
+
+    made = seeder.create(user_id=user.id)
+
+    click.echo(f"Created {made['customer']} (customer {made['customer_id']})")
+    click.echo("")
+    click.echo("  FY2025  three documents uploaded, none analysed yet")
+    click.echo("            Trial Balance FY2025.xlsx    two dated columns")
+    click.echo("            General Ledger FY2025.xlsx   matches, plus one extra account")
+    click.echo("            Signed Accounts FY2024.docx  five notes")
+    click.echo("  FY2024  empty, the prior year FY2025 compares against")
+    click.echo("  FY2023  marked as the first financial year")
+    click.echo("")
+    click.echo("  Upload these two by hand when you get to points 1 and 4:")
+    click.echo(f"    {made['inbox']}")
+    click.echo("")
+    click.echo(f"  Start here:  /customers/{made['customer_id']}")
 
 
 @click.command("check-xero")

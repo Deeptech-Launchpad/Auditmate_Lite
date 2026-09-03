@@ -105,12 +105,21 @@ def _identify_columns(header_cells):
     mapping["comparative"].update(worded)
 
     if dated:
+        # Does this year's figure already have a column? A sheet headed
+        # "Debit | Credit | 31 Dec 2024" carries the current year in the
+        # debit and credit columns, so the single dated column beside them
+        # is last year's - there is no later date to compare it against, and
+        # without this it was neither read nor marked and simply vanished.
+        current_claimed = (mapping["debit"] is not None
+                           or mapping["credit"] is not None
+                           or mapping["amount"] is not None)
+
         latest = max(year for year, _ in dated)
         for year, idx in dated:
-            if year < latest:
+            if current_claimed or year < latest:
                 mapping["comparative"].add(idx)
-            elif mapping["amount"] is None and mapping["debit"] is None:
-                # This year's column, and nothing else claimed the figures.
+            else:
+                # The dated columns ARE the figures: latest is this year.
                 mapping["amount"] = idx
 
     return mapping
