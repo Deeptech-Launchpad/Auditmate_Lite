@@ -291,13 +291,25 @@ def review(document_id):
                 if i.status != "discarded"
                 and not looks_like_total_label(i.label)]
 
+    # Only where "does it balance?" is a question the document answers. A
+    # trial balance states every account and must balance, so a difference
+    # there means something really was misread. A general ledger extract, an
+    # invoice or a schedule carries debit and credit columns too and is under
+    # no obligation to balance at all - telling the auditor a row is missing
+    # from a document that never claimed to be complete sends them looking
+    # for a cause that does not exist, and teaches them to ignore the banner
+    # on the one document where it matters.
+    balances_by_nature = document.category in ("trial_balance",
+                                               "prior_trial_balance")
     balance = reconcile_trial_balance(
-        _live([i for i in items if i.period != "previous"]))
+        _live([i for i in items if i.period != "previous"])
+    ) if balances_by_nature else None
 
     # Checked separately rather than not at all. Excluding last year from
     # this year's arithmetic is right; leaving its rows unverified is not.
     prior_rows = _live([i for i in items if i.period == "previous"])
-    prior_balance = reconcile_trial_balance(prior_rows) if prior_rows else None
+    prior_balance = (reconcile_trial_balance(prior_rows)
+                     if prior_rows and balances_by_nature else None)
 
     flagged = sum(1 for i in items if i.needs_review and i.status == "auto")
 
