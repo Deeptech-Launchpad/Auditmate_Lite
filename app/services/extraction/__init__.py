@@ -70,10 +70,19 @@ def _should_use_ai(result: ExtractionResult, file_type: str) -> tuple:
     return False, "rule-based extraction was reliable"
 
 
+# A note number at the front of a heading: "1.", "(a)", "12 -", "iv)". The
+# label has to be FOLLOWED by a separator to count as one, or the pattern eats
+# the heading itself - it once took the first ten characters of every heading
+# given to it, which left "Revenue" as "" and matched "Borrowings" to the
+# dividends note.
+_NOTE_NUMBER = re.compile(r"^\(?\s*(?:\d+|[ivxlcdm]+|[a-z])\s*[).:-]\s*")
+
+
 def _normalise_heading(text: str) -> str:
     """A note heading reduced to comparable words."""
-    text = re.sub(r"^[\d\s.()a-z]{0,10}", "", (text or "").lower().strip())
-    return re.sub(r"[^a-z ]+", " ", text).strip()
+    text = _NOTE_NUMBER.sub("", (text or "").lower().strip())
+    text = re.sub(r"[^a-z ]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _read_prior_year_notes(document, path, file_type, raw_text) -> str:
