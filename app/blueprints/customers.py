@@ -1,5 +1,6 @@
 """Customer management and financial-year workspace."""
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 from flask import (Blueprint, abort, flash, redirect, render_template, request,
                    url_for)
@@ -7,7 +8,9 @@ from flask_login import current_user, login_required
 from sqlalchemy import or_
 
 from ..extensions import db
-from ..models import Customer, Document, FinancialStatement, FinancialYear
+from ..models import (Customer, CustomerDocument, Document, FinancialStatement,
+                      FinancialYear)
+from ..services import storage
 from ..services.audit import record
 
 bp = Blueprint("customers", __name__, url_prefix="/customers")
@@ -40,6 +43,124 @@ def index():
                            pagination=pagination, search=search)
 
 
+def _read_profile_upload(file_storage, customer_id=None):
+    """Read an uploaded company profile and return (form_values, meta, error).
+
+    Nothing is saved to the customer here. The values come back to be shown
+    in the form, because a profile can be stale, can be the wrong company,
+    and can be misread - and none of that is discoverable once the values are
+    already in the database.
+    """
+    from ..services.extraction.ai import extract_company_profile
+    from ..services import company_profile as profile_service
+
+    if not storage.is_allowed(file_storage.filename or ""):
+        return {}, None, "That file type cannot be read."
+
+    try:
+        meta = storage.save_company_upload(file_storage, customer_id)
+    except ValueError as exc:
+        return {}, None, str(exc)
+
+    # A PDF or an image goes to the model as-is; anything else has no page to
+    # look at, so its text is pulled out first. Without this a Word profile
+    # reached the model with nothing attached and came back empty.
+    path = Path(meta["storage_path"])
+    file_type = meta["file_type"] or "pdf"
+    raw_text = ""
+    if file_type not in ("pdf", "image"):
+        from ..services.extraction.parsers import run_rule_based
+        try:
+            parsed = run_rule_based(path, file_type)
+            raw_text = parsed.raw_text or ""
+            if not raw_text and parsed.rows:
+                raw_text = "\n".join(
+                    " ".join(str(v) for v in (row.raw_values or [row.label]))
+                    for row in parsed.rows)
+        except Exception:                          # noqa: BLE001
+            raw_text = ""
+        if not raw_text:
+            try:
+                raw_text = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                raw_text = ""
+
+    outcome = extract_company_profile(path, file_type, raw_text=raw_text)
+    meta["extracted"] = outcome.get("profile") or {}
+    meta["extraction_error"] = outcome.get("error")
+
+    if not outcome.get("ok"):
+        return {}, meta, outcome.get("error") or "Nothing could be read from it."
+
+    return profile_service.to_form(outcome["profile"]), meta, None
+
+
+@bp.route("/read-profile", methods=["POST"])
+@login_required
+def read_profile():
+    """Upload a company profile and come back with the form filled in."""
+    customer_id = request.form.get("customer_id", type=int)
+    customer = db.session.get(Customer, customer_id) if customer_id else None
+
+    file_storage = request.files.get("profile")
+    if not file_storage or not file_storage.filename:
+        flash("Choose a Business Profile or a set of signed accounts first.",
+              "error")
+        return redirect(request.referrer or url_for("customers.create"))
+
+    values, meta, error = _read_profile_upload(
+        file_storage, customer.id if customer else None)
+
+    if error:
+        flash(f"Could not fill the form from that file — {error} "
+              f"Enter the details by hand.", "warning")
+        return render_template("customers/form.html", customer=customer,
+                               form=(customer.__dict__ if customer
+                                     else request.form))
+
+    # Kept as evidence, and as the answer to "where did this come from?".
+    document = CustomerDocument(
+        customer_id=customer.id if customer else None,
+        kind="acra_profile",
+        original_filename=meta["original_filename"],
+        stored_filename=meta["stored_filename"],
+        storage_path=meta["storage_path"],
+        file_type=meta["file_type"],
+        size_bytes=meta["size_bytes"],
+        sha256=meta["sha256"],
+        extracted=meta["extracted"],
+        uploaded_by=current_user.id,
+    )
+    if customer is not None:
+        db.session.add(document)
+        db.session.commit()
+        pending_path = None
+    else:
+        # No customer to attach it to yet; carried through the form and
+        # adopted when the customer is saved.
+        pending_path = meta["storage_path"]
+
+    filled = len(values)
+    flash(f"Read {filled} field(s) from {meta['original_filename']}. Check "
+          f"every one before saving — a profile can be out of date, and "
+          f"{', '.join(profile_not_supplied()).lower()} are not on it.",
+          "success")
+
+    # What the profile said wins on the screen, but the preparer's own
+    # entries survive: a field they already typed is not overwritten.
+    form = dict(customer.__dict__) if customer else {}
+    form.update({k: v for k, v in values.items() if v not in (None, "")})
+
+    return render_template("customers/form.html", customer=customer,
+                           form=form, pending_profile=pending_path,
+                           profile_filled=sorted(values.keys()))
+
+
+def profile_not_supplied():
+    from ..services.company_profile import NOT_IN_PROFILE
+    return NOT_IN_PROFILE
+
+
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
 def create():
@@ -68,6 +189,12 @@ def create():
             books_currency=(request.form.get("books_currency") or "SGD").strip(),
             financial_year_end_month=request.form.get(
                 "financial_year_end_month", 12, type=int),
+            financial_year_end_day=request.form.get(
+                "financial_year_end_day", type=int),
+            is_exempt_private=bool(request.form.get("is_exempt_private")),
+            principal_activities=(request.form.get("principal_activities") or "").strip() or None,
+            ssic_code=(request.form.get("ssic_code") or "").strip() or None,
+            ssic_description=(request.form.get("ssic_description") or "").strip() or None,
             notes=(request.form.get("notes") or "").strip() or None,
             created_by=current_user.id,
             engagement_partner_id=current_user.id,
@@ -83,6 +210,18 @@ def create():
 
         db.session.add(customer)
         db.session.flush()
+
+        # The profile that filled this form was uploaded before there was a
+        # customer to file it against. Now there is one.
+        pending = (request.form.get("pending_profile") or "").strip()
+        if pending:
+            moved = storage.adopt_company_upload(pending, customer.id)
+            db.session.add(CustomerDocument(
+                customer_id=customer.id, kind="acra_profile",
+                original_filename=Path(moved).name.split("__", 1)[-1],
+                stored_filename=Path(moved).name, storage_path=moved,
+                file_type=Path(moved).suffix.lstrip(".").lower() or None,
+                uploaded_by=current_user.id))
 
         # Create the first financial year alongside the customer, so the
         # workspace is immediately usable.
@@ -145,6 +284,12 @@ def edit(customer_id):
         customer.books_currency = (request.form.get("books_currency") or "SGD").strip()
         customer.financial_year_end_month = request.form.get(
             "financial_year_end_month", 12, type=int)
+        customer.financial_year_end_day = request.form.get(
+            "financial_year_end_day", type=int)
+        customer.is_exempt_private = bool(request.form.get("is_exempt_private"))
+        customer.principal_activities = (request.form.get("principal_activities") or "").strip() or None
+        customer.ssic_code = (request.form.get("ssic_code") or "").strip() or None
+        customer.ssic_description = (request.form.get("ssic_description") or "").strip() or None
         customer.notes = (request.form.get("notes") or "").strip() or None
 
         record("customer", customer.id, "update", before=before,

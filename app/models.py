@@ -203,6 +203,24 @@ class Customer(db.Model):
     incorporation_date = db.Column(db.Date)
     # Companies choose their own FYE in Singapore, so we store the month.
     financial_year_end_month = db.Column(db.Integer, default=12)
+    # And the day, because a year end is not always the month end - ACRA
+    # profiles carry dates like 30 June, and a company that changed its year
+    # end has a period the month alone cannot describe.
+    financial_year_end_day = db.Column(db.Integer)
+
+    # An exempt private company is a private company with at most 20
+    # shareholders, none of them corporate. It is not cosmetic: it decides
+    # audit exemption and changes what the accounts must disclose, and it is
+    # stated on the ACRA profile - so it is captured rather than inferred
+    # from entity_type, which cannot express it.
+    is_exempt_private = db.Column(db.Boolean, default=False, nullable=False)
+
+    # What the company actually does, in ACRA's own words and codes. Feeds
+    # the corporate information note and the revenue wording, which is why
+    # the firm asked for it at intake rather than typed again per year.
+    principal_activities = db.Column(db.Text)
+    ssic_code = db.Column(db.String(20))
+    ssic_description = db.Column(db.String(255))
 
     email = db.Column(db.String(255))
     phone = db.Column(db.String(50))
@@ -228,6 +246,9 @@ class Customer(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
 
     engagement_partner = db.relationship("User", foreign_keys=[engagement_partner_id])
+    company_documents = db.relationship(
+        "CustomerDocument", back_populates="customer",
+        cascade="all, delete-orphan", order_by="CustomerDocument.uploaded_at.desc()")
     financial_years = db.relationship(
         "FinancialYear", back_populates="customer",
         cascade="all, delete-orphan", order_by="FinancialYear.start_date.desc()",
@@ -1414,3 +1435,48 @@ class PriorYearNote(db.Model):
 
     def __repr__(self):
         return f"<PriorYearNote {self.note_number} {self.title!r}>"
+
+
+class CustomerDocument(db.Model):
+    """A document about the company itself, not about one of its years.
+
+    An ACRA Business Profile describes the company - its UEN, its officers,
+    what it does - and none of that belongs to a particular financial year.
+    The main documents table requires a financial year, and at the moment a
+    customer is created there is not one yet, so these live here instead of
+    loosening that rule on a table where "which year is this about" is a
+    question every other row must answer.
+
+    Kept rather than read and thrown away: it is the evidence behind the
+    corporate information note, and an auditor asked where a company's
+    principal activities came from should be able to open the profile they
+    came from.
+    """
+
+    __tablename__ = "customer_documents"
+
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"),
+                            nullable=False, index=True)
+
+    kind = db.Column(db.String(40), default="acra_profile", nullable=False)
+    original_filename = db.Column(db.String(255), nullable=False)
+    stored_filename = db.Column(db.String(255), nullable=False)
+    storage_path = db.Column(db.String(500), nullable=False)
+    file_type = db.Column(db.String(20))
+    size_bytes = db.Column(db.BigInteger)
+    sha256 = db.Column(db.String(64))
+
+    # What was read out of it, as read, before anyone edited the form. Kept
+    # so a later question - "did we type that or did the profile say it?" -
+    # has an answer that does not depend on memory.
+    extracted = db.Column(JSON)
+    extraction_error = db.Column(db.String(255))
+
+    uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    customer = db.relationship("Customer", back_populates="company_documents")
+
+    def __repr__(self):
+        return f"<CustomerDocument {self.kind} {self.original_filename!r}>"

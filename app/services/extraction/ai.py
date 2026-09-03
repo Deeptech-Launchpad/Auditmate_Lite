@@ -103,6 +103,55 @@ class AIPriorNotes(BaseModel):
                     "to read'. Null when everything was readable.")
 
 
+class AICompanyProfile(BaseModel):
+    """Company particulars as an ACRA Business Profile states them."""
+
+    name: Optional[str] = Field(default=None, description="Registered company name")
+    uen: Optional[str] = Field(
+        default=None, description="Unique Entity Number, e.g. 201812345K")
+    entity_type: Optional[str] = Field(
+        default=None,
+        description="Company type exactly as printed, e.g. 'EXEMPT PRIVATE "
+                    "COMPANY LIMITED BY SHARES' or 'PRIVATE COMPANY LIMITED "
+                    "BY SHARES'")
+    incorporation_date: Optional[str] = Field(
+        default=None, description="Date of incorporation as YYYY-MM-DD")
+    financial_year_end: Optional[str] = Field(
+        default=None,
+        description="The financial year end as printed, e.g. '31 December' "
+                    "or '30 June'. Day and month only - not a year.")
+    principal_activities: Optional[str] = Field(
+        default=None,
+        description="The principal activity description, in the profile's "
+                    "own words. If a primary and a secondary activity are "
+                    "both given, return the primary one.")
+    ssic_code: Optional[str] = Field(
+        default=None, description="The primary SSIC code, digits only")
+    ssic_description: Optional[str] = Field(
+        default=None, description="The primary SSIC activity description")
+    address_line1: Optional[str] = Field(
+        default=None, description="Registered office address, first line")
+    address_line2: Optional[str] = Field(
+        default=None, description="Registered office address, second line")
+    postal_code: Optional[str] = Field(default=None, description="Postal code")
+    directors: Optional[List[str]] = Field(
+        default=None,
+        description="Names of people holding the position of DIRECTOR. Names "
+                    "only. Exclude shareholders, the secretary, and anyone "
+                    "whose appointment has ceased.")
+    company_secretary: Optional[str] = Field(
+        default=None, description="Name of the company secretary")
+    confidence: float = Field(
+        default=0.9,
+        description="0.0-1.0 that this document really is a company profile "
+                    "and was read correctly. Score low if it is some other "
+                    "kind of document.")
+    notes: Optional[str] = Field(
+        default=None,
+        description="Anything unreadable or absent that a preparer should "
+                    "check by hand. Null when the profile read cleanly.")
+
+
 class AIAccountMapping(BaseModel):
     label: str = Field(description="The original account label given to you")
     line_key: str = Field(description="The statement line key you are mapping it to")
@@ -274,6 +323,88 @@ def extract_with_ai(path: Path, file_type: str, category: str = "other",
         result.error = f"AI extraction failed ({provider.LABEL}): {exc}"
 
     return result
+
+
+COMPANY_PROFILE_SYSTEM_PROMPT = """You read Singapore company particulars out \
+of an ACRA BizFile Business Profile, or out of a set of signed financial \
+statements, so a preparer does not have to type them again.
+
+Rules:
+- Copy what the document says. Do not tidy, expand or normalise a company \
+name, an address or an activity description.
+- Return the REGISTERED office address, not a correspondence or business \
+address, when the document distinguishes them.
+- Directors are people listed with the position of DIRECTOR. Do not include \
+shareholders, the company secretary, or officers whose appointment has \
+ceased - a ceased director named as current would go onto the cover of the \
+financial statements.
+- The company type matters and must be copied exactly as printed. An "EXEMPT \
+PRIVATE COMPANY LIMITED BY SHARES" is not the same as a "PRIVATE COMPANY \
+LIMITED BY SHARES", and the difference decides audit exemption.
+- A field the document does not state is null. Never infer, never guess a \
+plausible value: a wrong UEN or incorporation date is worse than a blank one \
+the preparer fills in, because a blank is visibly missing and a wrong value \
+is not.
+- If this document is not a company profile or a set of financial statements \
+at all, score confidence below 0.4 and say so in notes."""
+
+
+def extract_company_profile(path: Path, file_type: str,
+                            raw_text: str = "") -> dict:
+    """Read company particulars out of an ACRA profile or signed accounts.
+
+    Returns {"ok", "profile": {...}, "error"}. Nothing is saved here and
+    nothing is decided here - the caller puts these into a form for a person
+    to check before any of it becomes a customer record.
+    """
+    try:
+        provider = get_provider()
+    except ValueError as exc:
+        return {"ok": False, "profile": {}, "error": str(exc)}
+
+    if not provider.available():
+        return {"ok": False, "profile": {},
+                "error": f"No API key configured for {provider.LABEL}."}
+
+    parts = []
+    if file_type == "pdf":
+        parts.append({"type": "pdf", "data": path.read_bytes()})
+    elif file_type == "image":
+        suffix = path.suffix.lower()
+        mime = "image/png" if suffix == ".png" else "image/jpeg"
+        parts.append({"type": "image", "data": path.read_bytes(), "mime": mime})
+    elif raw_text:
+        parts.append({"type": "text",
+                      "text": f"Document contents:\n\n{raw_text[:100000]}"})
+    else:
+        return {"ok": False, "profile": {},
+                "error": "Nothing to send to the AI provider"}
+
+    parts.append({
+        "type": "text",
+        "text": ("Read this company's particulars. Return only what the "
+                 "document actually states; leave anything absent null."),
+    })
+
+    try:
+        parsed = provider.structured_call(
+            COMPANY_PROFILE_SYSTEM_PROMPT, parts, AICompanyProfile,
+            max_tokens=8000)
+    except Exception as exc:                       # noqa: BLE001
+        log.exception("Company profile extraction failed")
+        return {"ok": False, "profile": {},
+                "error": f"Could not read this document ({provider.LABEL}): {exc}"}
+
+    profile = parsed.model_dump()
+    log.info("%s read a company profile for %r (confidence %.2f)",
+             provider.LABEL, profile.get("name"), parsed.confidence)
+
+    if parsed.confidence < 0.4:
+        return {"ok": False, "profile": profile,
+                "error": (parsed.notes or "This does not look like a company "
+                          "profile or a set of financial statements.")}
+
+    return {"ok": True, "profile": profile, "error": None}
 
 
 PRIOR_NOTES_SYSTEM_PROMPT = """You read the notes to the financial statements \

@@ -40,6 +40,68 @@ def build_path(customer_id: int, financial_year_id: int, filename: str) -> Path:
     return directory / f"{unique}__{safe}"
 
 
+def build_company_path(customer_id, filename: str) -> Path:
+    """Where a company-level document goes.
+
+    Layout: storage/<customer_id>/company/<uuid>__<safe_name>
+
+    `customer_id` may be None, which puts the file under "_pending". A
+    profile is uploaded to fill in the New Customer form, so at that moment
+    there is no customer to file it against yet; it is moved into place by
+    `adopt_company_upload` once the customer is saved.
+    """
+    safe = sanitize_filename(filename)
+    unique = uuid.uuid4().hex[:12]
+    directory = storage_root() / str(customer_id or "_pending") / "company"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / f"{unique}__{safe}"
+
+
+def save_company_upload(file_storage, customer_id=None) -> dict:
+    """Write a company-level upload to disk and return its metadata."""
+    from .extraction.parsers import detect_file_type
+    from .extraction import file_sha256
+
+    original = file_storage.filename or "upload"
+    destination = build_company_path(customer_id, original)
+    file_storage.save(destination)
+
+    size = destination.stat().st_size
+    max_size = current_app.config.get("MAX_FILE_SIZE", 25 * 1024 * 1024)
+    if size > max_size:
+        destination.unlink(missing_ok=True)
+        raise ValueError(
+            f"File exceeds the {max_size // (1024 * 1024)} MB limit")
+
+    return {
+        "original_filename": original,
+        "stored_filename": destination.name,
+        "storage_path": str(destination),
+        "file_type": detect_file_type(original),
+        "size_bytes": size,
+        "sha256": file_sha256(destination),
+    }
+
+
+def adopt_company_upload(storage_path: str, customer_id: int) -> str:
+    """Move a pending company upload under its customer, once there is one.
+
+    Returns the new path, or the old one if the move could not be made -
+    losing the record of where a company's details came from is worse than
+    leaving the file where it landed.
+    """
+    source = Path(storage_path)
+    if not source.exists():
+        return storage_path
+    try:
+        destination = build_company_path(customer_id, source.name.split("__", 1)[-1])
+        source.replace(destination)
+        return str(destination)
+    except OSError:
+        current_app.logger.exception("Could not move company upload into place")
+        return storage_path
+
+
 def assert_within_storage(path) -> Path:
     """Guard against path traversal.
 
