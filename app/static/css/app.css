@@ -165,8 +165,8 @@ h3 { font-size: 15px; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.data th {
   text-align: left; padding: 10px 14px; background: #fafbfc;
-  border-bottom: 1px solid var(--border); font-weight: 600; font-size: 12px;
-  text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted);
+  border-bottom: 1px solid var(--border); font-weight: 700; font-size: 12px;
+  text-transform: uppercase; letter-spacing: .4px; color: var(--text);
   white-space: nowrap;
 }
 table.data td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
@@ -412,7 +412,7 @@ table.grid th {
   position: sticky; top: 0; z-index: 2;
   background: #fafbfc; padding: 8px 10px; text-align: left;
   border-bottom: 1px solid var(--border-strong); font-size: 11px;
-  text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .4px; color: var(--text);
   font-weight: 700; white-space: nowrap;
 }
 table.grid td { padding: 0; border-bottom: 1px solid var(--border); }

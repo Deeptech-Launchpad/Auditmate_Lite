@@ -256,7 +256,19 @@ def create():
 @login_required
 def detail(customer_id):
     customer = db.session.get(Customer, customer_id) or abort(404)
-    return render_template("customers/detail.html", customer=customer)
+
+    # A sensible starting label for "Add a financial year" below, so a
+    # second and third year need no typing at all - only a first year that
+    # does not follow the calendar needs the label changed. One past the
+    # latest year already on this customer, or the current calendar year
+    # when there is none yet.
+    latest = max((y.year_label for y in customer.financial_years
+                 if y.year_label[2:6].isdigit()), default=None)
+    next_label = (f"FY{int(latest[2:6]) + 1}" if latest
+                 else f"FY{date.today().year}")
+
+    return render_template("customers/detail.html", customer=customer,
+                           next_year_label=next_label)
 
 
 @bp.route("/<int:customer_id>/edit", methods=["GET", "POST"])

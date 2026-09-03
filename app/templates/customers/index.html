@@ -30,7 +30,7 @@
               <th>UEN</th>
               <th>Entity type</th>
               <th>Contact</th>
-              <th class="num">Financial years</th>
+              <th class="num">Total financial year</th>
               <th></th>
             </tr>
           </thead>
@@ -57,7 +57,7 @@
               <td class="num">{{ customer.financial_years|length }}</td>
               <td class="right">
                 <a href="{{ url_for('customers.detail', customer_id=customer.id) }}"
-                   class="btn btn-sm">Open</a>
+                   class="btn btn-sm">View</a>
               </td>
             </tr>
             {% endfor %}

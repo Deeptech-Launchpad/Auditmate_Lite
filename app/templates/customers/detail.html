@@ -157,7 +157,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="field" style="max-width:160px">
             <label for="year_label">Year label</label>
-            <input id="year_label" name="year_label" placeholder="FY2026" required>
+            <input id="year_label" name="year_label" value="{{ next_year_label }}" required>
           </div>
           <div class="field">
             <label for="new_start_date">From</label>
