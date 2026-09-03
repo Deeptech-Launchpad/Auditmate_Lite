@@ -79,24 +79,26 @@ def _normalise_heading(text: str) -> str:
 def _read_prior_year_notes(document, path, file_type, raw_text) -> str:
     """Read and store the note wording from a set of signed accounts.
 
-    Returns a short message for the caller to surface, or None. Never raises:
-    a document whose figures read perfectly must not be marked failed because
-    its narrative could not be read.
+    Returns (count, message) - how many notes were stored, and a short
+    message for the caller to surface, or None. Never raises: a document whose
+    figures read perfectly must not be marked failed because its narrative
+    could not be read.
     """
     from ..extraction.ai import extract_prior_year_notes, ai_available
     from ...models import NoteLibraryEntry, PriorYearNote
 
     if not ai_available():
-        return None
+        return 0, None
 
     try:
         outcome = extract_prior_year_notes(path, file_type, raw_text=raw_text)
     except Exception:                              # noqa: BLE001
         log.exception("Prior-year note extraction raised")
-        return "The notes in this document could not be read."
+        return 0, "The notes in this document could not be read."
 
     if not outcome.get("ok"):
-        return outcome.get("error") or "The notes in this document could not be read."
+        return 0, (outcome.get("error")
+                   or "The notes in this document could not be read.")
 
     # Match each note to a library entry by heading, so the preparer is shown
     # last year's wording against the right note. No match is fine and is
@@ -120,7 +122,13 @@ def _read_prior_year_notes(document, path, file_type, raw_text) -> str:
 
     log.info("Document %s: stored %d prior-year note(s)",
              document.id, len(outcome["notes"]))
-    return outcome.get("unreadable")
+    return len(outcome["notes"]), outcome.get("unreadable")
+
+
+# Documents stating this year's balances, one account per line - the only
+# ones the unknown-account test below can sensibly be run against. The trial
+# balance is handled before it and so is not repeated here.
+STATES_BALANCES = {"balance_sheet", "profit_and_loss", "general_ledger"}
 
 
 def auto_verify(document) -> tuple:
@@ -153,6 +161,16 @@ def auto_verify(document) -> tuple:
     # look before it becomes the accounts.
     if document.category == "trial_balance":
         return True, "the trial balance itself - read, not prepared"
+
+    # The test below asks whether a document names an account the trial
+    # balance has never heard of. That question only means something for a
+    # document that states THIS year's balances one account per line. A cash
+    # flow statement reports movements, an invoice names a supplier, a bank
+    # statement names a transaction - none of them can ever match an account
+    # name, so every one of them would be held in review over a difference
+    # the preparer cannot act on and that could never change the accounts.
+    if document.category not in STATES_BALANCES:
+        return True, "supporting evidence - it never becomes an account"
 
     accounts = TrialBalanceAccount.query.filter_by(
         financial_year_id=document.financial_year_id).all()
@@ -274,14 +292,20 @@ def extract_document(document_id: int) -> dict:
     # comparative FIGURES are read above like any other document; this reads
     # what the company actually said in its notes, which nothing else does.
     notes_note = None
+    notes_read = 0
     if document.category in ("signed_accounts", "prior_signed_accounts"):
-        notes_note = _read_prior_year_notes(document, path, file_type,
-                                            result.raw_text)
+        notes_read, notes_note = _read_prior_year_notes(
+            document, path, file_type, result.raw_text)
 
-    document.extraction_status = "extracted" if result.rows else "failed"
+    # Read means read. Last year's signed accounts are wanted for their
+    # WORDING, and a set of notes carries no figures at all - so judging the
+    # document on line items alone reports a document that did exactly what
+    # was asked of it as a failure, and hides the notes it did produce.
+    got_something = bool(result.rows) or notes_read > 0
+    document.extraction_status = "extracted" if got_something else "failed"
     document.extraction_engine = engine_used
     document.extraction_confidence = result.confidence
-    document.extraction_error = None if result.rows else (
+    document.extraction_error = None if got_something else (
         result.error or "No line items found")
     document.ai_used = ai_used
     document.page_count = result.page_count
@@ -290,7 +314,7 @@ def extract_document(document_id: int) -> dict:
     # The rows above are still pending; auto_verify reads them back off the
     # document, so they have to be in the session's view first.
     db.session.flush()
-    if document.review_status == "pending" and result.rows:
+    if document.review_status == "pending" and got_something:
         # A document the auditor has already ruled on is never re-decided
         # here; only one that has not been looked at yet.
         verified, why = auto_verify(document)
@@ -306,7 +330,9 @@ def extract_document(document_id: int) -> dict:
 
     balance = reconcile_trial_balance(result.rows)
     return {
-        "ok": bool(result.rows),
+        # Notes count as a read. Judging on rows alone reported a set of
+        # signed accounts that gave up all its wording as unreadable.
+        "ok": got_something,
         "rows": len(result.rows),
         "engine": engine_used,
         "ai_used": ai_used,

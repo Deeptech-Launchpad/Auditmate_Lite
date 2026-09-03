@@ -69,6 +69,20 @@ PAIRED_MIN = 0.60
 # Below this there is not enough document to read.
 MIN_ROWS = 5
 
+# The four this module can actually tell apart, plus the two states that mean
+# nothing has been decided yet. A category OUTSIDE this set was reached some
+# other way - a file name that said "Cash Flow Statement", or an auditor - and
+# must not be overwritten here, because the tests below cannot distinguish the
+# thing it already is. A cash flow statement has no debit and credit columns
+# and its lines touch both sides of the accounts, so it falls into the
+# catch-all and is filed as a trial balance - which then BUILDS the accounts
+# out of movements. Silence is the only honest answer for a document this
+# module was never taught to read.
+DECIDABLE = {
+    "trial_balance", "balance_sheet", "profit_and_loss", "general_ledger",
+    "other", None,
+}
+
 
 def _signals(rows, customer_id):
     """Measure the four things that tell these documents apart."""
@@ -157,6 +171,10 @@ def identify_document(document):
 
     if document.category_source == "manual":
         return document.category, "set by the auditor", False
+
+    if document.category not in DECIDABLE:
+        return (document.category,
+                "already a category the contents cannot argue with", False)
 
     rows = (ExtractedLineItem.query
             .filter_by(document_id=document.id)
