@@ -84,6 +84,25 @@ SIGNED_ACCOUNTS_NOTES = [
      "financial year. No options remained outstanding at the year end."),
 ]
 
+# The company's own first period - 14 May 2023 (incorporation) to 31 Dec
+# 2023. A single dated column, nothing else: a real first-year export from
+# Xero has no prior period to print beside it, and that absence is exactly
+# what proves the point - a two-column reading elsewhere must not invent a
+# comparative here because none exists. No Retained Earnings row either;
+# opening equity is nil for a company's first period, which this shows by
+# leaving the account out rather than by a row reading zero.
+FIRST_YEAR_TB_ROWS = [
+    ("Cash at Bank",         "1010",  21400.00, "Dr"),
+    ("Trade Receivables",    "1200",  22000.00, "Dr"),
+    ("Plant and Equipment",  "1500",  45000.00, "Dr"),
+    ("Trade Payables",       "2010",  12400.00, "Cr"),
+    ("Share Capital",        "3000",  50000.00, "Cr"),
+    ("Revenue",              "4000", 180000.00, "Cr"),
+    ("Cost of Sales",        "5000", 108000.00, "Dr"),
+    ("Staff Costs",          "5100",  38000.00, "Dr"),
+    ("Other Expenses",       "5300",   8000.00, "Dr"),
+]
+
 ACRA_PROFILE = [
     "ACCOUNTING AND CORPORATE REGULATORY AUTHORITY",
     "BUSINESS PROFILE",
@@ -139,6 +158,15 @@ def _trial_balance_file(path):
     _workbook(path,
               ["Code", "Account Name", "Debit", "Credit", "31 Dec 2024"],
               rows)
+
+
+def _first_year_tb_file(path):
+    """A first-period trial balance - one dated column, no comparative."""
+    rows = [[code, name,
+             amount if side == "Dr" else None,
+             amount if side == "Cr" else None]
+            for name, code, amount, side in FIRST_YEAR_TB_ROWS]
+    _workbook(path, ["Code", "Account Name", "Debit", "Credit"], rows)
 
 
 def _general_ledger_file(path):
@@ -269,6 +297,10 @@ def create(user_id=None) -> dict:
         start_date=date(2023, 5, 14), end_date=date(2023, 12, 31),
         is_first_year=True, status="in_progress")
     db.session.add(first_year)
+    db.session.flush()
+
+    _attach(first_year, "Trial Balance FY2023.xlsx", "trial_balance",
+            _first_year_tb_file)
 
     prior_year = FinancialYear(
         customer_id=customer.id, year_label="FY2024",

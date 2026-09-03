@@ -618,6 +618,7 @@ def seed_feedback(remove):
     click.echo("            Signed Accounts FY2024.docx  five notes")
     click.echo("  FY2024  empty, the prior year FY2025 compares against")
     click.echo("  FY2023  marked as the first financial year")
+    click.echo("            Trial Balance FY2023.xlsx    one column, no comparative")
     click.echo("")
     click.echo("  Upload these two by hand when you get to points 1 and 4:")
     click.echo(f"    {made['inbox']}")
