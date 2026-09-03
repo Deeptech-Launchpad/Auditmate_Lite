@@ -144,19 +144,37 @@
     <div class="card">
       <div class="card-head"><h2>Add a financial year</h2></div>
       <div class="card-body">
+        {#
+          The period is typed here rather than derived from the customer's
+          FYE month, for the same reason edit_year already asks for it on an
+          existing year: a first period and a year whose end date changed
+          are both real periods that are not twelve months, and a wrong
+          default is a mistake someone has to notice and fix later.
+        #}
         <form method="post"
               action="{{ url_for('customers.add_year', customer_id=customer.id) }}"
               style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <div class="field" style="max-width:200px">
+          <div class="field" style="max-width:160px">
             <label for="year_label">Year label</label>
             <input id="year_label" name="year_label" placeholder="FY2026" required>
           </div>
+          <div class="field">
+            <label for="new_start_date">From</label>
+            <input type="date" id="new_start_date" name="start_date" required>
+          </div>
+          <div class="field">
+            <label for="new_end_date">To</label>
+            <input type="date" id="new_end_date" name="end_date" required>
+          </div>
+          <label class="field" style="display:flex;gap:6px;align-items:center;font-weight:normal">
+            <input type="checkbox" name="is_first_year" value="1" style="width:auto">
+            First financial year
+          </label>
           <button type="submit" class="btn btn-primary">Create year</button>
           <span class="muted small" style="flex:1;min-width:200px">
-            Dates are derived from the FYE month
-            ({{ customer.financial_year_end_month }}). The previous year is linked
-            automatically so statements show comparatives.
+            The previous year is linked automatically by date so statements
+            show comparatives - unless first year is ticked.
           </span>
         </form>
       </div>

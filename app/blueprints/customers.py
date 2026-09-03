@@ -306,6 +306,16 @@ def edit(customer_id):
 @bp.route("/<int:customer_id>/years", methods=["POST"])
 @login_required
 def add_year(customer_id):
+    """Create a financial year with the period dates typed at intake.
+
+    Dates used to be derived from the customer's FYE month alone, which is
+    wrong for exactly the year that most needs to be right: a company's
+    first period is never twelve months ending on the usual date, and a
+    changed year end produces a long or short year too - see edit_year,
+    which already asks for these two dates rather than assuming them. This
+    asks the same question at creation instead of creating a wrong period
+    and relying on someone to notice and fix it afterward.
+    """
     customer = db.session.get(Customer, customer_id) or abort(404)
     year_label = (request.form.get("year_label") or "").strip()
 
@@ -318,26 +328,37 @@ def add_year(customer_id):
         flash(f"{year_label} already exists for this customer.", "error")
         return redirect(url_for("customers.detail", customer_id=customer.id))
 
-    fye_month = customer.financial_year_end_month or 12
+    start_raw = (request.form.get("start_date") or "").strip()
+    end_raw = (request.form.get("end_date") or "").strip()
     try:
-        year_number = int("".join(c for c in year_label if c.isdigit())[:4])
+        start = date.fromisoformat(start_raw) if start_raw else None
+        end = date.fromisoformat(end_raw) if end_raw else None
     except ValueError:
-        year_number = date.today().year
+        start = end = None
 
-    end = _month_end(year_number, fye_month)
-    start = date(year_number, 1, 1) if fye_month == 12 \
-        else date(end.year - 1, end.month, 1)
+    if not start or not end:
+        flash("Enter both the start and end date for the period.", "error")
+        return redirect(url_for("customers.detail", customer_id=customer.id))
+    if start >= end:
+        flash("The period must start before it ends.", "error")
+        return redirect(url_for("customers.detail", customer_id=customer.id))
 
-    # Chain to the prior year so comparatives work.
-    previous = (FinancialYear.query
-                .filter(FinancialYear.customer_id == customer.id,
-                        FinancialYear.end_date < end)
-                .order_by(FinancialYear.end_date.desc())
-                .first())
+    is_first_year = bool(request.form.get("is_first_year"))
+
+    # A first year has nothing before it by definition - see edit_year for
+    # the same rule applied to a year that already exists.
+    previous = None
+    if not is_first_year:
+        previous = (FinancialYear.query
+                    .filter(FinancialYear.customer_id == customer.id,
+                            FinancialYear.end_date < end)
+                    .order_by(FinancialYear.end_date.desc())
+                    .first())
 
     financial_year = FinancialYear(
         customer_id=customer.id, year_label=year_label,
         start_date=start, end_date=end, status="in_progress",
+        is_first_year=is_first_year,
         previous_year_id=previous.id if previous else None)
 
     db.session.add(financial_year)

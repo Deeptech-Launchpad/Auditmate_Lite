@@ -568,9 +568,15 @@
             <th style="width:230px">Maps to</th>
             <th style="width:115px" class="right">Dr.</th>
             <th style="width:115px" class="right">Cr.</th>
-            <th style="width:120px" class="right">Total</th>
-            {# Last year, in the grid. Xero and QuickBooks both export this
-               column and the firm asked for it kept rather than discarded. #}
+            {# "Total" reads as this year's figure on its own - but sitting
+               beside a second, labelled column of last year's numbers, an
+               unqualified "Total" invites reading it as the two years added
+               together. Naming it "Current year" only when there is a
+               second year to be confused with keeps the common case, a
+               single-year trial balance, exactly as it read before. #}
+            <th style="width:120px" class="right">
+              {{ 'Current year' if prior else 'Total' }}
+            </th>
             {% if prior %}
               <th style="width:130px" class="right">{{ prior.year.year_label }}</th>
             {% endif %}
