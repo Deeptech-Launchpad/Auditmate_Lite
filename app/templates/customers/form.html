@@ -60,7 +60,8 @@
   </div>
 </div>
 
-<form method="post">
+<form method="post"
+      action="{{ url_for('customers.edit', customer_id=customer.id) if customer else url_for('customers.create') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% if pending_profile %}
     {# Carries the just-uploaded file through to the save, where it is
