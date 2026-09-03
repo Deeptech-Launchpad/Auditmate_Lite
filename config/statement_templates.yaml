@@ -80,6 +80,13 @@ balance_sheet:
   columns: [current, previous]
   lines:
     - {key: ppe,                   label: "Fixed Assets", group: non_current_assets, indent: 1, note: property_plant_and_equipment}
+    # A credit-balance contra-asset: kept in its NATURAL sign (no flip) so it
+    # deducts from the group subtotal the way the client's own books present
+    # it - gross cost less what has been depreciated. Optional because a
+    # trial balance that already nets PPE at cost has no separate account
+    # for this at all, and demanding one would be asking for a line that
+    # cannot exist.
+    - {key: accumulated_depreciation, label: "Accumulated depreciation", group: non_current_assets, indent: 1, optional: true, note: property_plant_and_equipment}
     - {key: investment_property,   label: "Investment property", group: non_current_assets, indent: 1, optional: true, note: investment_property}
     - {key: intangible_assets,     label: "Intangible assets", group: non_current_assets, indent: 1, optional: true, note: intangible_assets}
     - {key: right_of_use_assets,   label: "Right-of-use assets", group: non_current_assets, indent: 1, optional: true, note: right_of_use_assets}

@@ -28,6 +28,15 @@
 - {pattern: "cpf",                  statement: profit_and_loss, line: staff_salaries, priority: 15}
 - {pattern: "employee benefit",     statement: profit_and_loss, line: staff_salaries, priority: 10}
 - {pattern: "bonus",                statement: profit_and_loss, line: staff_salaries, priority: 20}
+# Checked before the P&L rules below, because "Accumulated Depreciation" and
+# "Accumulated Amortisation" both CONTAIN the word the P&L rule matches on -
+# without this they silently fell into that year's depreciation EXPENSE line
+# instead of reducing the asset they belong to, and it went unnoticed because
+# retained earnings is rebuilt from the P&L result, so the error cancelled
+# itself out within a single year. It only became visible comparing two
+# years side by side, which is exactly the comparative this rule protects.
+- {pattern: "accumulated depreciation", statement: balance_sheet, line: accumulated_depreciation, priority: 5}
+- {pattern: "accumulated amortisation", statement: balance_sheet, line: accumulated_depreciation, priority: 5}
 - {pattern: "depreciation",         statement: profit_and_loss, line: depreciation, priority: 10}
 - {pattern: "amortisation",         statement: profit_and_loss, line: depreciation, priority: 10}
 - {pattern: "rent",                 statement: profit_and_loss, line: office_rent, priority: 15}
