@@ -158,11 +158,35 @@
   <div class="split-pane">
     <div class="split-head">
       <span>
-        Extracted data &mdash; {{ items|length }} rows
+        Extracted data &mdash;
+        {% if has_prior %}{{ pairs|length }} accounts{% else %}{{ items|length }} rows{% endif %}
         <span class="edit-badge">click any figure to correct it</span>
       </span>
       <button class="btn btn-sm" id="add-row-btn" type="button">+ Add row</button>
     </div>
+
+    {% if has_prior %}
+    {# The year is read from a COLUMN, so when it is wrong it is wrong for
+       every account at once. One action turns the file around; asking for
+       the same correction on every row invites a half-finished pass. #}
+    <div class="notice small"
+         style="margin:0;border-radius:0;border-left:0;border-right:0">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <span>
+          Last year's figures were read from a separate column in this file.
+          <span class="muted">Each account is listed once, with both years.</span>
+        </span>
+        {% if document.review_status != 'verified' %}
+        <form method="post" style="margin-left:auto"
+              action="{{ url_for('documents.swap_years', document_id=document.id) }}"
+              onsubmit="return confirm('Turn the two years around on every figure in this document?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm" type="submit">The years are the wrong way round</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
 
     <div class="split-body">
       <table class="grid" id="review-grid"
@@ -175,10 +199,13 @@
             <th style="width:132px" class="right">Debit</th>
             <th style="width:132px" class="right">Credit</th>
             <th style="width:132px" class="right">Amount</th>
-            {# Which year a figure belongs to is not a detail - a prior-year
-               balance accepted as this year's goes onto the face of the
-               statements. So it is shown, and it is changeable. #}
-            <th style="width:86px">Year</th>
+            {# Last year sits beside this year rather than on a row of its
+               own. A comparative is read ACROSS - "receivables halved" is
+               the finding, and it is invisible when the two figures are
+               thirteen rows apart. #}
+            {% if has_prior %}
+            <th style="width:132px" class="right">Last year</th>
+            {% endif %}
             <th style="width:62px">Conf.</th>
             <th style="width:74px">Source</th>
             <th style="width:70px"></th>
@@ -189,7 +216,9 @@
             Every white cell here is editable - label, debit, credit and
             amount. Corrections save as you leave the field.
           #}
-          {% for item in items %}
+          {% for pair in pairs %}
+          {% set item = pair.current or pair.prior %}
+          {% set prior = pair.prior %}
           {#
             A document's own total is not an account. It is shown so the
             auditor can cross-check against it, but it must never be added
@@ -197,21 +226,37 @@
           #}
           {% set is_total = item.label|is_total_row %}
           <tr data-item-id="{{ item.id }}"
+              {% if prior and pair.current %}data-prior-id="{{ prior.id }}"{% endif %}
               {% if is_total %}data-total="1"{% endif %}
               class="{% if item.status == 'discarded' %}row-discarded{% elif is_total %}row-doc-total{% elif item.status in ['corrected','accepted'] %}row-corrected{% elif item.needs_review %}row-flagged{% endif %}">
             <td class="muted small" style="padding:8px 6px;text-align:center">
               {% if is_total %}&Sigma;{% else %}{{ loop.index }}{% endif %}
             </td>
+            {% set cur = pair.current %}
             <td><input class="cell" data-field="label" value="{{ item.label or '' }}"></td>
-            <td><input class="cell num" data-field="debit" value="{{ '%.2f'|format(item.debit) if item.debit is not none else '' }}"></td>
-            <td><input class="cell num" data-field="credit" value="{{ '%.2f'|format(item.credit) if item.credit is not none else '' }}"></td>
-            <td><input class="cell num" data-field="amount" value="{{ '%.2f'|format(item.amount) if item.amount is not none else '' }}"></td>
-            <td style="padding:8px 4px">
-              <select class="cell period-cell" data-field="period">
-                <option value="current" {% if item.period != 'previous' %}selected{% endif %}>This year</option>
-                <option value="previous" {% if item.period == 'previous' %}selected{% endif %}>Last year</option>
-              </select>
+            {% for field in ['debit', 'credit', 'amount'] %}
+            {% set v = cur|attr(field) if cur else None %}
+            <td>
+              <input class="cell num" data-year="current" data-field="{{ field }}"
+                     {% if not cur %}disabled title="Last year had this account; this year does not."{% endif %}
+                     value="{{ '%.2f'|format(v) if v is not none else '' }}">
             </td>
+            {% endfor %}
+            {% if has_prior %}
+            {# Written back to last year's OWN row, which still exists and
+               still feeds the comparative column - this cell is a second
+               window onto it, not a copy. #}
+            {% set pf = 'debit' if prior and prior.debit is not none
+                        else ('credit' if prior and prior.credit is not none else 'amount') %}
+            {% set pv = prior|attr(pf) if prior else None %}
+            <td>
+              <input class="cell num last-year" data-year="previous"
+                     data-field="{{ pf }}"
+                     {% if prior %}data-item-id="{{ prior.id }}"
+                     {% else %}disabled title="Not in last year's figures - new this year."{% endif %}
+                     value="{{ '%.2f'|format(pv) if pv is not none else '' }}">
+            </td>
+            {% endif %}
             <td style="padding:8px 6px">
               {% set c = item.confidence or 0 %}
               <span class="conf {{ 'conf-high' if c >= 0.85 else ('conf-mid' if c >= 0.7 else 'conf-low') }}">

@@ -49,6 +49,7 @@
      column that does not balance is exactly as wrong as a current one. */
   function totalsFor(wantPrevious) {
     let debit = 0, credit = 0, hasDC = false, rows = 0;
+    const want = wantPrevious ? 'previous' : 'current';
 
     grid.querySelectorAll('tbody tr').forEach(row => {
       // Discarded rows are excluded by the auditor; the document's own
@@ -56,15 +57,18 @@
       if (row.classList.contains('row-discarded')) return;
       if (row.dataset.total === '1') return;
 
-      const periodCell = row.querySelector('[data-field="period"]');
-      const isPrevious = !!periodCell && periodCell.value === 'previous';
-      if (isPrevious !== wantPrevious) return;
-
-      rows += 1;
-      const d = parseNumber(row.querySelector('[data-field="debit"]').value);
-      const c = parseNumber(row.querySelector('[data-field="credit"]').value);
-      if (d !== null) { debit += d; hasDC = true; }
-      if (c !== null) { credit += c; hasDC = true; }
+      // Both years now live on the same row, one column each, so a year is
+      // read off the CELL rather than off the row it sits in.
+      let counted = false;
+      row.querySelectorAll('[data-year="' + want + '"]').forEach(cell => {
+        if (cell.disabled) return;
+        const n = parseNumber(cell.value);
+        if (n === null) return;
+        if (cell.dataset.field === 'debit') { debit += n; hasDC = true; counted = true; }
+        else if (cell.dataset.field === 'credit') { credit += n; hasDC = true; counted = true; }
+        else counted = true;
+      });
+      if (counted) rows += 1;
     });
 
     return { debit, credit, hasDC, rows, difference: debit - credit };
@@ -128,8 +132,11 @@
 
   /* ----------------------------------------------------------- saving --- */
 
-  async function saveRow(row, field, value) {
-    const itemId = row.dataset.itemId;
+  /* `input` decides which line item is written to: last year's cell carries
+     its own id, because it is a window onto last year's row rather than a
+     second copy of this year's. Everything else belongs to the row. */
+  async function saveRow(row, field, value, input) {
+    const itemId = (input && input.dataset.itemId) || row.dataset.itemId;
     if (!itemId) return;
 
     row.classList.add('row-saving');
@@ -169,13 +176,16 @@
   }
 
   async function rowAction(row, action) {
-    const itemId = row.dataset.itemId;
+    // One row is now one ACCOUNT, so excluding it has to take last year's
+    // figure with it. Leaving that behind would drop the account from this
+    // year's accounts while it went on printing in the comparative column.
+    const ids = [row.dataset.itemId, row.dataset.priorId].filter(Boolean);
     try {
-      const response = await fetch(
-        `/documents/api/line-item/${itemId}/${action}`,
+      const responses = await Promise.all(ids.map(id => fetch(
+        `/documents/api/line-item/${id}/${action}`,
         { method: 'POST', headers: csrfHeaders() }
-      );
-      if (!response.ok) throw new Error();
+      )));
+      if (responses.some(r => !r.ok)) throw new Error();
 
       if (action === 'discard') {
         row.classList.remove('row-flagged', 'row-corrected');
@@ -217,7 +227,7 @@
     const field = input.dataset.field;
     let value = input.value.trim();
 
-    if (field !== 'label' && field !== 'period') {
+    if (field !== 'label') {
       const n = parseNumber(value);
       value = n === null ? '' : String(n);
       input.value = n === null ? '' : formatMoney(n);
@@ -226,18 +236,9 @@
     if (input.dataset.original === value) return;
     input.dataset.original = value;
 
-    saveRow(row, field, value);
+    saveRow(row, field, value, input);
     recalcTotals();
   }, true);
-
-  // A dropdown commits on change, not on blur.
-  grid.addEventListener('change', event => {
-    const input = event.target;
-    if (!input.classList || !input.classList.contains('period-cell')) return;
-    if (readOnly) return;
-    saveRow(input.closest('tr'), 'period', input.value);
-    recalcTotals();
-  });
 
   // Enter moves down the column; Escape reverts the cell.
   grid.addEventListener('keydown', event => {

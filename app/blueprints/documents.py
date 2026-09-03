@@ -256,6 +256,74 @@ def analyse(fy_id):
     return redirect(url_for("documents.index", fy_id=fy_id))
 
 
+@bp.route("/<int:document_id>/swap-years", methods=["POST"])
+@login_required
+def swap_years(document_id):
+    """Turn the whole document's two years around.
+
+    The year is read from a column, so when it is wrong it is wrong for every
+    account in the file at once. One action, once - rather than the same
+    correction repeated down every row, which is both tedious and easy to
+    leave half done.
+    """
+    document = _load_document(document_id)
+    if document.review_status == "verified":
+        flash("This document is verified. Reopen it for editing first.",
+              "warning")
+        return redirect(url_for("documents.review", document_id=document.id))
+
+    items = ExtractedLineItem.query.filter_by(document_id=document.id).all()
+    swapped = 0
+    for item in items:
+        item.period = "current" if item.period == "previous" else "previous"
+        swapped += 1
+    db.session.commit()
+
+    flash(f"The two years have been turned around on all {swapped} figures. "
+          f"Rebuild the trial balance to carry it through.", "success")
+    return redirect(url_for("documents.review", document_id=document.id))
+
+
+def _pair_by_year(items):
+    """Match each account's this-year figure to its last-year one.
+
+    Returns a list of {"current", "prior", "key"} in the document's own order.
+    An account present in only one of the two years keeps its row with the
+    other side empty - that gap is a finding in itself and must not be hidden
+    by dropping the row.
+    """
+    from ..services.extraction import _normalise_heading
+
+    def key_of(item):
+        code = (item.account_code or "").strip().lower()
+        return code or _normalise_heading(item.label or "")
+
+    prior_by_key = {}
+    for item in items:
+        if item.period == "previous":
+            prior_by_key.setdefault(key_of(item), []).append(item)
+
+    pairs, used = [], set()
+    for item in items:
+        if item.period == "previous":
+            continue
+        key = key_of(item)
+        queue = prior_by_key.get(key) or []
+        prior = None
+        for candidate in queue:
+            if candidate.id not in used:
+                prior, _ = candidate, used.add(candidate.id)
+                break
+        pairs.append({"current": item, "prior": prior, "key": key})
+
+    # Last year had it, this year does not. Kept, and shown last.
+    for item in items:
+        if item.period == "previous" and item.id not in used:
+            pairs.append({"current": None, "prior": item, "key": key_of(item)})
+
+    return pairs
+
+
 @bp.route("/<int:document_id>/review")
 @login_required
 def review(document_id):
@@ -311,6 +379,17 @@ def review(document_id):
     prior_balance = (reconcile_trial_balance(prior_rows)
                      if prior_rows and balances_by_nature else None)
 
+    # One row per account, not one row per figure.
+    #
+    # Which year a figure belongs to is decided once for a whole COLUMN, not
+    # row by row - see parsers._identify_columns. Listing the same account
+    # twice and putting a year dropdown on each row therefore offered
+    # thirteen separate corrections for a decision that was only ever made
+    # once, and a half-finished pass through them left the document in a
+    # state no real file could produce. Pairing the two years onto one row
+    # also puts them where they can be compared: side by side.
+    pairs = _pair_by_year(items)
+
     flagged = sum(1 for i in items if i.needs_review and i.status == "auto")
 
     # Last year's note wording, where this is the signed accounts. Read-only
@@ -322,6 +401,8 @@ def review(document_id):
     return render_template(
         "documents/review.html",
         document=document,
+        pairs=pairs,
+        has_prior=any(p["prior"] for p in pairs),
         fy=document.financial_year,
         customer=document.financial_year.customer,
         items=items, balance=balance, prior_balance=prior_balance,
