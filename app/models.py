@@ -869,6 +869,15 @@ class TrialBalanceAccount(db.Model):
     debit = db.Column(Numeric(18, 2), default=0)
     credit = db.Column(Numeric(18, 2), default=0)
 
+    # Last year's figure for the SAME account, carried off the prior-year
+    # column of the document that built this one. It is stored here rather
+    # than read from the document at statement time so that one account holds
+    # both years and ONE mapping drives both columns - re-map an account and
+    # last year moves with it. Null where the source carried no comparative,
+    # which is not the same as nil and must never read as nil.
+    prior_debit = db.Column(Numeric(18, 2))
+    prior_credit = db.Column(Numeric(18, 2))
+
     source = db.Column(db.String(20), default="upload", nullable=False)
     source_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
     source_ref = db.Column(JSON)

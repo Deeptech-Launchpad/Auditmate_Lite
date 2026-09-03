@@ -141,6 +141,48 @@ def _source_rows(financial_year_id, sources):
     return [r for r in rows if not looks_like_total_label(r.label)]
 
 
+def _prior_by_account(financial_year_id, sources):
+    """Last year's figure per account, off the same documents.
+
+    Excluded from the sum above and read here instead. The comparative is not
+    part of this year's arithmetic, but it is not rubbish either: it is the
+    other half of what the client sent, and dropping it left the statements
+    with an empty comparative column while the figure sat on the document
+    nobody looked at twice.
+
+    Keyed exactly as the build keys an account, so a prior figure can only
+    ever attach to the account it belongs to.
+    """
+    if not sources:
+        return {}
+
+    rows = (db.session.query(ExtractedLineItem)
+            .filter(ExtractedLineItem.document_id.in_([d.id for d in sources]))
+            .filter(ExtractedLineItem.status != "discarded")
+            .filter(ExtractedLineItem.period == "previous")
+            .all())
+
+    prior = {}
+    for row in rows:
+        if looks_like_total_label(row.label):
+            continue
+        name = (row.label or "").strip() or "(unnamed account)"
+        key = ((row.account_code or "").strip(), name.lower())
+        debit = Decimal(str(row.debit)) if row.debit is not None else ZERO
+        credit = Decimal(str(row.credit)) if row.credit is not None else ZERO
+        if row.debit is None and row.credit is None and row.amount is not None:
+            # A printed comparative states one figure with no side. Which
+            # side it belongs on is the same question the current column
+            # answers, so it is settled the same way - by the account.
+            debit = Decimal(str(row.amount))
+        existing = prior.get(key)
+        if existing:
+            prior[key] = (existing[0] + debit, existing[1] + credit)
+        else:
+            prior[key] = (debit, credit)
+    return prior
+
+
 def build(financial_year_id: int, user_id=None) -> dict:
     """(Re)build the standard trial balance from all current sources."""
     financial_year = db.session.get(FinancialYear, financial_year_id)
@@ -188,6 +230,8 @@ def build(financial_year_id: int, user_id=None) -> dict:
     channels = {d.id: ("xero" if d.file_type == "xero" else "upload")
                 for d in financial_year.documents}
 
+    prior_figures = _prior_by_account(financial_year_id, sources)
+
     for item in _source_rows(financial_year_id, sources):
         name = (item.label or "").strip() or "(unnamed account)"
         code = (item.account_code or "").strip()
@@ -221,6 +265,10 @@ def build(financial_year_id: int, user_id=None) -> dict:
             existing = merged[key]
             existing.debit = (existing.debit or ZERO) + debit
             existing.credit = (existing.credit or ZERO) + credit
+            was = prior_figures.get(key)
+            if was:
+                existing.prior_debit = (existing.prior_debit or ZERO) + was[0]
+                existing.prior_credit = (existing.prior_credit or ZERO) + was[1]
             existing.confidence = min(existing.confidence or 1.0,
                                       item.confidence or 1.0)
             continue
@@ -234,6 +282,8 @@ def build(financial_year_id: int, user_id=None) -> dict:
             statement_type=statement_type,
             debit=debit,
             credit=credit,
+            prior_debit=prior_figures.get(key, (None, None))[0],
+            prior_credit=prior_figures.get(key, (None, None))[1],
             source=channels.get(item.document_id, "upload"),
             source_document_id=item.document_id,
             source_ref=item.source_ref,

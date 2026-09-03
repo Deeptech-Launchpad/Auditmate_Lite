@@ -311,6 +311,14 @@ def check(financial_year):
     }
 
 
+class _Label:
+    """Just enough of a FinancialYear for `prior.year.year_label` to work,
+    for the fallback path below where there is no second engagement to
+    point at - only a heading read off the document itself."""
+    def __init__(self, year_label):
+        self.year_label = year_label
+
+
 def prior_by_account(financial_year):
     """Last year's balance for each of this year's accounts.
 
@@ -327,13 +335,31 @@ def prior_by_account(financial_year):
     Returns {this year's account id: last year's net balance}.
     """
     previous = previous_year(financial_year)
-    if previous is None:
-        return None
-
     last = (TrialBalanceAccount.query
-            .filter_by(financial_year_id=previous.id).all())
+            .filter_by(financial_year_id=previous.id).all()
+            if previous is not None else [])
+
     if not last:
-        return None
+        # No separate engagement in Auditmate for last year - which is most
+        # engagements, since a firm's first year using this tool has no
+        # "last year" recorded here even though the client's own books do.
+        # The document that built THIS year's trial balance printed its own
+        # comparative column, and the build already carried it onto the
+        # account (see trial_balance.build) - so it is shown from there
+        # instead of being left blank for want of a second engagement.
+        balances = {a.id: (a.prior_debit or ZERO) - (a.prior_credit or ZERO)
+                    for a in financial_year.tb_accounts
+                    if a.prior_debit is not None or a.prior_credit is not None}
+        if not balances:
+            return None
+        label = previous.year_label if previous else "Last year"
+        return {
+            "year": _Label(label),
+            "balances": balances,
+            "total": sum(balances.values(), ZERO),
+            "matched": len(balances),
+            "of": len(financial_year.tb_accounts),
+        }
 
     by_pair, by_name = {}, {}
     for account in last:

@@ -52,11 +52,12 @@ TOLERANCE = Decimal("1.00")
 # Best first, for the jobs that need figures rather than a comparison.
 # Auditmate's own previous engagement outranks everything: it was mapped and
 # approved here, so it needs no interpretation at all.
-SOURCE_ORDER = ["auditmate", "signed_accounts", "xero"]
+SOURCE_ORDER = ["auditmate", "signed_accounts", "tb_comparative", "xero"]
 
 SOURCE_LABELS = {
     "auditmate": "last year's engagement in Auditmate",
     "signed_accounts": "last year's signed accounts",
+    "tb_comparative": "the prior-year column of this year's trial balance",
     "xero": "Xero, at last year's year end",
 }
 
@@ -144,6 +145,39 @@ def _document_of(financial_year, category, file_type=None):
     return None
 
 
+def _from_tb_comparative(financial_year):
+    """Last year, off the accounts this year's trial balance built.
+
+    Read through the ACCOUNT rather than the document, so the comparative
+    follows the same mapping as the current figure. Re-map an account by hand
+    and last year moves with it; read from the document instead and the two
+    columns would quietly disagree.
+
+    The sign flip is the part easy to leave out and wrong every time it is:
+    a trial balance stores raw debits and credits, and a credit-balance
+    account - revenue, every liability - is negative in that form. The
+    CURRENT figure is flipped to a presentation sign by the account's own
+    mapping rule (see statements._signed). Skipping that flip here would
+    print revenue as a positive this year and a negative last year on the
+    same line - not merely wrong, but wrong in the way that is obvious to
+    anyone who opens the document, on the client's largest number.
+    """
+    rows = (TrialBalanceAccount.query
+            .filter_by(financial_year_id=financial_year.id)
+            .filter(TrialBalanceAccount.standard_key.isnot(None))
+            .all())
+
+    totals = {}
+    for row in rows:
+        if row.prior_debit is None and row.prior_credit is None:
+            continue                      # no comparative for this account
+        net = (row.prior_debit or ZERO) - (row.prior_credit or ZERO)
+        rule = match_label(row.account_name, financial_year.customer_id)
+        sign = rule["sign"] if rule else 1
+        totals[row.standard_key] = totals.get(row.standard_key, ZERO) + net * sign
+    return totals
+
+
 def sources(financial_year):
     """Every prior-year source available, as {name: {key: amount}}.
 
@@ -163,6 +197,14 @@ def sources(financial_year):
         figures = _from_document(signed, financial_year.customer_id)
         if figures:
             found["signed_accounts"] = figures
+
+    # This year's own trial balance prints last year beside it, and the
+    # build now keeps that column on the account. Ranked below the signed
+    # accounts, which are the figures that were actually filed, and above a
+    # Xero pull, which is a second export of the same books.
+    from_tb = _from_tb_comparative(financial_year)
+    if from_tb:
+        found["tb_comparative"] = from_tb
 
     pulled = _document_of(financial_year, "prior_trial_balance",
                           file_type="xero_prior")
@@ -190,7 +232,7 @@ def balances(financial_year):
 
 # Sources that are a TRIAL BALANCE rather than a finished set of accounts.
 # The distinction matters for one account only, and it matters a lot.
-TRIAL_BALANCE_SOURCES = {"auditmate", "xero"}
+TRIAL_BALANCE_SOURCES = {"auditmate", "xero", "tb_comparative"}
 
 # Where the year's result lands once it is appropriated.
 RESULT_KEYS = ["retained_earnings", "accumulated_profit"]
