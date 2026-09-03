@@ -130,6 +130,9 @@ def _read_prior_year_notes(document, path, file_type, raw_text) -> str:
 # balance is handled before it and so is not repeated here.
 STATES_BALANCES = {"balance_sheet", "profit_and_loss", "general_ledger"}
 
+# Documents read for what the company SAID, not only for what it counted.
+NOTE_BEARING = {"signed_accounts", "prior_signed_accounts"}
+
 
 def auto_verify(document) -> tuple:
     """Decide whether this document still needs a human to review it.
@@ -235,6 +238,7 @@ def extract_document(document_id: int) -> dict:
                             sheets=document.source_sheets or None)
     engine_used = result.engine
     ai_used = False
+    ai_error = None
 
     # --- Stage 2: AI fallback, only where it adds value ---------------------
     use_ai, reason = _should_use_ai(result, file_type)
@@ -249,10 +253,15 @@ def extract_document(document_id: int) -> dict:
             engine_used = ai_result.engine or "ai"
             ai_used = True
         elif ai_result.error and not result.rows:
-            document.extraction_status = "failed"
-            document.extraction_error = ai_result.error
-            db.session.commit()
-            return {"ok": False, "error": ai_result.error}
+            # A set of signed accounts is read for its WORDING, and carries no
+            # figures at all - so failing to find figures in one is not a
+            # reason to stop before the stage that reads what it was sent for.
+            if document.category not in NOTE_BEARING:
+                document.extraction_status = "failed"
+                document.extraction_error = ai_result.error
+                db.session.commit()
+                return {"ok": False, "error": ai_result.error}
+            ai_error = ai_result.error
 
     # --- Stage 3: score every row and persist -------------------------------
     for row in result.rows:
@@ -293,7 +302,7 @@ def extract_document(document_id: int) -> dict:
     # what the company actually said in its notes, which nothing else does.
     notes_note = None
     notes_read = 0
-    if document.category in ("signed_accounts", "prior_signed_accounts"):
+    if document.category in NOTE_BEARING:
         notes_read, notes_note = _read_prior_year_notes(
             document, path, file_type, result.raw_text)
 
@@ -301,12 +310,20 @@ def extract_document(document_id: int) -> dict:
     # WORDING, and a set of notes carries no figures at all - so judging the
     # document on line items alone reports a document that did exactly what
     # was asked of it as a failure, and hides the notes it did produce.
+    if notes_read == 0 and document.category in NOTE_BEARING:
+        # A failed re-read must not erase the standing of one that worked.
+        # The notes from the last good read are still stored - only a
+        # successful read replaces them - so the document is not unread.
+        from ...models import PriorYearNote
+        notes_read = PriorYearNote.query.filter_by(
+            source_document_id=document.id).count()
+
     got_something = bool(result.rows) or notes_read > 0
     document.extraction_status = "extracted" if got_something else "failed"
     document.extraction_engine = engine_used
     document.extraction_confidence = result.confidence
     document.extraction_error = None if got_something else (
-        result.error or "No line items found")
+        result.error or ai_error or "No line items found")
     document.ai_used = ai_used
     document.page_count = result.page_count
     auto_verified = False
