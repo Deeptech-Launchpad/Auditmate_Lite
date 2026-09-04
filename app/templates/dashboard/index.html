@@ -69,8 +69,13 @@
                 {% for year in active_years %}
                 <tr>
                   <td>
+                    {# One line, truncated - the full name is a hover away.
+                       A wrapping name made its own row taller than every
+                       other row in the same table, which is the kind of
+                       thing a reader notices as "uneven" before they can
+                       say why. #}
                     <div class="stack">
-                      <span class="strong">{{ year.customer.name }}</span>
+                      <span class="strong ellipsis" title="{{ year.customer.name }}">{{ year.customer.name }}</span>
                       <span class="muted small">{{ year.customer.uen or '—' }}</span>
                     </div>
                   </td>
@@ -82,11 +87,17 @@
                       <span class="pill pill-amber"><span class="dot"></span>Shared</span>
                     {% elif year.status == 'approved' %}
                       <span class="pill pill-green"><span class="dot"></span>Approved</span>
+                    {% elif year.status == 'report_generated' %}
+                      {# Same meaning as "Ready" on the documents list below -
+                         a finished, good state - so it carries the same
+                         green rather than falling through to a neutral grey
+                         that reads as "nothing to report" instead of "done". #}
+                      <span class="pill pill-green"><span class="dot"></span>Report generated</span>
                     {% else %}
                       <span class="pill pill-grey">{{ year.status_label }}</span>
                     {% endif %}
                   </td>
-                  <td class="num">
+                  <td class="num nowrap">
                     {{ year.documents|length }}
                     {% if year.documents_pending_review %}
                       <span class="muted small">({{ year.documents_pending_review }} pending)</span>

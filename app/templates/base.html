@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Auditmate Lite{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
   {% block head %}{% endblock %}
@@ -24,11 +27,11 @@
       <div class="nav-label">Main</div>
       <a class="nav-item {% if request.endpoint == 'dashboard.index' %}active{% endif %}"
          href="{{ url_for('dashboard.index') }}">
-        <span class="icon">▤</span> Dashboard
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="6" height="6" rx=".5"/><rect x="11.5" y="2.5" width="6" height="6" rx=".5"/><rect x="2.5" y="11.5" width="6" height="6" rx=".5"/><rect x="11.5" y="11.5" width="6" height="6" rx=".5"/></svg></span> Dashboard
       </a>
       <a class="nav-item {% if request.blueprint == 'customers' %}active{% endif %}"
          href="{{ url_for('customers.index') }}">
-        <span class="icon">▦</span> Customers
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="6.5" r="3"/><path d="M3.5 17c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg></span> Customers
       </a>
 
       {% if fy is defined and fy %}
@@ -37,15 +40,15 @@
       </div>
       <a class="nav-item {% if request.endpoint == 'customers.workspace' %}active{% endif %}"
          href="{{ url_for('customers.workspace', customer_id=fy.customer_id, fy_id=fy.id) }}">
-        <span class="icon">◈</span> Overview
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l8 8-8 8-8-8z"/></svg></span> Overview
       </a>
       <a class="nav-item {% if request.blueprint == 'documents' %}active{% endif %}"
          href="{{ url_for('documents.index', fy_id=fy.id) }}">
-        <span class="icon">▣</span> 1. Documents
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h6l4 4v12H5z"/><path d="M11 2v4h4"/></svg></span> 1. Documents
       </a>
       <a class="nav-item {% if request.endpoint == 'trial_balance.index' %}active{% endif %}"
          href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">
-        <span class="icon">▤</span> 2. Extracted Financials
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V11M10 17V4M16 17v-6"/><path d="M2.5 17h15"/></svg></span> 2. Extracted Financials
       </a>
       {# Customer Review is deliberately not a step. The firm's position:
          "The SME client is not an accountant and will not log in to approve
@@ -53,16 +56,16 @@
          nothing was deleted - it is simply no longer part of the flow. #}
       <a class="nav-item {% if request.endpoint == 'trial_balance.mapping' %}active{% endif %}"
          href="{{ url_for('trial_balance.mapping', fy_id=fy.id) }}">
-        <span class="icon">⇄</span> 3. Mapping
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11M11 4l3 3-3 3"/><path d="M17 13H6M9 10l-3 3 3 3"/></svg></span> 3. Mapping
       </a>
       <a class="nav-item {% if request.blueprint == 'statements'
                              and request.endpoint != 'statements.versions' %}active{% endif %}"
          href="{{ url_for('statements.index', fy_id=fy.id) }}">
-        <span class="icon">▥</span> 4. Statements
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="14" height="14" rx="1"/><path d="M6.5 7.5h7M6.5 10.5h7M6.5 13.5h4.5"/></svg></span> 4. Statements
       </a>
       <a class="nav-item {% if request.blueprint == 'reports' %}active{% endif %}"
          href="{{ url_for('reports.builder', fy_id=fy.id) }}">
-        <span class="icon">▧</span> 5. Financial Statements
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7.5" r="5"/><path d="M7.7 7.6l1.6 1.6 3-3.2"/><path d="M6.7 12l-1.6 5 4.9-2.4 4.9 2.4-1.6-5"/></svg></span> 5. Financial Statements
       </a>
       {% endif %}
 
@@ -77,7 +80,7 @@
         </div>
       </div>
       <a href="{{ url_for('auth.logout') }}"
-         style="color:#7d8ba3;display:block;margin-top:10px;font-size:12px">Sign out</a>
+         style="color:var(--text-muted);display:block;margin-top:10px;font-size:12px">Sign out</a>
     </div>
   </aside>
 
