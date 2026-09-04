@@ -250,7 +250,7 @@ def check(financial_year):
     if not accounts:
         return None
 
-    _sources, evidence = choose_sources(financial_year.documents)
+    sources, evidence = choose_sources(financial_year.documents)
     if not evidence:
         return None
 
@@ -279,14 +279,25 @@ def check(financial_year):
         })
 
     # The ledger, totalled by account rather than compared line by line.
+    #
+    # Skipped entirely once a trial balance built the accounts. The firm's
+    # position: a trial balance IS the client's statement of account balances,
+    # so totalling their ledger back up against it re-derives the same figures
+    # from the same books and reports differences nobody acts on. The ledger
+    # is still held back from building - it is just no longer argued with.
+    built_from_trial_balance = any(
+        d.file_type == "xero" or (d.category or "") == "trial_balance"
+        for d in sources)
+
     ledgers = []
-    for document in held_back:
-        if (document.category or "") != "general_ledger":
-            continue
-        findings = check_ledger_totals(document, accounts,
-                                       financial_year.customer_id)
-        if findings:
-            ledgers.append({"document": document, "findings": findings})
+    if not built_from_trial_balance:
+        for document in held_back:
+            if (document.category or "") != "general_ledger":
+                continue
+            findings = check_ledger_totals(document, accounts,
+                                           financial_year.customer_id)
+            if findings:
+                ledgers.append({"document": document, "findings": findings})
 
     if not documents and not held_back:
         return None

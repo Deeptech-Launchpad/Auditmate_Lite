@@ -25,6 +25,25 @@ NOTE_PREFIX = "note__"
 log = logging.getLogger(__name__)
 
 
+# Stands in for a note nobody has written yet - a library note whose every
+# narrative piece stayed untriggered, or a note added by hand a moment ago.
+# It exists so the note does not render as a heading with nothing under it.
+#
+# Left standing it is NOT content: it is the note still waiting to be
+# written, and these five words must never reach a client's financial
+# statements. content_gaps() reports any note still holding it.
+UNWRITTEN_NOTE_HTML = "<p><em>Write this note here.</em></p>"
+
+# Both forms have been written into reports - the library builder used the
+# italic one, the add-a-note route a plain one - and reports already created
+# carry whichever was current at the time. Recognising both is what stops a
+# note that has never been written from counting as written.
+UNWRITTEN_NOTE_FORMS = {
+    UNWRITTEN_NOTE_HTML,
+    "<p>Write this note here.</p>",
+}
+
+
 # Section captions on the face of a statement. The client's template groups
 # the balance sheet under ASSETS / EQUITY AND LIABILITIES with a secondary
 # caption beneath, so a "|" separates the major caption from the minor one.
@@ -178,12 +197,80 @@ def render_bindings(text: str, customer, financial_year,
     return re.sub(r"\{\{\s*([\w.]+)\s*\}\}", replace, text)
 
 
+def _template_section(spec, report_id, order) -> AuditReportSection:
+    """One report section built from a library section spec."""
+    return AuditReportSection(
+        report_id=report_id,
+        section_key=spec["key"],
+        title=spec.get("title", spec["key"]),
+        section_type=spec.get("type", "free_text"),
+        sort_order=order,
+        is_enabled=bool(spec.get("default_enabled", False)),
+        content_html=spec.get("content", ""),
+        data_binding={"statement_type": spec["statement_type"]}
+        if spec.get("statement_type") else None,
+    )
+
+
+def add_missing_template_sections(report) -> list:
+    """Add library sections this report was created before.
+
+    Sections are seeded once, when a report is first created, so a section
+    added to the library afterwards never reached the reports that already
+    existed. A statement page could sit in the template and be absent from
+    the finished document, with nothing on screen to say why.
+
+    Matched on the section key, so a section already there keeps its wording,
+    its position and whether it is switched on. A library section can only be
+    switched off, never deleted (see reports.delete_section), so a key missing
+    from a report was never seeded rather than deliberately removed - which is
+    what makes adding it back safe rather than a resurrection.
+    """
+    specs = load_sections()
+    existing = {s.section_key: s for s in report.sections}
+    missing = [(index, spec) for index, spec in enumerate(specs)
+               if spec["key"] not in existing]
+    if not missing:
+        return []
+
+    sections = list(report.sections)
+    added = []
+
+    for index, spec in missing:
+        # Slotted in after the nearest library section before it that this
+        # report does have, so it lands where the library puts it instead of
+        # after the notes at the very end. Anything an auditor dragged into a
+        # different order keeps its relative position either way.
+        after = None
+        for earlier in reversed(specs[:index]):
+            if earlier["key"] in existing:
+                after = existing[earlier["key"]]
+                break
+        position = (after.sort_order + 1) if after is not None else 0
+
+        for section in sections:
+            if section.sort_order >= position:
+                section.sort_order += 1
+
+        created = _template_section(spec, report.id, position)
+        db.session.add(created)
+        sections.append(created)
+        existing[spec["key"]] = created
+        added.append(created)
+
+    db.session.commit()
+    log.info("Report %s gained %s section(s) added to the library later: %s",
+             report.id, len(added), ", ".join(s.section_key for s in added))
+    return added
+
+
 def ensure_report(financial_year) -> AuditReport:
     """Get or create the report for a financial year, seeding its sections."""
     report = AuditReport.query.filter_by(
         financial_year_id=financial_year.id).first()
 
     if report is not None:
+        add_missing_template_sections(report)
         return report
 
     present = _present_keys(financial_year)
@@ -197,17 +284,7 @@ def ensure_report(financial_year) -> AuditReport:
 
     order = 0
     for spec in load_sections():
-        db.session.add(AuditReportSection(
-            report_id=report.id,
-            section_key=spec["key"],
-            title=spec.get("title", spec["key"]),
-            section_type=spec.get("type", "free_text"),
-            sort_order=order,
-            is_enabled=bool(spec.get("default_enabled", False)),
-            content_html=spec.get("content", ""),
-            data_binding={"statement_type": spec["statement_type"]}
-            if spec.get("statement_type") else None,
-        ))
+        db.session.add(_template_section(spec, report.id, order))
         order += 1
 
     period = (financial_year.start_date, financial_year.end_date)
@@ -370,7 +447,7 @@ def _assemble_note_content(note, present, first_year=False, period=None):
             html_parts.extend(sub_parts)
 
     if not html_parts:
-        html_parts.append("<p><em>Write this note here.</em></p>")
+        html_parts.append(UNWRITTEN_NOTE_HTML)
 
     return "\n".join(html_parts), table_specs
 
@@ -717,8 +794,35 @@ def content_gaps(report, financial_year):
                        "note for this, so it is yours to write."),
         })
 
-    return {"missing": grouped_missing, "thin": thin,
-            "has_gaps": bool(grouped_missing or thin)}
+    # A note that is switched on but has nothing in it yet. Two ways that
+    # happens: it was added by hand and still holds the prompt it was created
+    # with, or it is a library note whose every content piece was left
+    # untriggered. Both print in the delivered accounts as a numbered heading
+    # with no disclosure under it - and the prompt prints the words "Write
+    # this note here." into a client's financial statements.
+    #
+    # Reported rather than skipped at render time on purpose: note numbers
+    # are recalculated from whichever notes are enabled, so quietly dropping
+    # one here would renumber the rest and leave every "see Note N" on the
+    # face of a statement pointing somewhere else.
+    unwritten = []
+    for section in ordered_sections(report):
+        if not section.is_enabled or section.section_type == "statement":
+            continue
+        body = (section.content_html or "").strip()
+        has_table = bool((section.data_binding or {}).get("note_table_specs"))
+        still_a_prompt = body in UNWRITTEN_NOTE_FORMS
+        if not (still_a_prompt or (not body and not has_table)):
+            continue
+        unwritten.append({
+            "note": section.title,
+            "detail": ("This note is switched on but nothing has been written "
+                       "in it yet. As it stands it prints as a heading with "
+                       "no disclosure under it. Write it, or switch it off."),
+        })
+
+    return {"missing": grouped_missing, "thin": thin, "unwritten": unwritten,
+            "has_gaps": bool(grouped_missing or thin or unwritten)}
 
 
 def mapped_accounts(financial_year):

@@ -346,6 +346,20 @@ def add_section(report_id):
             return jsonify({"ok": False,
                             "error": "That note isn't available to attach to."}), 400
 
+    # The key is always unique; the TITLE was not checked at all, so adding
+    # the same note twice produced two sections that print identically and
+    # renumber everything after them. A note already in the report - whether
+    # it came from the library or was added here - is the one to edit.
+    clash = next((s for s in report.sections
+                  if (s.title or "").strip().lower() == title.lower()), None)
+    if clash is not None:
+        return jsonify({
+            "ok": False,
+            "error": (f"“{clash.title}” is already in this report"
+                      f"{'' if clash.is_enabled else ' (switched off)'}. "
+                      f"Edit that note rather than adding a second one."),
+        }), 400
+
     existing = {s.section_key for s in report.sections}
     index = 1
     while f"{CUSTOM_PREFIX}{index}" in existing:
@@ -385,8 +399,9 @@ def add_section(report_id):
         parent_section_id=parent.id if parent else None,
         # Deliberately not empty. An empty note renders as a heading with
         # nothing under it and looks like a fault; a visible prompt says the
-        # note is waiting to be written.
-        content_html="<p>Write this note here.</p>",
+        # note is waiting to be written. Reported as a gap for as long as it
+        # stands, so it cannot quietly reach a client - see content_gaps().
+        content_html=report_service.UNWRITTEN_NOTE_HTML,
         data_binding=data_binding,
     )
     db.session.add(section)
