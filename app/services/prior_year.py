@@ -52,13 +52,16 @@ TOLERANCE = Decimal("1.00")
 # Best first, for the jobs that need figures rather than a comparison.
 # Auditmate's own previous engagement outranks everything: it was mapped and
 # approved here, so it needs no interpretation at all.
-SOURCE_ORDER = ["auditmate", "signed_accounts", "tb_comparative", "xero"]
+SOURCE_ORDER = ["auditmate", "signed_accounts", "tb_comparative", "xero",
+                "prior_trial_balance"]
 
 SOURCE_LABELS = {
     "auditmate": "last year's engagement in Auditmate",
     "signed_accounts": "last year's signed accounts",
     "tb_comparative": "the prior-year column of this year's trial balance",
     "xero": "Xero, at last year's year end",
+    "prior_trial_balance": "last year's trial balance, uploaded and marked "
+                           "as the previous year",
 }
 
 
@@ -213,6 +216,16 @@ def sources(financial_year):
         if figures:
             found["xero"] = figures
 
+    # The same thing as a file: last year's trial balance, uploaded and marked
+    # "Previous year" beside its category. Until this was read, choosing that
+    # year on the Documents screen filed the document correctly and then did
+    # nothing with it - the figures had nowhere to land.
+    uploaded = _document_of(financial_year, "prior_trial_balance")
+    if uploaded is not None and uploaded is not pulled:
+        figures = _from_document(uploaded, financial_year.customer_id)
+        if figures:
+            found["prior_trial_balance"] = figures
+
     return found
 
 
@@ -232,7 +245,8 @@ def balances(financial_year):
 
 # Sources that are a TRIAL BALANCE rather than a finished set of accounts.
 # The distinction matters for one account only, and it matters a lot.
-TRIAL_BALANCE_SOURCES = {"auditmate", "xero", "tb_comparative"}
+TRIAL_BALANCE_SOURCES = {"auditmate", "xero", "tb_comparative",
+                         "prior_trial_balance"}
 
 # Where the year's result lands once it is appropriated.
 RESULT_KEYS = ["retained_earnings", "accumulated_profit"]

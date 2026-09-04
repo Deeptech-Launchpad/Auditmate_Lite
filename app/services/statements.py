@@ -209,6 +209,10 @@ def build_statement(financial_year_id: int, statement_type: str,
     # ---- Cross-statement context ------------------------------------------
     context = _build_context(financial_year_id, statement_type)
     compute.apply_formulas(lines, context)
+    # The comparative column gets the same treatment. Its figures arrive line
+    # by line from last year's source, which supplies no subtotals - so
+    # without this every total in the prior column stays blank.
+    compute.apply_formulas_previous(lines)
 
     db.session.commit()
 
@@ -429,4 +433,5 @@ def recalculate(statement_id: int) -> None:
     context = _build_context(statement.financial_year_id,
                              statement.statement_type)
     compute.apply_formulas(statement.lines, context)
+    compute.apply_formulas_previous(statement.lines)
     db.session.commit()

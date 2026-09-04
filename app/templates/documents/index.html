@@ -290,11 +290,26 @@
                           style="display:none;margin-top:6px"
                           action="{{ url_for('documents.recategorise', document_id=doc.id) }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <select name="category" class="small" style="max-width:190px">
-                        {% for key, label in DOCUMENT_CATEGORIES %}
+                      {# The prior-year categories are not offered here. What a
+                         document IS and which year it describes are two
+                         separate questions, so they get two controls and are
+                         recombined on save. #}
+                      {% set base_category = CURRENT_YEAR_TWIN.get(doc.category, doc.category) %}
+                      <select name="category" class="small cat-select" style="max-width:190px">
+                        {% for key, label in DOCUMENT_CATEGORIES if key not in CURRENT_YEAR_TWIN %}
                           <option value="{{ key }}"
-                                  {% if doc.category == key %}selected{% endif %}>{{ label }}</option>
+                                  {% if base_category == key %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
+                      </select>
+                      {# A client sends last year's trial balance and this
+                         year's, and nothing inside either file reliably says
+                         which is which - so the auditor says. #}
+                      <select name="year" class="small year-select" style="max-width:150px"
+                              {% if base_category not in PRIOR_YEAR_TWIN %}hidden{% endif %}>
+                        <option value="current"
+                                {% if doc.category not in CURRENT_YEAR_TWIN %}selected{% endif %}>Current year</option>
+                        <option value="previous"
+                                {% if doc.category in CURRENT_YEAR_TWIN %}selected{% endif %}>Previous year</option>
                       </select>
                       <button type="submit" class="btn btn-sm">Save</button>
                     </form>
@@ -409,6 +424,18 @@
       this.style.display = 'none';
       var select = form.querySelector('select');
       if (select) { select.focus(); }
+    });
+  });
+
+  // The year question only applies to the few categories a client sends
+  // twice, once per year. Asking "which year is this bank statement" would
+  // be noise, so the control appears only where the answer matters.
+  var YEAR_APPLIES = {{ PRIOR_YEAR_TWIN.keys()|list|tojson }};
+  document.querySelectorAll('.cat-select').forEach(function (select) {
+    select.addEventListener('change', function () {
+      var year = this.form.querySelector('.year-select');
+      if (!year) { return; }
+      year.hidden = YEAR_APPLIES.indexOf(this.value) === -1;
     });
   });
 </script>

@@ -91,8 +91,8 @@
 
 
 {% set fy_end = fy.end_date.strftime('%d.%m.%Y') if fy.end_date else '' %}
-{% set fy_prev_end = fy.previous_year.end_date.strftime('%d.%m.%Y')
-                     if fy.previous_year and fy.previous_year.end_date else '' %}
+{% set fy_prev_end = fy.previous_period_end.strftime('%d.%m.%Y')
+                     if fy.previous_period_end else '' %}
 {% set ccy = customer.books_currency or 'SGD' %}
 {% set ccy_sym = 'S$' if ccy == 'SGD' else ccy %}
 

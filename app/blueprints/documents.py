@@ -8,8 +8,9 @@ from flask import (Blueprint, abort, current_app, flash, jsonify, redirect,
 from flask_login import current_user, login_required
 
 from ..extensions import db
-from ..models import (DOCUMENT_CATEGORIES, Document, ExtractedLineItem,
-                      FinancialYear, PriorYearNote, TrialBalanceAccount)
+from ..models import (DOCUMENT_CATEGORIES, PRIOR_YEAR_TWIN, Document,
+                      ExtractedLineItem, FinancialYear, PriorYearNote,
+                      TrialBalanceAccount, category_for_year)
 from ..services import storage
 from ..services.audit import record
 from ..services.categorise import detect_category
@@ -676,7 +677,11 @@ def recategorise(document_id):
     document = db.session.get(Document, document_id) or abort(404)
     financial_year = document.financial_year
     fy_id = financial_year.id
-    category = request.form.get("category") or "other"
+    # Two controls, one stored value. The category says what the document is;
+    # the year beside it says which year it describes, for the few categories
+    # where a client sends both. See PRIOR_YEAR_TWIN.
+    category = category_for_year(request.form.get("category") or "other",
+                                 request.form.get("year") == "previous")
 
     valid = {key for key, _label in DOCUMENT_CATEGORIES}
     if category not in valid:

@@ -87,13 +87,15 @@ def create_app(config_object=Config):
     app.register_blueprint(integrations_bp)
 
     # --- Template helpers ---
-    from .models import (DOCUMENT_CATEGORIES, ENTITY_TYPES, FY_STATUSES,
-                         STATEMENT_TYPES)
+    from .models import (CURRENT_YEAR_TWIN, DOCUMENT_CATEGORIES, ENTITY_TYPES,
+                         FY_STATUSES, PRIOR_YEAR_TWIN, STATEMENT_TYPES)
 
     @app.context_processor
     def inject_globals():
         return {
             "DOCUMENT_CATEGORIES": DOCUMENT_CATEGORIES,
+            "PRIOR_YEAR_TWIN": PRIOR_YEAR_TWIN,
+            "CURRENT_YEAR_TWIN": CURRENT_YEAR_TWIN,
             "ENTITY_TYPES": ENTITY_TYPES,
             "STATEMENT_TYPES": STATEMENT_TYPES,
             "FY_STATUSES": FY_STATUSES,

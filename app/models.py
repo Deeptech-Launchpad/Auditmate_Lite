@@ -10,7 +10,7 @@ related and it keeps imports simple. Roughly it follows the pipeline:
 Every money-bearing row keeps a pointer back to where the number came from,
 because this is audit software and provenance is the point.
 """
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHashError
@@ -70,6 +70,29 @@ DOCUMENT_CATEGORIES = [
     ("tax_document", "Tax Document / GST Return"),
     ("other", "Other"),
 ]
+
+# Categories that come in a current-year / prior-year pair.
+#
+# A client sends last year's trial balance and this year's, and nothing in
+# either file reliably says which is which - the auto-detector reads what a
+# document IS, not which year it describes. So the year is the auditor's to
+# state, and it is stored as the category rather than as a separate field:
+# every downstream decision (what builds the accounts, what only supplies the
+# comparative column) already keys off the category.
+PRIOR_YEAR_TWIN = {
+    "trial_balance": "prior_trial_balance",
+    "cash_flow": "prior_cash_flow",
+}
+CURRENT_YEAR_TWIN = {prior: current for current, prior in PRIOR_YEAR_TWIN.items()}
+
+
+def category_for_year(category, is_prior):
+    """The stored category for a base category plus the year chosen."""
+    base = CURRENT_YEAR_TWIN.get(category, category)
+    if not is_prior:
+        return base
+    return PRIOR_YEAR_TWIN.get(base, base)
+
 
 # Which documents the accounts are built FROM, best first.
 #
@@ -351,6 +374,28 @@ class FinancialYear(db.Model):
         for link in self.review_links:
             if link.is_usable:
                 return link
+        return None
+
+    @property
+    def previous_period_end(self):
+        """The date last year's period ended, for the comparative column.
+
+        Taken from the linked previous engagement when there is one, and
+        otherwise from this period's own start - the day before it began.
+        The comparative column needs a heading whenever it carries figures,
+        and those figures often come from last year's signed accounts or the
+        prior column of this year's trial balance rather than from a previous
+        engagement in Auditmate. Without the fallback the column of figures
+        was headed with a dash.
+
+        None for a first financial period, which has no prior year at all.
+        """
+        if self.is_first_year:
+            return None
+        if self.previous_year and self.previous_year.end_date:
+            return self.previous_year.end_date
+        if self.start_date:
+            return self.start_date - timedelta(days=1)
         return None
 
     @property

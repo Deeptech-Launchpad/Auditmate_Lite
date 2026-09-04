@@ -328,6 +328,103 @@ def apply_formulas(lines, context=None):
     return lines
 
 
+class _PriorLine:
+    """A statement line seen through its prior-year column.
+
+    Every formula reads `effective_amount`, so presenting last year's figure
+    under that name lets the same formulas produce the comparative column,
+    rather than a second implementation that would drift out of step with
+    this one the first time a subtotal changed.
+    """
+    __slots__ = ("line_key", "group_key", "formula", "is_subtotal",
+                 "is_total", "amount_current", "base_amount",
+                 "manual_override_amount")
+
+    def __init__(self, line):
+        self.line_key = line.line_key
+        self.group_key = line.group_key
+        self.formula = line.formula
+        self.is_subtotal = line.is_subtotal
+        self.is_total = line.is_total
+        self.amount_current = line.amount_previous
+        self.base_amount = line.amount_previous
+        self.manual_override_amount = None
+
+    @property
+    def effective_amount(self):
+        return self.amount_current
+
+
+class _ContextProbe(dict):
+    """A context that records whether a formula reached into it.
+
+    The context carries CROSS-STATEMENT figures - this year's profit, this
+    year's closing cash. They are current-year values, so a formula that
+    needs one cannot produce last year's comparative from them. Recording the
+    reach lets the caller discard that line instead of printing this year's
+    number in last year's column, which would look entirely plausible.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.touched = False
+
+    def get(self, key, default=None):
+        self.touched = True
+        return default
+
+    def __getitem__(self, key):
+        self.touched = True
+        raise KeyError(key)
+
+    def __contains__(self, key):
+        self.touched = True
+        return False
+
+
+def apply_formulas_previous(lines):
+    """Compute the comparative column's subtotals and totals.
+
+    Without this every computed line - gross profit, profit before tax, total
+    assets, total comprehensive income - prints "--" in the prior column while
+    the lines feeding it show figures, because the formulas only ever ran over
+    the current column.
+
+    Skipped entirely when there are no prior figures at all: a first-year
+    engagement must print "--" down that column, and summing a column of
+    nothing would state last year's profit as a confident 0.00.
+    """
+    if not any(line.amount_previous is not None for line in lines):
+        return lines
+
+    views = [_PriorLine(line) for line in lines]
+    by_key = {view.line_key: view for view in views}
+
+    for line in lines:
+        if not line.formula:
+            continue
+        func = FORMULAS.get(line.formula)
+        if func is None:
+            continue
+
+        probe = _ContextProbe()
+        try:
+            value = func(views, probe)
+        except Exception:                              # noqa: BLE001
+            continue
+        if probe.touched:
+            continue
+
+        # Written back to the view too, so a later subtotal summing this one
+        # reads the figure just computed rather than the None it started as.
+        view = by_key.get(line.line_key)
+        if view is not None:
+            view.amount_current = value
+        line.amount_previous = value
+
+    return lines
+
+
 def balance_check(lines) -> dict:
     """Does the balance sheet actually balance?"""
     assets = _value(lines, "total_assets")
