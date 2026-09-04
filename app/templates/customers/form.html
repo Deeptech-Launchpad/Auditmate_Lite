@@ -251,9 +251,12 @@
 
         {% if not customer %}
         <div class="field">
-          <label for="year_label">First financial year</label>
-          <input id="year_label" name="year_label" value="{{ default_label }}"
-                 placeholder="FY2025">
+          <label for="year_number">First financial year</label>
+          <div class="fy-input-group" style="max-width:120px">
+            <span class="fy-prefix">FY</span>
+            <input id="year_number" name="year_number" type="text" inputmode="numeric"
+                   pattern="\d{4}" maxlength="4" value="{{ default_year_number }}">
+          </div>
           <span class="help">Creates the first engagement workspace</span>
         </div>
         {% endif %}

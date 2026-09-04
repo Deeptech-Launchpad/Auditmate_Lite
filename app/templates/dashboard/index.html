@@ -46,9 +46,7 @@
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start">
-
-  <div>
+<div>
     <div class="card">
       <div class="card-head">
         <h2>Active engagements</h2>
@@ -156,63 +154,6 @@
       </div>
     </div>
     {% endif %}
-  </div>
-
-  <div>
-    <div class="card">
-      <div class="card-head"><h2>Extraction</h2></div>
-      <div class="card-body">
-        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-          <span class="muted small">Documents processed</span>
-          <span class="strong">{{ total_docs }}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-          <span class="muted small">Handled by AI</span>
-          <span class="strong">{{ ai_docs }}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between">
-          <span class="muted small">Rule-based (no cost)</span>
-          <span class="strong">{{ total_docs - ai_docs }}</span>
-        </div>
-        <p class="muted small" style="margin:14px 0 0;line-height:1.6">
-          Deterministic parsers run first. AI is only called when a file is
-          scanned, unreadable, or the parser's confidence is low.
-        </p>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-head"><h2>Recent activity</h2></div>
-      <div class="card-body tight">
-        {% if recent_activity %}
-          <table class="data">
-            <tbody>
-              {% for log in recent_activity %}
-              <tr>
-                <td>
-                  <div class="stack">
-                    <span class="small">
-                      <span class="strong">{{ log.action|replace('_', ' ')|capitalize }}</span>
-                      <span class="muted">{{ log.entity_type|replace('_', ' ') }}</span>
-                    </span>
-                    <span class="muted small">
-                      {{ log.user.name if log.user else 'System' }} ·
-                      {{ log.created_at|datefmt('%d %b, %H:%M') }}
-                    </span>
-                  </div>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <div class="empty" style="padding:30px 16px">
-            <p class="small">No activity recorded yet.</p>
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
 </div>
 
 {% if not AI_ENABLED %}

@@ -30,7 +30,11 @@
         <span class="hint">Each year is a separate engagement workspace</span>
       </div>
       <div class="card-body">
-        {% macro fy_admin(year) %}
+        {# A company has exactly one first financial year. Once one year
+           carries the flag, the checkbox is locked off everywhere else -
+           untick it on that year first to make the choice available again. #}
+        {% set existing_first = (customer.financial_years | selectattr('is_first_year') | list | first) %}
+        {% macro fy_admin(year, existing_first) %}
           {# Period dates live here, not only on the customer profile: a
              changed year end gives a long or short period, and that is
              exactly when the comparative wording has to change. #}
@@ -45,11 +49,22 @@
               <input type="date" name="end_date"
                      value="{{ year.end_date.isoformat() if year.end_date }}">
             </label>
-            <label class="small fy-first" title="No comparative column, no prior-year documents demanded, opening balances nil.">
-              <input type="checkbox" name="is_first_year" value="1"
-                     {% if year.is_first_year %}checked{% endif %}>
+            {% if year.is_first_year %}
+            <label class="small fy-first" title="Untick to allow a different year to be marked first.">
+              <input type="checkbox" name="is_first_year" value="1" checked>
               First financial year
             </label>
+            {% elif existing_first %}
+            <label class="small fy-first muted" title="{{ existing_first.year_label }} is already the first financial year. Untick it there first.">
+              <input type="checkbox" disabled>
+              First financial year
+            </label>
+            {% else %}
+            <label class="small fy-first" title="No comparative column, no prior-year documents demanded, opening balances nil.">
+              <input type="checkbox" name="is_first_year" value="1">
+              First financial year
+            </label>
+            {% endif %}
             <button type="submit" class="btn btn-sm">Save</button>
           </form>
           <form method="post" class="fy-admin"
@@ -96,7 +111,7 @@
                   <span>{{ year.statements|length }} statements</span>
                 </div>
               </a>
-              {{ fy_admin(year) }}
+              {{ fy_admin(year, existing_first) }}
             </div>
             {% endfor %}
           </div>
@@ -133,7 +148,7 @@
                  class="btn btn-primary btn-sm" style="margin-top:12px">
                 Open workspace →
               </a>
-              {{ fy_admin(year) }}
+              {{ fy_admin(year, existing_first) }}
             </div>
             {% endfor %}
           </div>
@@ -155,9 +170,13 @@
               action="{{ url_for('customers.add_year', customer_id=customer.id) }}"
               style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <div class="field" style="max-width:160px">
-            <label for="year_label">Year label</label>
-            <input id="year_label" name="year_label" value="{{ next_year_label }}" required>
+          <div class="field" style="max-width:120px">
+            <label for="year_number">Financial year</label>
+            <div class="fy-input-group">
+              <span class="fy-prefix">FY</span>
+              <input id="year_number" name="year_number" type="text" inputmode="numeric"
+                     pattern="\d{4}" maxlength="4" value="{{ next_year_number }}" required>
+            </div>
           </div>
           <div class="field">
             <label for="new_start_date">From</label>
@@ -167,10 +186,20 @@
             <label for="new_end_date">To</label>
             <input type="date" id="new_end_date" name="end_date" required>
           </div>
-          <label class="field" style="display:flex;gap:6px;align-items:center;font-weight:normal">
-            <input type="checkbox" name="is_first_year" value="1" style="width:auto">
+          {# Not "class=field" - that carries flex-direction:column for the
+             label-above-input fields beside it, and a checkbox's own label
+             sits beside it, not above it. #}
+          {% if existing_first %}
+          <label class="checkbox-row muted" style="margin-bottom:0" title="{{ existing_first.year_label }} is already the first financial year. Untick it there first.">
+            <input type="checkbox" disabled>
             First financial year
           </label>
+          {% else %}
+          <label class="checkbox-row" style="margin-bottom:0">
+            <input type="checkbox" name="is_first_year" value="1">
+            First financial year
+          </label>
+          {% endif %}
           <button type="submit" class="btn btn-primary">Create year</button>
           <span class="muted small" style="flex:1;min-width:200px">
             The previous year is linked automatically by date so statements

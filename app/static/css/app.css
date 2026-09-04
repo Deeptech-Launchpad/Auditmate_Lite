@@ -673,6 +673,34 @@ table.fin tr.overridden input.amount { background: var(--amber-light); border-co
 
 .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 18px; }
 .checkbox-row input { width: auto; }
+.checkbox-row.muted { color: var(--text-faint); }
+
+/* A fixed "FY" prefix beside a number-only box, so a year label is always
+   well-formed - the user only ever types the number. */
+.fy-input-group {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  overflow: hidden; background: #fff;
+}
+.fy-input-group .fy-prefix {
+  display: flex; align-items: center; padding: 0 10px;
+  background: #fafbfc; color: var(--text-muted); font-weight: 700;
+  font-size: 13px; border-right: 1px solid var(--border-strong);
+  font-family: inherit; letter-spacing: .02em;
+}
+/* !important here beats .field's own input rule (higher specificity from
+   its :not() chain), which would otherwise put a second border and a
+   second focus ring on the input inside this already-bordered group. */
+.fy-input-group input {
+  border: 0 !important; border-radius: 0 !important; width: auto !important;
+  flex: 1; min-width: 0;
+  padding: 8px 10px; font-size: 13px; font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.fy-input-group input:focus { outline: none !important; box-shadow: none !important; }
+.fy-input-group:focus-within {
+  border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light);
+}
 
 /* ---------------------------------------------------------------- print */
 

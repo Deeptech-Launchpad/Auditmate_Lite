@@ -43,7 +43,7 @@
          href="{{ url_for('documents.index', fy_id=fy.id) }}">
         <span class="icon">▣</span> 1. Documents
       </a>
-      <a class="nav-item {% if request.blueprint == 'trial_balance' %}active{% endif %}"
+      <a class="nav-item {% if request.endpoint == 'trial_balance.index' %}active{% endif %}"
          href="{{ url_for('trial_balance.index', fy_id=fy.id) }}">
         <span class="icon">▤</span> 2. Extracted Financials
       </a>

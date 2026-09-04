@@ -225,13 +225,11 @@ def create():
 
         # Create the first financial year alongside the customer, so the
         # workspace is immediately usable.
-        year_label = (request.form.get("year_label") or "").strip()
-        if year_label:
+        year_number_raw = (request.form.get("year_number") or "").strip()
+        if year_number_raw.isdigit():
+            year_number = int(year_number_raw)
+            year_label = f"FY{year_number}"
             fye_month = customer.financial_year_end_month or 12
-            try:
-                year_number = int("".join(c for c in year_label if c.isdigit())[:4])
-            except ValueError:
-                year_number = date.today().year
 
             end = _month_end(year_number, fye_month)
             start = date(end.year - 1, end.month, 1) if fye_month != 12 \
@@ -239,7 +237,8 @@ def create():
 
             db.session.add(FinancialYear(
                 customer_id=customer.id, year_label=year_label,
-                start_date=start, end_date=end, status="in_progress"))
+                start_date=start, end_date=end, status="in_progress",
+                is_first_year=True))
 
         record("customer", customer.id, "create", after={"name": customer.name})
         db.session.commit()
@@ -247,9 +246,8 @@ def create():
         flash(f"Customer “{customer.name}” created.", "success")
         return redirect(url_for("customers.detail", customer_id=customer.id))
 
-    default_label = f"FY{date.today().year}"
     return render_template("customers/form.html", customer=None,
-                           form={}, default_label=default_label)
+                           form={}, default_year_number=str(date.today().year))
 
 
 @bp.route("/<int:customer_id>")
@@ -264,11 +262,10 @@ def detail(customer_id):
     # when there is none yet.
     latest = max((y.year_label for y in customer.financial_years
                  if y.year_label[2:6].isdigit()), default=None)
-    next_label = (f"FY{int(latest[2:6]) + 1}" if latest
-                 else f"FY{date.today().year}")
+    next_number = str(int(latest[2:6]) + 1) if latest else str(date.today().year)
 
     return render_template("customers/detail.html", customer=customer,
-                           next_year_label=next_label)
+                           next_year_number=next_number)
 
 
 @bp.route("/<int:customer_id>/edit", methods=["GET", "POST"])
@@ -329,11 +326,12 @@ def add_year(customer_id):
     and relying on someone to notice and fix it afterward.
     """
     customer = db.session.get(Customer, customer_id) or abort(404)
-    year_label = (request.form.get("year_label") or "").strip()
+    year_number = (request.form.get("year_number") or "").strip()
 
-    if not year_label:
-        flash("Enter a year label, e.g. FY2025.", "error")
+    if not year_number.isdigit():
+        flash("Enter the year as a number, e.g. 2025.", "error")
         return redirect(url_for("customers.detail", customer_id=customer.id))
+    year_label = f"FY{year_number}"
 
     if FinancialYear.query.filter_by(customer_id=customer.id,
                                      year_label=year_label).first():
@@ -356,6 +354,18 @@ def add_year(customer_id):
         return redirect(url_for("customers.detail", customer_id=customer.id))
 
     is_first_year = bool(request.form.get("is_first_year"))
+
+    # A company has exactly one first financial year. The form already
+    # hides this checkbox once one is set, so reaching here means either a
+    # stale page or a direct post - fall back to "not first year" rather
+    # than create a second one.
+    existing_first = FinancialYear.query.filter_by(
+        customer_id=customer.id, is_first_year=True).first()
+    if is_first_year and existing_first:
+        flash(f"{existing_first.year_label} is already marked as the first "
+              f"financial year. Untick it there before setting another.",
+              "error")
+        is_first_year = False
 
     # A first year has nothing before it by definition - see edit_year for
     # the same rule applied to a year that already exists.
@@ -469,10 +479,26 @@ def edit_year(customer_id, fy_id):
     if end:
         financial_year.end_date = end
 
+    wants_first = bool(request.form.get("is_first_year"))
+
+    # A company has exactly one first financial year. The form already
+    # hides this checkbox on every other year once one is set, so reaching
+    # here for a different year means a stale page or a direct post.
+    if wants_first:
+        existing_first = FinancialYear.query.filter(
+            FinancialYear.customer_id == customer.id,
+            FinancialYear.is_first_year.is_(True),
+            FinancialYear.id != financial_year.id).first()
+        if existing_first:
+            flash(f"{existing_first.year_label} is already marked as the "
+                  f"first financial year. Untick it there before setting "
+                  f"another.", "error")
+            wants_first = False
+
     # A first year has nothing before it by definition, so any inherited
     # link is wrong and would put a comparative column on accounts that
     # must not have one.
-    financial_year.is_first_year = bool(request.form.get("is_first_year"))
+    financial_year.is_first_year = wants_first
     if financial_year.is_first_year:
         financial_year.previous_year_id = None
 
