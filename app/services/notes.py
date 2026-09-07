@@ -73,6 +73,30 @@ def _row(label, current, previous=None, *, bold=False, rule=False, ref=None):
 # Block builders
 # --------------------------------------------------------------------------
 
+def _previous_totals_by_key(financial_year, keys):
+    """Prior-year trial balance, summed per standard key.
+
+    Matched by key rather than by account: a client's own account names
+    are free text and are not the same row from one year to the next
+    (a bank account renamed, two accounts merged), but the standard key
+    an account was mapped to is stable, and it is the same thing every
+    other comparative in this app is matched on.
+    """
+    if not financial_year.previous_year_id:
+        return {}
+    prior_accounts = (TrialBalanceAccount.query
+                      .filter(TrialBalanceAccount.financial_year_id
+                              == financial_year.previous_year_id)
+                      .filter(TrialBalanceAccount.standard_key.in_(keys))
+                      .all())
+    totals = {}
+    for account in prior_accounts:
+        key = account.standard_key
+        totals[key] = totals.get(key, Decimal("0")) + Decimal(str(account.net or 0))
+    return {key: (amount if amount >= 0 else -amount)
+            for key, amount in totals.items()}
+
+
 def _block_accounts(spec, financial_year, statements):
     """One row per trial balance account inside the given standard keys.
 
@@ -82,20 +106,28 @@ def _block_accounts(spec, financial_year, statements):
     """
     keys = spec.get("keys") or []
     rows = []
+    prior_totals = _previous_totals_by_key(financial_year, keys)
 
     for account in _accounts_for(financial_year, keys):
         amount = Decimal(str(account.net or 0))
         if amount < 0:
             amount = -amount
-        rows.append(_row(account.account_name, amount, ref=f"tb:{account.id}"))
+        previous = prior_totals.get(account.standard_key)
+        rows.append(_row(account.account_name, amount, previous,
+                         ref=f"tb:{account.id}"))
 
     if not rows:
         return None
 
     if "total" in spec and len(rows) > 1:
         label = spec["total"] if isinstance(spec["total"], str) else ""
-        rows.append(_row(label, sum(r["current"] for r in rows),
-                         bold=True, rule=True))
+        rows.append(_row(
+            label, sum(r["current"] for r in rows),
+            # Only foot the comparative column when every row has one - a
+            # partial total would misstate last year's figure as complete.
+            sum(Decimal(str(r["previous"])) for r in rows)
+            if all(r["previous"] is not None for r in rows) else None,
+            bold=True, rule=True))
 
     return {"heading": spec.get("heading"), "rows": rows,
             "columns": spec.get("columns")}
