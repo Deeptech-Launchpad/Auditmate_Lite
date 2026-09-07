@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% macro v(field, fallback='') -%}
+  {{- (form.get(field) if form else None) or fallback -}}
+{%- endmacro %}
+{% block title %}New login · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('users.index') }}">Users</a>
+  <span class="sep">/</span>
+  <span class="current">New login</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>New login</h1>
+    <p class="subtitle">Partner and staff have identical day-to-day access -
+      the role only decides who can permanently delete a customer or manage
+      logins.</p>
+  </div>
+</div>
+
+<form method="post" style="max-width:480px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card">
+    <div class="card-body">
+      <div class="form-grid" style="grid-template-columns:1fr">
+        <div class="field">
+          <label for="name">Full name</label>
+          <input id="name" name="name" value="{{ v('name') }}" required>
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" value="{{ v('email') }}" required>
+          <span class="help">This is what they sign in with</span>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" required minlength="8">
+          <span class="help">At least 8 characters</span>
+        </div>
+        <div class="field">
+          <label for="role">Role</label>
+          <select id="role" name="role">
+            {% for key, label in ROLES %}
+              <option value="{{ key }}" {% if v('role', 'partner') == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <span class="help">Staff cannot permanently delete a customer or
+            manage other logins - everything else is identical</span>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <a href="{{ url_for('users.index') }}" class="btn">Cancel</a>
+      <button type="submit" class="btn btn-primary">Create login</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

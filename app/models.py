@@ -169,6 +169,18 @@ def label_for(vocab, key, default="—"):
 # Users
 # --------------------------------------------------------------------------
 
+# Two logins, identical day-to-day access. The one difference is what
+# happens to a customer once it's archived: staff can archive and restore
+# one, same as a partner - only permanently deleting one, and managing
+# other logins, is reserved to a partner. See services.permissions.
+ROLE_PARTNER = "partner"
+ROLE_STAFF = "staff"
+ROLES = [
+    (ROLE_PARTNER, "Partner"),
+    (ROLE_STAFF, "Staff"),
+]
+
+
 class User(UserMixin, db.Model):
     __tablename__ = "users"
 
@@ -176,7 +188,7 @@ class User(UserMixin, db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default="auditor", nullable=False)  # admin | auditor
+    role = db.Column(db.String(20), default=ROLE_PARTNER, nullable=False)
     is_active_flag = db.Column("is_active", db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     last_login_at = db.Column(db.DateTime)
@@ -193,6 +205,21 @@ class User(UserMixin, db.Model):
     @property
     def is_active(self) -> bool:          # Flask-Login reads this
         return self.is_active_flag
+
+    @property
+    def is_partner(self) -> bool:
+        """Whether this login can permanently delete a customer or manage
+        other logins.
+
+        Deliberately the *inverse* check - anything not explicitly "staff"
+        counts as a partner, rather than requiring an exact "partner"
+        match. A login created before these two roles existed carries
+        whatever value it always had (this app's earlier "admin"/"auditor"
+        text), and treating an unrecognised value as staff would silently
+        lock a working partner out of screens they used to have. Staff is
+        the narrower, deliberately-granted role; partner is everyone else.
+        """
+        return self.role != ROLE_STAFF
 
     @property
     def initials(self) -> str:
@@ -263,7 +290,13 @@ class Customer(db.Model):
     engagement_partner_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     notes = db.Column(db.Text)
 
+    # Archived, not deleted: hidden from the customer list, every document
+    # and figure kept. Reusing this existing flag rather than adding a new
+    # one - it was already here, already meant "on the list or not", and
+    # was simply never wired to anything until now (see dashboard.py's
+    # count, the only place that ever read it before this).
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    archived_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))

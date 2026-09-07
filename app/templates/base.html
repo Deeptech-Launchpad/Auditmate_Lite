@@ -33,6 +33,14 @@
          href="{{ url_for('customers.index') }}">
         <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="6.5" r="3"/><path d="M3.5 17c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg></span> Customers
       </a>
+      {# Partner-only, same as the screen it links to - staff never sees
+         the option, rather than seeing it and being refused. #}
+      {% if current_user.is_authenticated and current_user.is_partner %}
+      <a class="nav-item {% if request.blueprint == 'users' %}active{% endif %}"
+         href="{{ url_for('users.index') }}">
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6.5" r="2.5"/><path d="M2 17c0-3 2.2-5 5-5s5 2 5 5"/><circle cx="15" cy="7" r="2"/><path d="M12.5 12.2c1.7.3 3 1.8 3.5 4.8"/></svg></span> Users
+      </a>
+      {% endif %}
 
       {% if fy is defined and fy %}
       <div class="nav-label">

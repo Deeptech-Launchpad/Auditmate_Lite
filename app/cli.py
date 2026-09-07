@@ -142,20 +142,24 @@ def reset_db(yes):
 @click.option("--email", prompt="Email")
 @click.option("--password", prompt="Password", hide_input=True,
               confirmation_prompt=True)
+@click.option("--role", type=click.Choice(["partner", "staff"]),
+              default="partner", help="Defaults to partner - the higher-"
+              "trust role, and the sensible default for the first login on "
+              "a fresh install.")
 @with_appcontext
-def create_admin(name, email, password):
-    """Create an auditor login."""
+def create_admin(name, email, password, role):
+    """Create a login."""
     from .models import User
 
     if User.query.filter_by(email=email.lower()).first():
         click.echo(f"A user with email {email} already exists.")
         return
 
-    user = User(name=name, email=email.lower(), role="admin")
+    user = User(name=name, email=email.lower(), role=role)
     user.set_password(password)
     db.session.add(user)
     db.session.commit()
-    click.echo(f"Created admin user {email}")
+    click.echo(f"Created {role} login {email}")
 
 
 @click.command("seed-demo")
@@ -175,7 +179,7 @@ def seed_demo():
     # --- Login -------------------------------------------------------------
     user = User.query.filter_by(email="demo@auditmate.sg").first()
     if user is None:
-        user = User(name="Demo Auditor", email="demo@auditmate.sg", role="admin")
+        user = User(name="Demo Auditor", email="demo@auditmate.sg", role="partner")
         user.set_password("demo1234")
         db.session.add(user)
         db.session.commit()
@@ -989,7 +993,7 @@ def setup_production(email, password, name, force):
         db.session.commit()
         click.echo(f"Updated the password for {email}.")
     else:
-        user = User(name=name, email=email, role="admin",
+        user = User(name=name, email=email, role="partner",
                     is_active_flag=True)
         user.set_password(password)
         db.session.add(user)

@@ -9,7 +9,14 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>{{ customer.name }}</h1>
+    <h1>
+      {{ customer.name }}
+      {% if not customer.is_active %}
+        <span class="pill pill-grey" style="font-size:11px;vertical-align:middle">
+          Archived{% if customer.archived_at %} {{ customer.archived_at|datefmt('%d %b %Y') }}{% endif %}
+        </span>
+      {% endif %}
+    </h1>
     <p class="subtitle">
       {{ customer.entity_type_label }}
       {% if customer.uen %} · UEN {{ customer.uen }}{% endif %}
@@ -17,7 +24,31 @@
     </p>
   </div>
   <div class="page-actions">
-    <a href="{{ url_for('customers.edit', customer_id=customer.id) }}" class="btn">Edit details</a>
+    {% if not customer.is_active %}
+      {# Reversible, so either login does it. #}
+      <form method="post" action="{{ url_for('customers.restore', customer_id=customer.id) }}" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary">Restore</button>
+      </form>
+      {% if current_user.is_partner %}
+        {# Not reversible - a partner only, and only reachable once the
+           customer is already archived (see customers.delete). #}
+        <form method="post" action="{{ url_for('customers.delete', customer_id=customer.id) }}"
+              data-confirm="Permanently delete &#8220;{{ customer.name }}&#8221;? Every financial year, document, statement and report under it is removed for good. This cannot be undone."
+              onsubmit="return confirm(this.dataset.confirm);" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-danger">Delete permanently</button>
+        </form>
+      {% endif %}
+    {% else %}
+      <a href="{{ url_for('customers.edit', customer_id=customer.id) }}" class="btn">Edit details</a>
+      <form method="post" action="{{ url_for('customers.archive', customer_id=customer.id) }}"
+            data-confirm="Archive &#8220;{{ customer.name }}&#8221;? It disappears from the customer list; nothing is deleted, and either login can restore it."
+            onsubmit="return confirm(this.dataset.confirm);" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn">Archive</button>
+      </form>
+    {% endif %}
   </div>
 </div>
 

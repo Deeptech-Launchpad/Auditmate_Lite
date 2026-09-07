@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Users · Auditmate Lite{% endblock %}
+{% block breadcrumb %}<span class="current">Users</span>{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Users</h1>
+    <p class="subtitle">{{ users|length }} login{{ '' if users|length == 1 else 's' }} ·
+      partner-only screen</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('users.create') }}" class="btn btn-primary">+ New login</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body tight">
+    {% if users %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Last signed in</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for user in users %}
+            <tr>
+              <td class="strong">
+                {{ user.name }}
+                {% if user.id == current_user.id %}<span class="muted small">(you)</span>{% endif %}
+              </td>
+              <td class="small">{{ user.email }}</td>
+              <td class="small">{{ user.role|capitalize }}</td>
+              <td>
+                {% if user.is_active_flag %}
+                  <span class="pill pill-green">Active</span>
+                {% else %}
+                  <span class="pill pill-grey">Deactivated</span>
+                {% endif %}
+              </td>
+              <td class="small muted">
+                {{ user.last_login_at|datefmt('%d %b %Y, %H:%M') if user.last_login_at else 'never' }}
+              </td>
+              <td class="right nowrap">
+                {% if user.id != current_user.id %}
+                  {% if user.is_active_flag %}
+                    <form method="post" action="{{ url_for('users.deactivate', user_id=user.id) }}"
+                          data-confirm="Deactivate {{ user.name }}'s login? They will not be able to sign in until reactivated."
+                          onsubmit="return confirm(this.dataset.confirm);" style="display:inline">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn btn-sm">Deactivate</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{{ url_for('users.reactivate', user_id=user.id) }}" style="display:inline">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn btn-sm btn-primary">Reactivate</button>
+                    </form>
+                  {% endif %}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        <div class="icon">◈</div>
+        <h3>No logins yet</h3>
+        <p>Create the first one.</p>
+        <a href="{{ url_for('users.create') }}" class="btn btn-primary">+ New login</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

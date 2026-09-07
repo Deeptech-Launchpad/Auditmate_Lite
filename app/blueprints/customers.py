@@ -13,6 +13,7 @@ from ..models import (Customer, CustomerDocument, Document, FinancialStatement,
                       FinancialYear)
 from ..services import storage
 from ..services.audit import record
+from ..services.permissions import partner_required
 
 bp = Blueprint("customers", __name__, url_prefix="/customers")
 
@@ -69,8 +70,12 @@ def _eighteen_month_warning(start: date, end: date):
 def index():
     search = (request.args.get("q") or "").strip()
     page = request.args.get("page", 1, type=int)
+    # Archived customers are hidden by default - that is the entire point
+    # of archiving one - but still need a way back to them, to restore or
+    # (a partner only) permanently delete. See archive()/restore()/delete().
+    show_archived = request.args.get("archived") == "1"
 
-    query = Customer.query
+    query = Customer.query.filter(Customer.is_active != show_archived)
     if search:
         pattern = f"%{search}%"
         query = query.filter(or_(Customer.name.ilike(pattern),
@@ -81,8 +86,12 @@ def index():
     pagination = (query.order_by(Customer.name)
                   .paginate(page=page, per_page=20, error_out=False))
 
+    archived_count = Customer.query.filter_by(is_active=False).count()
+
     return render_template("customers/index.html",
-                           pagination=pagination, search=search)
+                           pagination=pagination, search=search,
+                           show_archived=show_archived,
+                           archived_count=archived_count)
 
 
 def _read_profile_upload(file_storage, customer_id=None):
@@ -383,6 +392,78 @@ def edit(customer_id):
 
     return render_template("customers/form.html", customer=customer,
                            form=customer.__dict__)
+
+
+@bp.route("/<int:customer_id>/archive", methods=["POST"])
+@login_required
+def archive(customer_id):
+    """Hide a customer from the list. Nothing is deleted - see restore().
+
+    Either login can do this - it's the routine, reversible action. Only
+    permanently deleting an already-archived customer needs a partner.
+    """
+    customer = db.session.get(Customer, customer_id) or abort(404)
+    if not customer.is_active:
+        return redirect(url_for("customers.detail", customer_id=customer.id))
+
+    customer.is_active = False
+    customer.archived_at = datetime.utcnow()
+    record("customer", customer.id, "archive", before={"name": customer.name})
+    db.session.commit()
+
+    flash(f"“{customer.name}” archived. It's hidden from the customer list; "
+          f"nothing was deleted - restore it here any time.", "success")
+    return redirect(url_for("customers.detail", customer_id=customer.id))
+
+
+@bp.route("/<int:customer_id>/restore", methods=["POST"])
+@login_required
+def restore(customer_id):
+    """Bring an archived customer back onto the list. Either login can do
+    this - see archive()."""
+    customer = db.session.get(Customer, customer_id) or abort(404)
+    if customer.is_active:
+        return redirect(url_for("customers.detail", customer_id=customer.id))
+
+    customer.is_active = True
+    customer.archived_at = None
+    record("customer", customer.id, "restore", before={"name": customer.name})
+    db.session.commit()
+
+    flash(f"“{customer.name}” restored.", "success")
+    return redirect(url_for("customers.detail", customer_id=customer.id))
+
+
+@bp.route("/<int:customer_id>/delete", methods=["POST"])
+@login_required
+@partner_required
+def delete(customer_id):
+    """Permanently remove an archived customer and everything filed under it.
+
+    Partner-only, and only once already archived: archiving is the
+    reversible, routine step; this one is not. Deleting the customer
+    cascades through every financial year to its documents, statements,
+    reports and trial balance versions - the same relationships a single
+    year's own delete already relies on (see delete_year), just at the
+    customer's root.
+    """
+    customer = db.session.get(Customer, customer_id) or abort(404)
+
+    if customer.is_active:
+        flash(f"Archive “{customer.name}” first - permanent deletion is only "
+              f"offered for an archived customer.", "error")
+        return redirect(url_for("customers.detail", customer_id=customer.id))
+
+    name = customer.name
+    year_count = len(customer.financial_years)
+    record("customer", customer.id, "delete",
+           before={"name": name, "financial_years": year_count})
+    db.session.delete(customer)
+    db.session.commit()
+
+    flash(f"“{name}” and everything under its {year_count} financial "
+          f"year(s) have been permanently deleted.", "success")
+    return redirect(url_for("customers.index"))
 
 
 @bp.route("/<int:customer_id>/years", methods=["POST"])

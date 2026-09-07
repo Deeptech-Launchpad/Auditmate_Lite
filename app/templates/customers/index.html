@@ -5,17 +5,29 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Customers</h1>
-    <p class="subtitle">{{ pagination.total }} client{{ '' if pagination.total == 1 else 's' }}</p>
+    <h1>{% if show_archived %}Archived customers{% else %}Customers{% endif %}</h1>
+    <p class="subtitle">{{ pagination.total }} client{{ '' if pagination.total == 1 else 's' }}
+      {% if show_archived %}archived{% endif %}</p>
   </div>
   <div class="page-actions">
     <form class="searchbar" method="get">
+      {% if show_archived %}<input type="hidden" name="archived" value="1">{% endif %}
       <input type="search" name="q" value="{{ search }}"
              placeholder="Search name, UEN, contact…">
       <button type="submit" class="btn">Search</button>
-      {% if search %}<a href="{{ url_for('customers.index') }}" class="btn">Clear</a>{% endif %}
+      {% if search %}<a href="{{ url_for('customers.index', archived=('1' if show_archived else none)) }}" class="btn">Clear</a>{% endif %}
     </form>
-    <a href="{{ url_for('customers.create') }}" class="btn btn-primary">+ New Customer</a>
+    {% if show_archived %}
+      <a href="{{ url_for('customers.index') }}" class="btn">← Back to customers</a>
+    {% else %}
+      {# Archiving hides a customer from this list by design - this is the
+         only way back to one, to restore it or (a partner only)
+         permanently delete it. #}
+      <a href="{{ url_for('customers.index', archived=1) }}" class="btn">
+        Archived{% if archived_count %} ({{ archived_count }}){% endif %}
+      </a>
+      <a href="{{ url_for('customers.create') }}" class="btn btn-primary">+ New Customer</a>
+    {% endif %}
   </div>
 </div>
 
@@ -72,10 +84,10 @@
         </span>
         <span>
           {% if pagination.has_prev %}
-            <a class="btn btn-sm" href="{{ url_for('customers.index', page=pagination.prev_num, q=search) }}">← Previous</a>
+            <a class="btn btn-sm" href="{{ url_for('customers.index', page=pagination.prev_num, q=search, archived=('1' if show_archived else none)) }}">← Previous</a>
           {% endif %}
           {% if pagination.has_next %}
-            <a class="btn btn-sm" href="{{ url_for('customers.index', page=pagination.next_num, q=search) }}">Next →</a>
+            <a class="btn btn-sm" href="{{ url_for('customers.index', page=pagination.next_num, q=search, archived=('1' if show_archived else none)) }}">Next →</a>
           {% endif %}
         </span>
       </div>
@@ -84,9 +96,21 @@
     {% else %}
       <div class="empty">
         <div class="icon">▦</div>
-        <h3>{% if search %}No matches for “{{ search }}”{% else %}No customers yet{% endif %}</h3>
-        <p>{% if search %}Try a different search term.{% else %}Add your first client to begin an engagement.{% endif %}</p>
-        <a href="{{ url_for('customers.create') }}" class="btn btn-primary">+ New Customer</a>
+        <h3>
+          {% if search %}No matches for “{{ search }}”
+          {% elif show_archived %}No archived customers
+          {% else %}No customers yet{% endif %}
+        </h3>
+        <p>
+          {% if search %}Try a different search term.
+          {% elif show_archived %}Nothing has been archived.
+          {% else %}Add your first client to begin an engagement.{% endif %}
+        </p>
+        {% if show_archived %}
+          <a href="{{ url_for('customers.index') }}" class="btn">← Back to customers</a>
+        {% else %}
+          <a href="{{ url_for('customers.create') }}" class="btn btn-primary">+ New Customer</a>
+        {% endif %}
       </div>
     {% endif %}
   </div>

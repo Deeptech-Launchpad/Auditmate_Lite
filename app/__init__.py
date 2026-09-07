@@ -75,6 +75,7 @@ def create_app(config_object=Config):
     # Public, no-login customer review.
     from .blueprints.review import bp as review_bp
     from .blueprints.integrations import bp as integrations_bp
+    from .blueprints.users import bp as users_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -85,10 +86,11 @@ def create_app(config_object=Config):
     app.register_blueprint(reports_bp)
     app.register_blueprint(review_bp)
     app.register_blueprint(integrations_bp)
+    app.register_blueprint(users_bp)
 
     # --- Template helpers ---
     from .models import (CURRENT_YEAR_TWIN, DOCUMENT_CATEGORIES, ENTITY_TYPES,
-                         FY_STATUSES, PRIOR_YEAR_TWIN, STATEMENT_TYPES)
+                         FY_STATUSES, PRIOR_YEAR_TWIN, ROLES, STATEMENT_TYPES)
     from .services import period as period_service
 
     @app.context_processor
@@ -100,6 +102,7 @@ def create_app(config_object=Config):
             "ENTITY_TYPES": ENTITY_TYPES,
             "STATEMENT_TYPES": STATEMENT_TYPES,
             "FY_STATUSES": FY_STATUSES,
+            "ROLES": ROLES,
             "AI_ENABLED": app.config.get("AI_ENABLED", False),
             "AI_PROVIDER_LABEL": ("Gemini"
                 if app.config.get("AI_PROVIDER") == "gemini"
@@ -221,6 +224,10 @@ def create_app(config_object=Config):
             pass          # missing file: let the 404 be the visible problem
 
     # --- Error pages ---
+    @app.errorhandler(403)
+    def forbidden(error):
+        return render_template("errors/403.html"), 403
+
     @app.errorhandler(404)
     def not_found(error):
         return render_template("errors/404.html"), 404
