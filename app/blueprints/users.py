@@ -62,6 +62,41 @@ def create():
     return render_template("users/form.html", form={})
 
 
+@bp.route("/<int:user_id>/role", methods=["POST"])
+@login_required
+@partner_required
+def change_role(user_id):
+    """Change an existing login's role - the piece missing at first: a
+    role could only ever be chosen when a login was created, never after.
+    Needed as soon as this app had to migrate its old "admin"/"auditor"
+    logins onto partner/staff, not just new ones going forward.
+    """
+    user = db.session.get(User, user_id) or abort(404)
+    role = request.form.get("role") or ""
+    valid_roles = {key for key, _label in ROLES}
+
+    if role not in valid_roles:
+        flash("That is not a real role.", "error")
+        return redirect(url_for("users.index"))
+
+    if user.id == current_user.id:
+        flash("You cannot change your own role while signed in with it - "
+              "ask another partner to change it for you.", "error")
+        return redirect(url_for("users.index"))
+
+    if user.role == role:
+        return redirect(url_for("users.index"))
+
+    before = user.role
+    user.role = role
+    record("user", user.id, "change_role",
+           before={"role": before}, after={"role": role})
+    db.session.commit()
+
+    flash(f"{user.name} is now {role}.", "success")
+    return redirect(url_for("users.index"))
+
+
 @bp.route("/<int:user_id>/deactivate", methods=["POST"])
 @login_required
 @partner_required

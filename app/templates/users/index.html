@@ -37,7 +37,24 @@
                 {% if user.id == current_user.id %}<span class="muted small">(you)</span>{% endif %}
               </td>
               <td class="small">{{ user.email }}</td>
-              <td class="small">{{ user.role|capitalize }}</td>
+              <td class="small">
+                {% if user.id == current_user.id %}
+                  {{ user.role|capitalize }}
+                {% else %}
+                  {# Own role is not editable here - see change_role's
+                     self-change guard, the same reasoning as not being
+                     able to deactivate your own login. #}
+                  <form method="post" action="{{ url_for('users.change_role', user_id=user.id) }}"
+                        style="display:flex;gap:6px;align-items:center">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="role" class="small" onchange="this.form.submit()">
+                      {% for key, label in ROLES %}
+                        <option value="{{ key }}" {% if user.role == key %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </form>
+                {% endif %}
+              </td>
               <td>
                 {% if user.is_active_flag %}
                   <span class="pill pill-green">Active</span>
