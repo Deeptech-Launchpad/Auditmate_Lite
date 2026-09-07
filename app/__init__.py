@@ -89,6 +89,7 @@ def create_app(config_object=Config):
     # --- Template helpers ---
     from .models import (CURRENT_YEAR_TWIN, DOCUMENT_CATEGORIES, ENTITY_TYPES,
                          FY_STATUSES, PRIOR_YEAR_TWIN, STATEMENT_TYPES)
+    from .services import period as period_service
 
     @app.context_processor
     def inject_globals():
@@ -104,6 +105,11 @@ def create_app(config_object=Config):
                 if app.config.get("AI_PROVIDER") == "gemini"
                 else "Claude"),
             "now": datetime.utcnow(),
+            # "for the year ended DATE" against "for the period from X to
+            # Y" - one function, used here for the statement-page headings
+            # and again in render_bindings for template-section prose, so
+            # a period is never described two different ways in one report.
+            "period_heading": period_service.heading_wording,
         }
 
     # inject_nav_engagements stood here, feeding the Engagement picker in

@@ -190,9 +190,14 @@
     {% elif section.section_type == 'statement' %}
       {% set statement = payload.statement %}
       {% set as_of = statement and statement.statement_type == 'balance_sheet' %}
+      {# A balance sheet is a point in time, not a period - "as of" always
+         fits it, whatever the period's length. Every other statement
+         covers the period itself, so its wording depends on that period's
+         actual length rather than assuming twelve months - see
+         period_heading. #}
       {{ page_header(section.title,
-                     ('as of ' if as_of else 'for the Year Ended ')
-                     ~ (fy.end_date|datefmt('%d %B %Y'))) }}
+                     ('as of ' ~ (fy.end_date|datefmt('%d %B %Y'))) if as_of
+                     else period_heading(fy.start_date, fy.end_date)) }}
 
       {% if statement %}
         {% set detailed = payload.detailed %}

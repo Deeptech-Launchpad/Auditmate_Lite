@@ -19,6 +19,7 @@ from ..extensions import db
 from ..models import (AuditReport, AuditReportSection, FinancialStatement,
                       PriorYearNote, TrialBalanceAccount)
 from . import notes as notes_service
+from . import period as period_module
 
 NOTE_PREFIX = "note__"
 
@@ -163,6 +164,10 @@ def render_bindings(text: str, customer, financial_year,
                         if financial_year.end_date else ""),
         "fy.start_date": (financial_year.start_date.strftime("%d %B %Y")
                           if financial_year.start_date else ""),
+        # "for the year ended DATE" against "for the period from X to Y" -
+        # never assumes twelve months. See services.period.heading_wording.
+        "fy.period_heading": period_module.heading_wording(
+            financial_year.start_date, financial_year.end_date),
         "customer.director": customer.directors or "",
         "customer.directors": customer.directors or "",
         "customer.secretary": customer.company_secretary or "",
@@ -288,10 +293,12 @@ def ensure_report(financial_year) -> AuditReport:
         order += 1
 
     period = (financial_year.start_date, financial_year.end_date)
+    previous_period = _previous_period_of(financial_year)
     for note in load_notes_catalogue():
         db.session.add(_build_note_section(
             note, present, order, report.id,
-            first_year=bool(financial_year.is_first_year), period=period))
+            first_year=bool(financial_year.is_first_year), period=period,
+            previous_period=previous_period))
         order += 1
 
     db.session.commit()
@@ -358,7 +365,7 @@ def _first_period_wording(period):
     """
     start, end = period if period else (None, None)
     if start and end:
-        months = round(((end - start).days + 1) / 30.44)
+        months = period_module.approx_months(start, end)
         length = (f"a period of approximately {months} months"
                   if months != 12 else "a twelve-month period")
         covered = (f"from {start.strftime('%d %B %Y')} to "
@@ -374,7 +381,54 @@ def _first_period_wording(period):
             f"a subsequent full financial year.")
 
 
-def _assemble_note_content(note, present, first_year=False, period=None):
+def _previous_period_of(financial_year):
+    """The linked previous year's (start, end), or (None, None).
+
+    Only ever the dates of an actual previous FinancialYear this system
+    knows about - see FinancialYear.previous_year_id, set when a year is
+    created or edited. A document supplying comparative figures without a
+    linked engagement carries no confirmed period length, so there is
+    nothing here to compare against and nothing is invented.
+    """
+    if financial_year is None:
+        return (None, None)
+    previous = getattr(financial_year, "previous_year", None)
+    if previous is None:
+        return (None, None)
+    return (previous.start_date, previous.end_date)
+
+
+def _comparative_length_note(period, previous_period):
+    """None, or a sentence stating that this period and the comparative
+    period are not the same length.
+
+    Silent whenever the previous year isn't linked by date, or the two
+    periods round to the same number of months - nothing to flag when
+    there is nothing to compare, or when there is nothing unusual about
+    what there is.
+    """
+    start, end = period if period else (None, None)
+    prev_start, prev_end = previous_period if previous_period else (None, None)
+    if not (start and end and prev_start and prev_end):
+        return None
+
+    this_months = period_module.approx_months(start, end)
+    prev_months = period_module.approx_months(prev_start, prev_end)
+    if this_months == prev_months:
+        return None
+
+    return (f"The current period runs from {start.strftime('%d %B %Y')} to "
+           f"{end.strftime('%d %B %Y')} (approximately {this_months} "
+           f"months), while the comparative period runs from "
+           f"{prev_start.strftime('%d %B %Y')} to "
+           f"{prev_end.strftime('%d %B %Y')} (approximately {prev_months} "
+           f"months). As the two periods are not of the same length, the "
+           f"amounts presented for the current and comparative periods are "
+           f"not directly comparable.")
+
+
+def _assemble_note_content(note, present, first_year=False, period=None,
+                           previous_period=None):
     """Build a note's starting text and figure tables from whichever of its
     pieces are triggered right now.
 
@@ -420,6 +474,8 @@ def _assemble_note_content(note, present, first_year=False, period=None):
         add_piece(piece)
 
     for sub in note.get("subsections", []):
+        sub_parts = []
+
         # A first period since incorporation. The library's own comparative
         # wording covers reclassified comparatives, which cannot apply when
         # there are no comparatives at all - printing it would state
@@ -428,20 +484,27 @@ def _assemble_note_content(note, present, first_year=False, period=None):
         # whether that period is twelve months is the whole point of saying
         # it. Auditor-editable afterwards like any other note text.
         if sub.get("key") == "comparative_information" and first_year:
-            html_parts.append(f"<h4>{sub['heading']}</h4>")
-            html_parts.append(f"<p>{_first_period_wording(period)}</p>")
-            continue
+            sub_parts.append(f"<p>{_first_period_wording(period)}</p>")
+        else:
+            # A period whose length differs from the comparative period's
+            # is flagged whenever the previous year is linked, regardless
+            # of this subsection's own manual tick state - that gate
+            # decides whether the RECLASSIFICATION wording below appears,
+            # not whether a genuine difference in period length gets said.
+            if sub.get("key") == "comparative_information":
+                mismatch = _comparative_length_note(period, previous_period)
+                if mismatch:
+                    sub_parts.append(f"<p>{mismatch}</p>")
 
-        if not _piece_triggered(sub.get("tick_state"), sub.get("trigger_keys"),
-                                present):
-            continue
-        sub_parts = []
-        for piece in sub.get("pieces", []):
-            if (_piece_triggered(piece.get("tick_state"), piece.get("tb_keys"),
-                                 present)
-                    and piece.get("output_form") == "Narrative paragraph"
-                    and piece.get("wording")):
-                sub_parts.append(f"<p>{piece['wording']}</p>")
+            if _piece_triggered(sub.get("tick_state"), sub.get("trigger_keys"),
+                               present):
+                for piece in sub.get("pieces", []):
+                    if (_piece_triggered(piece.get("tick_state"),
+                                        piece.get("tb_keys"), present)
+                            and piece.get("output_form") == "Narrative paragraph"
+                            and piece.get("wording")):
+                        sub_parts.append(f"<p>{piece['wording']}</p>")
+
         if sub_parts:
             html_parts.append(f"<h4>{sub['heading']}</h4>")
             html_parts.extend(sub_parts)
@@ -453,9 +516,10 @@ def _assemble_note_content(note, present, first_year=False, period=None):
 
 
 def _build_note_section(note, present, sort_order, report_id,
-                        first_year=False, period=None):
+                        first_year=False, period=None, previous_period=None):
     content_html, table_specs = _assemble_note_content(
-        note, present, first_year=first_year, period=period)
+        note, present, first_year=first_year, period=period,
+        previous_period=previous_period)
     return AuditReportSection(
         report_id=report_id,
         section_key=f"{NOTE_PREFIX}{note['key']}",
@@ -526,7 +590,8 @@ def carry_forward_prior_wording(report, financial_year) -> int:
         # treated as edited even if it was changed before this existed.
         default_html, _specs = _assemble_note_content(
             note, present, first_year=bool(financial_year.is_first_year),
-            period=(financial_year.start_date, financial_year.end_date))
+            period=(financial_year.start_date, financial_year.end_date),
+            previous_period=_previous_period_of(financial_year))
         current = (section.content_html or "").strip()
         if current and current != (default_html or "").strip():
             continue

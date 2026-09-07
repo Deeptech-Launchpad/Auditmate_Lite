@@ -61,7 +61,7 @@
     <p>a) the financial statements of the Company are drawn up to give a true
     and fair view of the financial position of the Company as of
     {{ fy.end_date }} and the financial performance, changes in equity and cash
-    flows of the Company for the year then ended; and</p>
+    flows of the Company {{ fy.period_heading }}; and</p>
     <p>b) at the date of this statement, there are reasonable grounds to believe
     that the Company will be able to pay its debts as and when they fall due.</p>
 
@@ -114,16 +114,16 @@
     <p>We have audited the financial statements of {{ customer.legal_name }}
     (the &ldquo;Company&rdquo;), which comprise the statement of financial
     position as at {{ fy.end_date }}, and the statement of comprehensive income,
-    statement of changes in equity and statement of cash flows for the year then
-    ended, and notes to the financial statements, including a summary of
+    statement of changes in equity and statement of cash flows {{ fy.period_heading }},
+    and notes to the financial statements, including a summary of
     significant accounting policies.</p>
     <p>In our opinion, the accompanying financial statements are properly drawn
     up in accordance with the provisions of the Companies Act 1967 (the
     &ldquo;Act&rdquo;) and Singapore Financial Reporting Standards
     (&ldquo;FRSs&rdquo;) so as to give a true and fair view of the financial
     position of the Company as at {{ fy.end_date }} and of the financial
-    performance, changes in equity and cash flows of the Company for the year
-    ended on that date.</p>
+    performance, changes in equity and cash flows of the Company
+    {{ fy.period_heading }}.</p>
     <h4>Basis for Opinion</h4>
     <p>We conducted our audit in accordance with Singapore Standards on Auditing
     (&ldquo;SSAs&rdquo;). We are independent of the Company in accordance with
