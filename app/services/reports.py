@@ -688,7 +688,9 @@ def prior_notes_dropped(report, financial_year):
             reason = ("A manual note - it is never switched on by itself. "
                       "Tick it if it still applies this year.")
         else:
-            reason = "Switched off in this report."
+            reason = ("This note is required for every engagement, but "
+                      "someone switched it off by hand this year. Confirm "
+                      "that was intended before approving.")
 
         dropped.append({"label": label, "reason": reason,
                         "severity": "off", "section_id": section.id})
