@@ -283,7 +283,17 @@
                     <div class="muted small">you set this</div>
                   {% endif %}
 
-                  {% if not fy.tb_is_approved %}
+                  {% set locked = fy.tb_is_approved and doc.id in active_source_ids %}
+                  {% if locked %}
+                    {# This is the document that built the approved trial
+                       balance. Relabelling it now would argue, after the
+                       fact, that already-reported figures came from
+                       somewhere else - reopening the trial balance is the
+                       deliberate step that makes that safe. #}
+                    <div class="muted small">
+                      built the approved trial balance &mdash; reopen it to relabel
+                    </div>
+                  {% else %}
                     <a href="#" class="small change-category"
                        data-doc-id="{{ doc.id }}">Change</a>
                     <form method="post" class="category-form" id="cat-{{ doc.id }}"

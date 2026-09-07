@@ -16,6 +16,7 @@ from ..services.audit import record
 from ..services.categorise import detect_category
 from ..services.extraction.base import reconcile_trial_balance
 from ..services.jobs import enqueue
+from ..services.trial_balance import choose_sources
 
 bp = Blueprint("documents", __name__, url_prefix="/documents")
 
@@ -23,6 +24,21 @@ bp = Blueprint("documents", __name__, url_prefix="/documents")
 def _load_document(document_id):
     document = db.session.get(Document, document_id) or abort(404)
     return document
+
+
+def _active_source_ids(financial_year_id):
+    """Which documents actually built the current trial balance.
+
+    Recategorising one of these while the trial balance is approved would
+    argue, after the fact, that the approved figures came from a document
+    that now says it describes something else. Everything else - evidence,
+    a document the source ranking passed over, last year's records - can be
+    relabelled freely: nothing rebuilds until the trial balance is reopened,
+    so correcting a label here moves nothing that has already been reported.
+    """
+    documents = Document.query.filter_by(financial_year_id=financial_year_id).all()
+    sources, _evidence = choose_sources(documents)
+    return {d.id for d in sources}
 
 
 @bp.route("/fy/<int:fy_id>/upload", methods=["GET", "POST"])
@@ -124,6 +140,11 @@ def index(fy_id):
                            documents=documents,
                            total_documents=total_documents,
                            category=category, status=status,
+                           # Which documents are locked against relabelling -
+                           # see _active_source_ids. Computed over every
+                           # document in the engagement, not just the
+                           # filtered/paginated list being displayed.
+                           active_source_ids=_active_source_ids(fy_id),
                            # This page is where an auditor answers "how do I
                            # get the figures in", so both channels - files
                            # and the accounting system - are offered here.
@@ -688,9 +709,14 @@ def recategorise(document_id):
         flash("That is not a document category.", "error")
         return redirect(url_for("documents.index", fy_id=fy_id))
 
-    if financial_year.tb_is_approved:
-        flash("The trial balance is approved. Reopen it before changing what "
-              "a document is filed as.", "error")
+    # Locked only if THIS document is one that actually built the approved
+    # trial balance - not every document in the engagement. Relabelling a
+    # document the source ranking passed over, or one describing another
+    # year entirely, moves nothing that has already been reported: nothing
+    # rebuilds until the trial balance is reopened regardless.
+    if financial_year.tb_is_approved and document.id in _active_source_ids(fy_id):
+        flash("This document built the approved trial balance. Reopen it "
+              "before changing what the document is filed as.", "error")
         return redirect(url_for("documents.index", fy_id=fy_id))
 
     if category == document.category:
