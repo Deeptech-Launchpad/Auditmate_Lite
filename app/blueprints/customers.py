@@ -1,4 +1,5 @@
 """Customer management and financial-year workspace."""
+import calendar
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -16,10 +17,51 @@ from ..services.audit import record
 bp = Blueprint("customers", __name__, url_prefix="/customers")
 
 
-def _month_end(year: int, month: int) -> date:
-    if month == 12:
-        return date(year, 12, 31)
-    return date(year, month + 1, 1) - timedelta(days=1)
+def _valid_fye_day(month, day):
+    """A financial-year-end day has to exist in that month.
+
+    Checked against a leap year - 2000 - because this pair describes a
+    RECURRING date (the company's usual year end), not one specific year's.
+    29 February is a real year end some years and not others; the day is
+    valid as a pattern either way, and whichever year a given financial
+    year actually falls in resolves it to a real date on its own.
+    """
+    if day is None:
+        return True
+    if not month or not (1 <= month <= 12):
+        return False
+    return 1 <= day <= calendar.monthrange(2000, month)[1]
+
+
+def _add_months(d: date, months: int) -> date:
+    """`d` plus a number of calendar months.
+
+    Clamped to the target month's last day when `d`'s day does not exist
+    there - 31 January plus one month is 28 or 29 February, never March.
+    """
+    total = d.month - 1 + months
+    year = d.year + total // 12
+    month = total % 12 + 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _eighteen_month_warning(start: date, end: date):
+    """None, or a warning that Registrar approval is needed for this period.
+
+    ACRA requires the Registrar's approval for a financial year longer than
+    18 months. This is usually a keying error - a year typed as the wrong
+    year, a day and month swapped - but occasionally a real transition
+    period when a company changes its year end. Warned, never blocked: the
+    preparer needs telling, not stopping.
+    """
+    limit = _add_months(start, 18) - timedelta(days=1)
+    if end <= limit:
+        return None
+    days = (end - start).days + 1
+    return (f"This period runs {days} days - longer than 18 months. "
+           f"ACRA requires the Registrar's approval for a financial year "
+           f"this long. Check the dates are correct before proceeding.")
 
 
 @bp.route("/")
@@ -171,6 +213,39 @@ def create():
             return render_template("customers/form.html",
                                    customer=None, form=request.form), 400
 
+        fye_month = request.form.get("financial_year_end_month", 12, type=int)
+        fye_day = request.form.get("financial_year_end_day", type=int)
+        if not _valid_fye_day(fye_month, fye_day):
+            flash("That is not a real financial year end date.", "error")
+            return render_template("customers/form.html",
+                                   customer=None, form=request.form), 400
+
+        # The first year's own dates, typed at intake rather than derived
+        # from the year-end month - a first period never runs a full twelve
+        # months from 1 January, and deriving it silently created a wrong
+        # period for exactly the year that most needed to be right. See
+        # add_year, which already asks the same question for every year
+        # after this one.
+        start_raw = (request.form.get("start_date") or "").strip()
+        end_raw = (request.form.get("end_date") or "").strip()
+        year_number_raw = (request.form.get("year_number") or "").strip()
+        try:
+            fy_start = date.fromisoformat(start_raw) if start_raw else None
+            fy_end = date.fromisoformat(end_raw) if end_raw else None
+        except ValueError:
+            fy_start = fy_end = None
+
+        if not year_number_raw.isdigit() or not fy_start or not fy_end:
+            flash("Enter the first financial year's number and its start "
+                  "and end date.", "error")
+            return render_template("customers/form.html",
+                                   customer=None, form=request.form), 400
+        if fy_start >= fy_end:
+            flash("The first financial year must start before it ends.",
+                  "error")
+            return render_template("customers/form.html",
+                                   customer=None, form=request.form), 400
+
         customer = Customer(
             name=name,
             legal_name=(request.form.get("legal_name") or "").strip() or None,
@@ -187,10 +262,8 @@ def create():
             postal_code=(request.form.get("postal_code") or "").strip() or None,
             country=(request.form.get("country") or "Singapore").strip(),
             books_currency=(request.form.get("books_currency") or "SGD").strip(),
-            financial_year_end_month=request.form.get(
-                "financial_year_end_month", 12, type=int),
-            financial_year_end_day=request.form.get(
-                "financial_year_end_day", type=int),
+            financial_year_end_month=fye_month,
+            financial_year_end_day=fye_day,
             is_exempt_private=bool(request.form.get("is_exempt_private")),
             principal_activities=(request.form.get("principal_activities") or "").strip() or None,
             ssic_code=(request.form.get("ssic_code") or "").strip() or None,
@@ -225,25 +298,19 @@ def create():
 
         # Create the first financial year alongside the customer, so the
         # workspace is immediately usable.
-        year_number_raw = (request.form.get("year_number") or "").strip()
-        if year_number_raw.isdigit():
-            year_number = int(year_number_raw)
-            year_label = f"FY{year_number}"
-            fye_month = customer.financial_year_end_month or 12
-
-            end = _month_end(year_number, fye_month)
-            start = date(end.year - 1, end.month, 1) if fye_month != 12 \
-                else date(year_number, 1, 1)
-
-            db.session.add(FinancialYear(
-                customer_id=customer.id, year_label=year_label,
-                start_date=start, end_date=end, status="in_progress",
-                is_first_year=True))
+        year_label = f"FY{int(year_number_raw)}"
+        db.session.add(FinancialYear(
+            customer_id=customer.id, year_label=year_label,
+            start_date=fy_start, end_date=fy_end, status="in_progress",
+            is_first_year=True))
 
         record("customer", customer.id, "create", after={"name": customer.name})
         db.session.commit()
 
         flash(f"Customer “{customer.name}” created.", "success")
+        eighteen_month_notice = _eighteen_month_warning(fy_start, fy_end)
+        if eighteen_month_notice:
+            flash(eighteen_month_notice, "warning")
         return redirect(url_for("customers.detail", customer_id=customer.id))
 
     return render_template("customers/form.html", customer=None,
@@ -291,10 +358,16 @@ def edit(customer_id):
         customer.postal_code = (request.form.get("postal_code") or "").strip() or None
         customer.country = (request.form.get("country") or "Singapore").strip()
         customer.books_currency = (request.form.get("books_currency") or "SGD").strip()
-        customer.financial_year_end_month = request.form.get(
-            "financial_year_end_month", 12, type=int)
-        customer.financial_year_end_day = request.form.get(
-            "financial_year_end_day", type=int)
+
+        fye_month = request.form.get("financial_year_end_month", 12, type=int)
+        fye_day = request.form.get("financial_year_end_day", type=int)
+        if not _valid_fye_day(fye_month, fye_day):
+            flash("That is not a real financial year end date.", "error")
+            return render_template("customers/form.html", customer=customer,
+                                   form=request.form), 400
+        customer.financial_year_end_month = fye_month
+        customer.financial_year_end_day = fye_day
+
         customer.is_exempt_private = bool(request.form.get("is_exempt_private"))
         customer.principal_activities = (request.form.get("principal_activities") or "").strip() or None
         customer.ssic_code = (request.form.get("ssic_code") or "").strip() or None
@@ -388,6 +461,9 @@ def add_year(customer_id):
     db.session.commit()
 
     flash(f"{year_label} created.", "success")
+    eighteen_month_notice = _eighteen_month_warning(start, end)
+    if eighteen_month_notice:
+        flash(eighteen_month_notice, "warning")
     return redirect(url_for("customers.workspace",
                             customer_id=customer.id,
                             fy_id=financial_year.id))
@@ -509,6 +585,10 @@ def edit_year(customer_id, fy_id):
     db.session.commit()
 
     flash(f"{financial_year.year_label} updated.", "success")
+    eighteen_month_notice = _eighteen_month_warning(
+        financial_year.start_date, financial_year.end_date)
+    if eighteen_month_notice:
+        flash(eighteen_month_notice, "warning")
     return redirect(url_for("customers.detail", customer_id=customer.id))
 
 

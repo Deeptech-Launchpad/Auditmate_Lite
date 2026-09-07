@@ -111,8 +111,14 @@
         </div>
         <div class="field">
           <label for="incorporation_date">Incorporation date</label>
+          {# A real date object on a normal GET (from customer.__dict__),
+             but a plain "YYYY-MM-DD" string when this form is re-rendered
+             after a validation error (form is the raw POST then) - already
+             in the shape a date input wants, so it needs no conversion. #}
+          {% set inc = (form.get('incorporation_date') if form else None)
+                       or (customer.incorporation_date if customer else None) %}
           <input type="date" id="incorporation_date" name="incorporation_date"
-                 value="{{ form.get('incorporation_date').isoformat() if form and form.get('incorporation_date') else (customer.incorporation_date.isoformat() if customer and customer.incorporation_date else '') }}">
+                 value="{{ inc if inc is string else (inc.isoformat() if inc else '') }}">
         </div>
       </div>
 
@@ -218,25 +224,26 @@
       <div class="fieldset-title">Accounting</div>
       <div class="form-grid">
         <div class="field">
-          <label for="financial_year_end_month">Financial year end</label>
-          <select id="financial_year_end_month" name="financial_year_end_month">
-            {% set months = [(1,'31 January'),(2,'28/29 February'),(3,'31 March'),
-                             (4,'30 April'),(5,'31 May'),(6,'30 June'),(7,'31 July'),
-                             (8,'31 August'),(9,'30 September'),(10,'31 October'),
-                             (11,'30 November'),(12,'31 December')] %}
-            {% for num, label in months %}
-              <option value="{{ num }}"
-                {% if v('financial_year_end_month', 12)|int == num %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-          <span class="help">Singapore companies choose their own FYE</span>
-        </div>
-        <div class="field">
-          <label for="financial_year_end_day">Year end day</label>
-          <input id="financial_year_end_day" name="financial_year_end_day"
-                 type="number" min="1" max="31"
+          <label for="fye_picker">Financial year end</label>
+          {# A Singapore company's year end can be any date - it follows
+             whatever period the management accounts are drawn up to, not a
+             fixed choice of month end. One real calendar date, not a month
+             dropdown plus a separate day box that let 31 February through
+             uncaught. The three usual dates are offered as shortcuts, not
+             the only options. #}
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="date" id="fye_picker" style="max-width:170px">
+            <div class="fye-shortcuts" style="display:flex;gap:6px">
+              <button type="button" class="btn btn-sm" data-fye-month="12" data-fye-day="31">31 Dec</button>
+              <button type="button" class="btn btn-sm" data-fye-month="6" data-fye-day="30">30 Jun</button>
+              <button type="button" class="btn btn-sm" data-fye-month="3" data-fye-day="31">31 Mar</button>
+            </div>
+          </div>
+          <input type="hidden" id="financial_year_end_month" name="financial_year_end_month"
+                 value="{{ v('financial_year_end_month', 12) }}">
+          <input type="hidden" id="financial_year_end_day" name="financial_year_end_day"
                  value="{{ v('financial_year_end_day') }}">
-          <span class="help">Only if it is not the month end</span>
+          <span class="help">The year shown in the picker doesn't matter - only the day and month are kept</span>
         </div>
         <div class="field">
           <label for="books_currency">Reporting currency</label>
@@ -250,14 +257,35 @@
         </div>
 
         {% if not customer %}
-        <div class="field">
-          <label for="year_number">First financial year</label>
-          <div class="fy-input-group" style="max-width:120px">
-            <span class="fy-prefix">FY</span>
-            <input id="year_number" name="year_number" type="text" inputmode="numeric"
-                   pattern="\d{4}" maxlength="4" value="{{ default_year_number }}">
+        <div class="field full">
+          <label>First financial year</label>
+          {# Typed here rather than derived from the year-end month: a
+             first period runs from incorporation, not 1 January, and is
+             almost never twelve months. Suggested from the incorporation
+             date and the year end above the moment both are filled in -
+             editable the moment either date is touched by hand. #}
+          <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
+            <div class="field" style="max-width:100px;margin-bottom:0">
+              <label for="year_number" class="small muted">Label</label>
+              <div class="fy-input-group">
+                <span class="fy-prefix">FY</span>
+                <input id="year_number" name="year_number" type="text" inputmode="numeric"
+                       pattern="\d{4}" maxlength="4" value="{{ default_year_number }}">
+              </div>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="new_start_date" class="small muted">From</label>
+              <input type="date" id="new_start_date" name="start_date" required>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="new_end_date" class="small muted">To</label>
+              <input type="date" id="new_end_date" name="end_date" required>
+            </div>
           </div>
-          <span class="help">Creates the first engagement workspace</span>
+          <span class="help">
+            Suggested from the incorporation date and financial year end
+            above - change either date here if it isn't right
+          </span>
         </div>
         {% endif %}
 
@@ -278,4 +306,120 @@
     </div>
   </div>
 </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    // A reference year for the picker only - a leap year, so 29 February
+    // is selectable. Only the day and month it produces are ever kept;
+    // the year itself is discarded on save.
+    var REF_YEAR = 2000;
+
+    var picker = document.getElementById('fye_picker');
+    var monthField = document.getElementById('financial_year_end_month');
+    var dayField = document.getElementById('financial_year_end_day');
+    if (!picker || !monthField || !dayField) return;
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function daysInMonth(month, year) {
+      return new Date(year || REF_YEAR, month, 0).getDate();
+    }
+
+    function setPicker(month, day) {
+      var d = day || daysInMonth(month);
+      picker.value = REF_YEAR + '-' + pad(month) + '-' + pad(d);
+    }
+
+    // Start from whatever is already stored (or 31 December by default).
+    var initMonth = parseInt(monthField.value, 10) || 12;
+    var initDay = parseInt(dayField.value, 10) || null;
+    setPicker(initMonth, initDay);
+
+    function syncFromPicker() {
+      if (!picker.value) return;
+      var parts = picker.value.split('-');
+      var month = parseInt(parts[1], 10);
+      var day = parseInt(parts[2], 10);
+      monthField.value = month;
+      // Stored only when it is not the month's own end - the day has
+      // always been optional, kept for the few year ends that fall
+      // somewhere other than a month's last day.
+      dayField.value = (day === daysInMonth(month)) ? '' : day;
+      suggestFirstYear();
+    }
+
+    picker.addEventListener('change', syncFromPicker);
+
+    document.querySelectorAll('.fye-shortcuts button').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        setPicker(parseInt(btn.dataset.fyeMonth, 10), parseInt(btn.dataset.fyeDay, 10));
+        syncFromPicker();
+      });
+    });
+
+    // ---- First year suggestion: incorporation date + year end above ----
+    //
+    // A first period runs from incorporation to the first occurrence of
+    // the company's year end on or after it - almost never twelve months,
+    // and never derivable from the year-end month alone. Suggested, not
+    // forced: touching either date by hand stops it being overwritten.
+    //
+    // Only present on the New Customer form - editing an existing customer
+    // has no "first year" fields on this page at all, so every step here
+    // guards for that rather than assuming they exist.
+    var incorp = document.getElementById('incorporation_date');
+    var startField = document.getElementById('new_start_date');
+    var endField = document.getElementById('new_end_date');
+    var yearNumberField = document.getElementById('year_number');
+
+    var datesEditedByHand = false;
+    if (startField) {
+      startField.addEventListener('input', function () { datesEditedByHand = true; });
+    }
+    if (endField) {
+      endField.addEventListener('input', function () { datesEditedByHand = true; });
+    }
+    if (yearNumberField) {
+      yearNumberField.addEventListener('input', function () {
+        yearNumberField.dataset.userEdited = '1';
+      });
+    }
+
+    function suggestFirstYear() {
+      if (!startField || !endField || !incorp) return;
+      if (datesEditedByHand || !incorp.value) return;
+
+      var incDate = new Date(incorp.value + 'T00:00:00');
+      var month = parseInt(monthField.value, 10) || 12;
+      var day = parseInt(dayField.value, 10) || daysInMonth(month);
+
+      // The first time (month, day) occurs on or after incorporation.
+      var year = incDate.getFullYear();
+      var candidate = new Date(year, month - 1, Math.min(day, daysInMonth(month, year)));
+      if (candidate < incDate) {
+        year += 1;
+        candidate = new Date(year, month - 1, Math.min(day, daysInMonth(month, year)));
+      }
+
+      startField.value = incorp.value;
+      endField.value = candidate.getFullYear() + '-' + pad(candidate.getMonth() + 1) + '-' + pad(candidate.getDate());
+      if (yearNumberField && !yearNumberField.dataset.userEdited) {
+        yearNumberField.value = candidate.getFullYear();
+      }
+    }
+
+    if (incorp) {
+      incorp.addEventListener('change', function () {
+        // A changed incorporation date is a new fact, not an edit to
+        // dismiss the suggestion over - recompute even if the auditor had
+        // already touched the dates for the previous incorporation date.
+        datesEditedByHand = false;
+        suggestFirstYear();
+      });
+    }
+
+    suggestFirstYear();
+  })();
+</script>
 {% endblock %}
