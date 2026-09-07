@@ -242,6 +242,7 @@
             <tr>
               <th>File</th>
               <th>Category</th>
+              <th>Year</th>
               <th>Engine</th>
               <th class="num">Rows</th>
               <th class="num">Confidence</th>
@@ -251,6 +252,13 @@
           </thead>
           <tbody>
             {% for doc in documents %}
+            {# Locked only for the one document that actually built the
+               approved trial balance - see _active_source_ids. Everything
+               else stays editable: nothing rebuilds until the trial balance
+               is reopened, so relabelling any other document moves nothing
+               that has already been reported. #}
+            {% set locked = fy.tb_is_approved and doc.id in active_source_ids %}
+            {% set base_category = CURRENT_YEAR_TWIN.get(doc.category, doc.category) %}
             <tr>
               <td>
                 <div class="stack">
@@ -262,10 +270,12 @@
                 </div>
               </td>
               <td class="small">
-                {# The category as text. It only becomes a control when the
-                   auditor asks for one - a row of live dropdowns invites a
-                   misclick, and this field decides which document the
-                   accounts are built FROM. #}
+                {# The category as text. The full list only becomes a
+                   control when the auditor asks for one - fifteen live
+                   dropdowns invites a misclick, and this field decides
+                   which document the accounts are built FROM. Which YEAR a
+                   document describes is a much narrower question and gets
+                   its own always-on control in the next column instead. #}
                 <span class="strong">{{ doc.category_label }}</span>
 
                 {% if doc.file_type == 'xero' %}
@@ -283,7 +293,6 @@
                     <div class="muted small">you set this</div>
                   {% endif %}
 
-                  {% set locked = fy.tb_is_approved and doc.id in active_source_ids %}
                   {% if locked %}
                     {# This is the document that built the approved trial
                        balance. Relabelling it now would argue, after the
@@ -300,30 +309,57 @@
                           style="display:none;margin-top:6px"
                           action="{{ url_for('documents.recategorise', document_id=doc.id) }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      {# The prior-year categories are not offered here. What a
-                         document IS and which year it describes are two
-                         separate questions, so they get two controls and are
-                         recombined on save. #}
-                      {% set base_category = CURRENT_YEAR_TWIN.get(doc.category, doc.category) %}
+                      {# Changing WHAT a document is here keeps whichever
+                         year it was already carrying - see the Year column
+                         for changing that on its own. #}
+                      <input type="hidden" name="year"
+                             value="{{ 'previous' if doc.category in CURRENT_YEAR_TWIN else 'current' }}">
                       <select name="category" class="small cat-select" style="max-width:190px">
                         {% for key, label in DOCUMENT_CATEGORIES if key not in CURRENT_YEAR_TWIN %}
                           <option value="{{ key }}"
                                   {% if base_category == key %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
                       </select>
-                      {# A client sends last year's trial balance and this
-                         year's, and nothing inside either file reliably says
-                         which is which - so the auditor says. #}
-                      <select name="year" class="small year-select" style="max-width:150px"
-                              {% if base_category not in PRIOR_YEAR_TWIN %}hidden{% endif %}>
-                        <option value="current"
-                                {% if doc.category not in CURRENT_YEAR_TWIN %}selected{% endif %}>Current year</option>
-                        <option value="previous"
-                                {% if doc.category in CURRENT_YEAR_TWIN %}selected{% endif %}>Previous year</option>
-                      </select>
                       <button type="submit" class="btn btn-sm">Save</button>
                     </form>
                   {% endif %}
+                {% endif %}
+              </td>
+              <td class="small">
+                {# Which year this document describes - read by the AI same
+                   as the category is, but always live here rather than
+                   behind a click: a client sending both years' trial
+                   balances together is exactly the case that needs
+                   correcting fast, not after two clicks. Only meaningful
+                   for the categories a client can plausibly send twice
+                   (see PRIOR_YEAR_TWIN); everything else has no "previous"
+                   twin to choose, so there is nothing to pick here. #}
+                {% if doc.file_type == 'xero' %}
+                  <span class="muted small">&mdash;</span>
+                {% elif doc.category == 'signed_accounts' %}
+                  {# Always last year's, by what the category itself means -
+                     there is no "current-year signed accounts" while this
+                     year's own accounts are the ones being drafted. #}
+                  <span class="muted small">Previous year</span>
+                {% elif base_category not in PRIOR_YEAR_TWIN %}
+                  <span class="muted small">&mdash;</span>
+                {% elif locked %}
+                  <span class="strong">
+                    {{ 'Previous year' if doc.category in CURRENT_YEAR_TWIN else 'Current year' }}
+                  </span>
+                {% else %}
+                  <form method="post" class="year-form"
+                        action="{{ url_for('documents.recategorise', document_id=doc.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="category" value="{{ base_category }}">
+                    <select name="year" class="small year-select" style="max-width:150px">
+                      <option value="current"
+                              {% if doc.category not in CURRENT_YEAR_TWIN %}selected{% endif %}>Current year</option>
+                      <option value="previous"
+                              {% if doc.category in CURRENT_YEAR_TWIN %}selected{% endif %}>Previous year</option>
+                    </select>
+                    <button type="submit" class="btn btn-sm" style="margin-top:4px">Save</button>
+                  </form>
                 {% endif %}
               </td>
               <td>
