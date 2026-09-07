@@ -215,17 +215,13 @@
       </p>
       <table class="table">
         <thead>
-          <tr><th>Affects</th><th>Needs</th><th>How to get it</th></tr>
+          <tr><th>Affects</th><th>Needs</th></tr>
         </thead>
         <tbody>
           {% for item in _other_missing %}
             <tr>
               <td class="small"><span class="strong">{{ item.serves }}</span></td>
               <td class="small">{{ item.needs }}</td>
-              <td class="small muted">
-                {{ item.how_to_get }}
-                <div class="muted small" style="margin-top:4px">{{ item.why }}</div>
-              </td>
             </tr>
           {% endfor %}
         </tbody>
