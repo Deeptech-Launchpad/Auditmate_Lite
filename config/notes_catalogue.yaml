@@ -455,7 +455,6 @@
   tick_state: tb_driven
   trigger_keys:
   - other_income
-  - trade_receivables
   pieces:
   - ref: F21-03
     output_form: Figure in note
@@ -474,12 +473,12 @@
       Disclose net gains or losses on each category of financial asset and financial liability.
   - ref: F107-06
     output_form: Figure in note
-    tick_state: tb_driven
-    tb_keys:
-    - trade_receivables
+    tick_state: manual
     wording: Net gains or losses on financial assets measured at amortised cost
     build_note: The impairment line requirement is FRS 1 para 82(ba) - see PS-PL-08 - and the allowance
-      reconciliation is FRS 107 para 35H.
+      reconciliation is FRS 107 para 35H. MANUAL - a trade receivables balance is
+      not a gain or loss, so this cannot be auto-populated from the trial balance;
+      it needs a real figure from the client.
     requirement: Disclose net gains or net losses on financial assets measured at amortised cost.
 - key: administrative_and_other_expenses
   heading: Administrative and other expenses

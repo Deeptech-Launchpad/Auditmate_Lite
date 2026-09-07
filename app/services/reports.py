@@ -509,7 +509,14 @@ def _assemble_note_content(note, present, first_year=False, period=None,
             html_parts.append(f"<h4>{sub['heading']}</h4>")
             html_parts.extend(sub_parts)
 
-    if not html_parts:
+    # A note whose only requirement is a figure - "Administrative and other
+    # expenses" asks for nothing but the depreciation/staff-cost breakdown,
+    # FRS 107's amortised-cost note is nothing but a table - is already
+    # complete once that table is built. Printing "Write this note here."
+    # above a table that already answers the requirement told the preparer
+    # something was missing when it was not, and printed those words into
+    # delivered accounts next to a fully populated table.
+    if not html_parts and not table_specs:
         html_parts.append(UNWRITTEN_NOTE_HTML)
 
     return "\n".join(html_parts), table_specs
