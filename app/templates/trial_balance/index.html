@@ -331,9 +331,13 @@
       </p>
     </div>
     <div>
-      {% if outward.agrees %}<span class="pill pill-green">{{ outward.agrees }} agree</span>{% endif %}
-      {% if outward.differs %}<span class="pill pill-amber">{{ outward.differs }} differ</span>{% endif %}
-      {% if outward.missing %}<span class="pill pill-red">{{ outward.missing }} missing</span>{% endif %}
+      {% if not outward.evidence %}
+        <span class="pill pill-amber">Nothing to check yet</span>
+      {% else %}
+        {% if outward.agrees %}<span class="pill pill-green">{{ outward.agrees }} agree</span>{% endif %}
+        {% if outward.differs %}<span class="pill pill-amber">{{ outward.differs }} differ</span>{% endif %}
+        {% if outward.missing %}<span class="pill pill-red">{{ outward.missing }} missing</span>{% endif %}
+      {% endif %}
     </div>
   </div>
 
@@ -377,6 +381,15 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+  {% else %}
+  <div class="card-body">
+    <p class="muted small" style="margin:0">
+      No supporting evidence has been read yet for a line this checks - a
+      bank statement, an aged receivables or payables listing, or a tax
+      document. Upload and verify one on the Documents page to check its
+      own total against the trial balance.
+    </p>
   </div>
   {% endif %}
 </div>
