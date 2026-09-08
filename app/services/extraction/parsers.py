@@ -411,11 +411,24 @@ def extract_xlsx(path: Path, sheets=None) -> ExtractionResult:
     result = ExtractionResult(engine="openpyxl")
     # data_only=True gives calculated values rather than formula strings.
     workbook = load_workbook(path, data_only=True, read_only=True)
+    text_chunks = []
 
     for sheet in _sheets_to_read(workbook, chosen=sheets):
         rows = list(sheet.iter_rows(values_only=True))
         if not rows:
             continue
+
+        # A second reading of the same rows, as plain text rather than typed
+        # cells - not used by this parser itself, but what a later AI pass
+        # (a fixed asset register's per-asset detail, a note's wording) reads
+        # instead of the file, since neither is a PDF or image the provider
+        # can be handed directly. Without this, an xlsx register has nothing
+        # to send that pass at all.
+        text_chunks.append(f"Sheet: {sheet.title}")
+        for row in rows:
+            line = "\t".join(str(c) if c is not None else "" for c in row)
+            if line.strip():
+                text_chunks.append(line)
 
         # Find the header row within the first 15 rows; spreadsheets usually
         # carry a title block above the actual table.
@@ -464,6 +477,7 @@ def extract_xlsx(path: Path, sheets=None) -> ExtractionResult:
                 result.rows.append(prior)
 
     workbook.close()
+    result.raw_text = "\n".join(text_chunks)[:20000]
     return result
 
 
