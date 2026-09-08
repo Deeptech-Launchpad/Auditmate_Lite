@@ -632,11 +632,18 @@ table.fin tr.overridden input.amount { background: var(--amber-light); border-co
   overflow-y: auto; flex: 1; min-height: 0;
 }
 
+.section-search {
+  width: 100%; padding: 7px 10px; margin-bottom: 10px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 3px; background: var(--surface);
+}
+.section-search:focus { outline: none; border-color: var(--brand); }
+
 .section-item {
   display: flex; align-items: center; gap: 8px; padding: 10px 12px;
   border: 1px solid var(--border); border-radius: 3px; background: var(--surface);
   margin-bottom: 7px; cursor: grab; font-size: 13px;
 }
+.section-item.search-hidden { display: none; }
 .section-item.disabled { opacity: .5; background: #f6f4ee; }
 .section-item .handle { color: var(--text-faint); cursor: grab; font-size: 14px; }
 .section-item .stitle { flex: 1; min-width: 0; }

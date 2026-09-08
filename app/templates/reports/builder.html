@@ -243,6 +243,9 @@
       <span class="hint">{{ report.enabled_sections|length }} of {{ report.sections|length }} on</span>
     </div>
     <div class="card-body">
+      <input type="search" id="section-search" class="section-search"
+             placeholder="Search sections and notes…" autocomplete="off">
+      <p id="section-search-empty" class="muted small" hidden>No section or note matches.</p>
       <div id="section-list" data-report-id="{{ report.id }}">
         {% for section in ordered_sections %}
         <div class="section-item {{ '' if section.is_enabled else 'disabled' }} {{ 'section-child' if section.parent_section_id else '' }}"

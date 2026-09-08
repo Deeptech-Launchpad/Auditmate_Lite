@@ -22,6 +22,27 @@
     return response.json();
   }
 
+  /* ----------------------------------------------------------- search --- */
+
+  const search = document.getElementById('section-search');
+  const searchEmpty = document.getElementById('section-search-empty');
+
+  if (search) {
+    search.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase();
+      let visible = 0;
+
+      list.querySelectorAll('.section-item').forEach(item => {
+        const title = item.querySelector('.stitle').textContent.toLowerCase();
+        const matches = !query || title.includes(query);
+        item.classList.toggle('search-hidden', !matches);
+        if (matches) visible += 1;
+      });
+
+      if (searchEmpty) searchEmpty.hidden = visible > 0;
+    });
+  }
+
   /* --------------------------------------------------------- toggles ---- */
 
   list.addEventListener('change', async event => {
