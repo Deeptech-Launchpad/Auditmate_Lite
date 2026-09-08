@@ -428,6 +428,9 @@ class FinancialYear(db.Model):
     prior_notes = db.relationship(
         "PriorYearNote", back_populates="financial_year",
         cascade="all, delete-orphan")
+    fixed_asset_register_items = db.relationship(
+        "FixedAssetRegisterItem", back_populates="financial_year",
+        cascade="all, delete-orphan")
     versions = db.relationship(
         "StatementVersion", back_populates="financial_year",
         cascade="all, delete-orphan",
@@ -1565,6 +1568,46 @@ class PriorYearNote(db.Model):
 
     def __repr__(self):
         return f"<PriorYearNote {self.note_number} {self.title!r}>"
+
+
+class FixedAssetRegisterItem(db.Model):
+    """One asset, read out of a client's fixed asset register.
+
+    Nothing downstream can check depreciation against an asset's useful life
+    from a trial balance alone - a trial balance carries one net book value
+    per class of asset, not what any individual asset cost, when it was
+    bought, or how long it is expected to last. This is that missing
+    per-asset detail, read once from the register the client actually sent.
+
+    Stored per financial year, like a trial balance account: the same asset
+    reappears in next year's register, and each year's figures are read from
+    that year's own upload rather than carried forward and drifting from it.
+    """
+
+    __tablename__ = "fixed_asset_register_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    financial_year_id = db.Column(db.Integer,
+                                  db.ForeignKey("financial_years.id"),
+                                  nullable=False, index=True)
+    source_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
+
+    description = db.Column(db.String(255), nullable=False)
+    cost = db.Column(Numeric(18, 2), nullable=False)
+    purchase_date = db.Column(db.Date)
+    # Null for an asset still held at the year end.
+    disposal_date = db.Column(db.Date)
+    useful_life_years = db.Column(db.Float, nullable=False)
+
+    confidence = db.Column(db.Float, default=1.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    financial_year = db.relationship("FinancialYear",
+                                     back_populates="fixed_asset_register_items")
+    source_document = db.relationship("Document")
+
+    def __repr__(self):
+        return f"<FixedAssetRegisterItem {self.description!r}>"
 
 
 class CustomerDocument(db.Model):

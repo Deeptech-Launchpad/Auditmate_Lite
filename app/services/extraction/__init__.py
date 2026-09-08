@@ -134,6 +134,62 @@ def _read_prior_year_notes(document, path, file_type, raw_text) -> str:
     return len(outcome["notes"]), outcome.get("unreadable")
 
 
+def _read_fixed_asset_register(document, path, file_type, raw_text) -> tuple:
+    """Read and store per-asset detail from a fixed asset register.
+
+    Returns (count, message) - how many assets were stored, and a short
+    message for the caller to surface, or None. Never raises: a document
+    whose figures read perfectly must not be marked failed because this
+    second pass could not read it.
+    """
+    from datetime import date as date_cls
+    from ..extraction.ai import extract_fixed_asset_register, ai_available
+    from ...models import FixedAssetRegisterItem
+
+    if not ai_available():
+        return 0, None
+
+    try:
+        outcome = extract_fixed_asset_register(path, file_type, raw_text=raw_text)
+    except Exception:                              # noqa: BLE001
+        log.exception("Fixed asset register extraction raised")
+        return 0, "The fixed asset register could not be read."
+
+    if not outcome.get("ok"):
+        return 0, (outcome.get("error")
+                   or "The fixed asset register could not be read.")
+
+    def _parse(value):
+        try:
+            return date_cls.fromisoformat(value) if value else None
+        except ValueError:
+            return None
+
+    FixedAssetRegisterItem.query.filter_by(source_document_id=document.id).delete()
+
+    stored = 0
+    for asset in outcome["assets"]:
+        if not asset.get("useful_life_years"):
+            # No useful life given or inferable - nothing to check this
+            # asset's depreciation against, so there is nothing to store
+            # that the calculation could use.
+            continue
+        db.session.add(FixedAssetRegisterItem(
+            financial_year_id=document.financial_year_id,
+            source_document_id=document.id,
+            description=asset["description"][:255],
+            cost=asset["cost"],
+            purchase_date=_parse(asset.get("purchase_date")),
+            disposal_date=_parse(asset.get("disposal_date")),
+            useful_life_years=asset["useful_life_years"],
+            confidence=asset["confidence"],
+        ))
+        stored += 1
+
+    log.info("Document %s: stored %d fixed asset(s)", document.id, stored)
+    return stored, outcome.get("unreadable")
+
+
 # Documents stating this year's balances, one account per line - the only
 # ones the unknown-account test below can sensibly be run against. The trial
 # balance is handled before it and so is not repeated here.
@@ -141,6 +197,10 @@ STATES_BALANCES = {"balance_sheet", "profit_and_loss", "general_ledger"}
 
 # Documents read for what the company SAID, not only for what it counted.
 NOTE_BEARING = {"signed_accounts", "prior_signed_accounts"}
+
+# Read for per-asset detail a trial balance cannot carry - see
+# _read_fixed_asset_register and services/depreciation_check.py.
+ASSET_BEARING = {"fixed_asset_register", "prior_fixed_asset_register"}
 
 
 def auto_verify(document) -> tuple:
@@ -328,6 +388,15 @@ def extract_document(document_id: int) -> dict:
         notes_held = PriorYearNote.query.filter_by(
             source_document_id=document.id).count()
 
+    # --- Stage 3c: per-asset detail, not just the figure a class of asset
+    # rolls up to. Only worth attempting when there is something to read -
+    # a document with no rows at all was never going to hold a register.
+    # See services/depreciation_check.py for what this feeds.
+    assets_note = None
+    if result.rows and document.category in ASSET_BEARING:
+        _assets_new, assets_note = _read_fixed_asset_register(
+            document, path, file_type, result.raw_text)
+
     # Two different questions, and answering only the first turned a run
     # where every call failed into a green success banner. What the document
     # HOLDS decides its status; what this RUN did decides what to say about
@@ -387,6 +456,10 @@ def extract_document(document_id: int) -> dict:
         # swallowed, because a note silently absent reads as a note that was
         # never disclosed.
         "notes_unreadable": notes_note,
+        # Same idea as notes_unreadable, for a fixed asset register: a row
+        # this second pass could not read is not an asset that does not
+        # exist, and only the preparer can tell the difference.
+        "assets_unreadable": assets_note,
         # Why this document did not need a human before the accounts could
         # be built. None means it still does.
         "auto_verified": auto_verified,

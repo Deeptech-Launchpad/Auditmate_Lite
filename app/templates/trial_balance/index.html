@@ -247,6 +247,77 @@
 </div>
 {% endif %}
 
+{% if depreciation %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>Depreciation, checked against the fixed asset register</h2>
+      <p class="muted small" style="margin:2px 0 0">
+        Cost divided by useful life, for the exact days each asset was
+        owned within this period - not assumed to be twelve months.
+      </p>
+    </div>
+    <div>
+      {% if not depreciation.available %}
+        <span class="pill pill-amber">No register read yet</span>
+      {% elif depreciation.material %}
+        <span class="pill pill-red">Out by
+          {{ '{:,.2f}'.format(depreciation.difference|abs) }}</span>
+      {% else %}
+        <span class="pill pill-green">Agrees</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    {% if not depreciation.available %}
+      <p class="muted small" style="margin-top:0">
+        Upload and verify a fixed asset register with cost, purchase date
+        and useful life for each asset, on the Documents page - there is
+        nothing to check depreciation against yet.
+      </p>
+    {% elif not depreciation.material %}
+      <p class="muted small" style="margin-top:0">
+        The register implies {{ '{:,.2f}'.format(depreciation.expected) }};
+        the trial balance books
+        {{ '{:,.2f}'.format(depreciation.actual) }}. Within the range
+        rounding and day-count convention normally explain.
+      </p>
+    {% else %}
+      <p class="muted small" style="margin-top:0">
+        The register implies {{ '{:,.2f}'.format(depreciation.expected) }}
+        for this period; the trial balance books
+        {{ '{:,.2f}'.format(depreciation.actual) }} - too far apart for
+        rounding to explain. An asset may be missing, disposed of without
+        being taken off the register, or carrying the wrong useful life.
+      </p>
+    {% endif %}
+  </div>
+
+  {% if depreciation.available and depreciation.material %}
+  <div class="table-wrap">
+    <table class="data check-table">
+      <thead>
+        <tr><th>Asset</th>
+            <th class="num">Cost</th>
+            <th class="num">Useful life</th>
+            <th class="num">Expected this period</th></tr>
+      </thead>
+      <tbody>
+        {% for a in depreciation.per_asset %}
+        <tr>
+          <td class="strong">{{ a.description }}</td>
+          <td class="num">{{ '{:,.2f}'.format(a.cost) }}</td>
+          <td class="num">{{ a.useful_life_years }} yrs</td>
+          <td class="num">{{ '{:,.2f}'.format(a.expected) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 {# The checks that find real errors: the trial balance against documents
    that are not the trial balance, and against last year. Debits equalling
    credits was never information - the accounting system guarantees it. #}

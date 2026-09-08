@@ -211,6 +211,9 @@ def analyse(fy_id):
         if result.get("notes_unreadable"):
             unreadable_notes.append(
                 f"{document.original_filename}: {result['notes_unreadable']}")
+        if result.get("assets_unreadable"):
+            unreadable_notes.append(
+                f"{document.original_filename}: {result['assets_unreadable']}")
 
         # A difference is a finding to show, not a reason to stop. The
         # accounts are built regardless; this names what did not match so

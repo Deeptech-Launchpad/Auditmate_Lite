@@ -10,7 +10,7 @@ from flask_login import current_user, login_required
 
 from ..extensions import db
 from ..models import FinancialYear, TrialBalanceAccount
-from ..services import mapping_review, outward, prior_year, reconcile
+from ..services import depreciation_check, mapping_review, outward, prior_year, reconcile
 from ..services import trial_balance as tb_service
 from ..services.statements import line_keys_for, load_templates
 
@@ -61,6 +61,7 @@ def index(fy_id):
                            checks=reconcile.check(financial_year),
                            outward=outward.check(financial_year),
                            opening=prior_year.opening_check(financial_year),
+                           depreciation=depreciation_check.check(financial_year),
                            mapping=mapping_review.review(financial_year),
                            line_options=_statement_line_options(),
                            # Last year beside this year, in the grid itself.

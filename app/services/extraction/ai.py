@@ -103,6 +103,38 @@ class AIPriorNotes(BaseModel):
                     "to read'. Null when everything was readable.")
 
 
+class AIFixedAsset(BaseModel):
+    description: str = Field(description="The asset's description, as printed")
+    cost: float = Field(description="Original cost of the asset, not net book "
+                                    "value or accumulated depreciation")
+    purchase_date: Optional[str] = Field(
+        default=None,
+        description="Date the asset was acquired, as YYYY-MM-DD. Null if the "
+                    "register does not state one.")
+    disposal_date: Optional[str] = Field(
+        default=None,
+        description="Date the asset was disposed of, as YYYY-MM-DD. Null if "
+                    "still held at the year end.")
+    useful_life_years: Optional[float] = Field(
+        default=None,
+        description="Useful life in years, as stated or implied by a "
+                    "depreciation rate (e.g. 20% per annum implies 5 years). "
+                    "Null if neither is given - do not guess a default.")
+    confidence: float = Field(
+        default=0.9,
+        description="0.0-1.0 that this row was read correctly.")
+
+
+class AIFixedAssetRegister(BaseModel):
+    assets: List[AIFixedAsset] = Field(
+        description="Every asset row found, one per line. Skip subtotal and "
+                    "total rows.")
+    unreadable: Optional[str] = Field(
+        default=None,
+        description="Say so plainly if part of the register could not be "
+                    "read. Null when everything was readable.")
+
+
 class AICompanyProfile(BaseModel):
     """Company particulars as an ACRA Business Profile states them."""
 
@@ -517,6 +549,87 @@ def extract_prior_year_notes(path: Path, file_type: str,
              provider.LABEL, len(notes), path.name)
 
     return {"ok": bool(notes), "notes": notes,
+            "unreadable": parsed.unreadable, "error": None}
+
+
+FIXED_ASSET_SYSTEM_PROMPT = """You read a client's fixed asset register - a \
+schedule listing every asset a company owns, so that depreciation can be \
+checked against each asset's own cost and useful life rather than assumed.
+
+Rules:
+- One row per asset. Skip subtotal and total rows.
+- Cost is the ORIGINAL cost, never net book value or accumulated depreciation.
+- Useful life is often given directly in years; sometimes only a \
+depreciation RATE is given (e.g. "20% straight line") - convert that to \
+years (100 / rate). If neither is given, leave it null rather than guessing \
+a default - a wrong useful life is worse than none.
+- Dates as YYYY-MM-DD. If only a month and year are printed, use the first \
+day of that month.
+- If you cannot read part of the register - a faint scan, a missing page - \
+say which part in `unreadable` rather than inventing what it probably said."""
+
+
+def extract_fixed_asset_register(path: Path, file_type: str,
+                                 raw_text: str = "") -> dict:
+    """Read per-asset cost, purchase date and useful life off a fixed asset
+    register, so depreciation can be checked against them rather than merely
+    filed as evidence.
+
+    Returns {"ok", "assets": [...], "unreadable": str|None, "error": str|None}.
+    """
+    try:
+        provider = get_provider()
+    except ValueError as exc:
+        return {"ok": False, "assets": [], "unreadable": None,
+                "error": str(exc)}
+
+    if not provider.available():
+        return {"ok": False, "assets": [], "unreadable": None,
+                "error": f"No API key configured for {provider.LABEL}."}
+
+    parts = []
+    if file_type == "pdf":
+        parts.append({"type": "pdf", "data": path.read_bytes()})
+    elif file_type == "image":
+        suffix = path.suffix.lower()
+        mime = "image/png" if suffix == ".png" else "image/jpeg"
+        parts.append({"type": "image", "data": path.read_bytes(), "mime": mime})
+    elif raw_text:
+        parts.append({"type": "text",
+                      "text": f"Document contents:\n\n{raw_text[:100000]}"})
+    else:
+        return {"ok": False, "assets": [], "unreadable": None,
+                "error": "Nothing to send to the AI provider"}
+
+    parts.append({
+        "type": "text",
+        "text": ("Read every asset out of this fixed asset register: "
+                 "description, cost, purchase date, disposal date if any, "
+                 "and useful life."),
+    })
+
+    try:
+        parsed = provider.structured_call(
+            FIXED_ASSET_SYSTEM_PROMPT, parts, AIFixedAssetRegister,
+            max_tokens=32000)
+    except Exception as exc:                       # noqa: BLE001
+        log.exception("Fixed asset register extraction failed")
+        return {"ok": False, "assets": [], "unreadable": None,
+                "error": f"Could not read the register - "
+                        f"{explain(exc, provider.LABEL)}."}
+
+    assets = [{"description": a.description.strip(),
+              "cost": a.cost,
+              "purchase_date": a.purchase_date,
+              "disposal_date": a.disposal_date,
+              "useful_life_years": a.useful_life_years,
+              "confidence": max(0.0, min(1.0, a.confidence))}
+             for a in parsed.assets if a.description and a.description.strip()]
+
+    log.info("%s read %d fixed asset(s) from %s",
+             provider.LABEL, len(assets), path.name)
+
+    return {"ok": bool(assets), "assets": assets,
             "unreadable": parsed.unreadable, "error": None}
 
 
