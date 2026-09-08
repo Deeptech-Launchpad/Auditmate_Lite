@@ -443,10 +443,17 @@
       </details>
     </div>
     <div class="nowrap">
-      <span class="pill pill-green">{{ checks.agrees }} agree</span>
-      {% if checks.differs %}<span class="pill pill-amber">{{ checks.differs }} differ</span>{% endif %}
-      {% if checks.needs_mapping %}<span class="pill pill-amber">{{ checks.needs_mapping }} need mapping</span>{% endif %}
-      {% if checks.missing %}<span class="pill pill-red">{{ checks.missing }} missing</span>{% endif %}
+      {# checks.agrees sums only the documents actually compared line by
+         line (checks.documents) - a category like a fixed asset register
+         or prior-year signed accounts never enters that count at all, so
+         "0 agree" here would not mean zero agreements, it would mean no
+         comparison ran. Shown only once something has. #}
+      {% if checks.documents %}
+        <span class="pill pill-green">{{ checks.agrees }} agree</span>
+        {% if checks.differs %}<span class="pill pill-amber">{{ checks.differs }} differ</span>{% endif %}
+        {% if checks.needs_mapping %}<span class="pill pill-amber">{{ checks.needs_mapping }} need mapping</span>{% endif %}
+        {% if checks.missing %}<span class="pill pill-red">{{ checks.missing }} missing</span>{% endif %}
+      {% endif %}
     </div>
   </div>
 
