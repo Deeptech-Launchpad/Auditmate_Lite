@@ -521,7 +521,18 @@
 
     document.body.appendChild(panel);
     const box = anchor.getBoundingClientRect();
-    panel.style.top = (window.scrollY + box.bottom + 6) + 'px';
+
+    // Below the figure by default - but a figure near the bottom of a long
+    // report page has no room there, and the panel opening straight off the
+    // bottom of the screen cut off its own Close button. Flip it above the
+    // figure instead whenever below would not fit and above does.
+    const viewportBottom = window.scrollY + window.innerHeight;
+    const belowTop = window.scrollY + box.bottom + 6;
+    const aboveTop = window.scrollY + box.top - panel.offsetHeight - 6;
+    const fitsBelow = belowTop + panel.offsetHeight <= viewportBottom - 8;
+    panel.style.top = ((fitsBelow || aboveTop < window.scrollY)
+      ? belowTop : aboveTop) + 'px';
+
     panel.style.left = Math.max(8, Math.min(
       window.scrollX + box.left - 240,
       window.scrollX + document.documentElement.clientWidth
