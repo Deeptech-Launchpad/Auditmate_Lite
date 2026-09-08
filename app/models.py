@@ -69,6 +69,27 @@ DOCUMENT_CATEGORIES = [
     # label has to say so rather than leaving the preparer guessing.
     ("tax_document", "Tax Document / GST Return"),
     ("other", "Other"),
+    # The prior-year half of every OTHER category a client might also send
+    # twice - the same reasoning PRIOR_YEAR_TWIN gives for a trial balance
+    # applies just as much to a bank statement or an aged listing: a client
+    # sends last year's alongside this year's, nothing in the file says
+    # which is which, and without a place to say so the wrong year's evidence
+    # silently counts as this year's. Not offered directly in the plain
+    # category dropdown (see CURRENT_YEAR_TWIN filtering in
+    # documents/index.html) - reached through the Year column instead, same
+    # as the trial balance and cash flow twins above.
+    ("prior_balance_sheet", "Balance Sheet (prior year)"),
+    ("prior_profit_and_loss", "Profit & Loss / Income Statement (prior year)"),
+    ("prior_general_ledger", "General Ledger (prior year)"),
+    ("prior_bank_statement", "Bank Statement (prior year)"),
+    ("prior_vendor_invoice", "Vendor Invoice (prior year)"),
+    ("prior_customer_invoice", "Customer Invoice (prior year)"),
+    ("prior_salary_schedule", "Salary Schedule (prior year)"),
+    ("prior_payables", "Accounts Payable Listing (prior year)"),
+    ("prior_receivables", "Accounts Receivable Listing (prior year)"),
+    ("prior_fixed_asset_register", "Fixed Asset Register (prior year)"),
+    ("prior_tax_document", "Tax Document / GST Return (prior year)"),
+    ("prior_other", "Other (prior year)"),
 ]
 
 # Categories that come in a current-year / prior-year pair.
@@ -82,6 +103,18 @@ DOCUMENT_CATEGORIES = [
 PRIOR_YEAR_TWIN = {
     "trial_balance": "prior_trial_balance",
     "cash_flow": "prior_cash_flow",
+    "balance_sheet": "prior_balance_sheet",
+    "profit_and_loss": "prior_profit_and_loss",
+    "general_ledger": "prior_general_ledger",
+    "bank_statement": "prior_bank_statement",
+    "vendor_invoice": "prior_vendor_invoice",
+    "customer_invoice": "prior_customer_invoice",
+    "salary_schedule": "prior_salary_schedule",
+    "payables": "prior_payables",
+    "receivables": "prior_receivables",
+    "fixed_asset_register": "prior_fixed_asset_register",
+    "tax_document": "prior_tax_document",
+    "other": "prior_other",
 }
 CURRENT_YEAR_TWIN = {prior: current for current, prior in PRIOR_YEAR_TWIN.items()}
 
