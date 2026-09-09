@@ -342,6 +342,28 @@ BUILDERS = {
 }
 
 
+def _readable_heading(heading):
+    """A table's caption, with the catalogue's own separator taken out.
+
+    Fifty-three entries in notes_catalogue.yaml name the columns a
+    disclosure has to show as a pipe-separated list - "Carrying amount |
+    Fair value | Level within the fair value hierarchy". That is a
+    separator for the catalogue, not punctuation for a reader, and it was
+    reaching the page verbatim, where a run-on line of pipes above a
+    table reads as something that failed to render rather than as a
+    caption. Forty other entries write the same kind of content as an
+    ordinary phrase ("Loss allowance: at 1 January, charge for the year,
+    written off, at 31 December"), which is the register this matches.
+
+    A middot rather than a comma because several of these items carry
+    commas of their own, and comma-joining them runs two items together.
+    """
+    if not heading or "|" not in heading:
+        return heading
+    parts = [part.strip() for part in heading.split("|")]
+    return " · ".join(part for part in parts if part)
+
+
 def build_tables(spec, financial_year):
     """Turn a section's `note_table:` config into renderable tables."""
     if not spec:
@@ -366,6 +388,10 @@ def build_tables(spec, financial_year):
             log.exception("Note table failed: %s", block)
             continue
         if table and table.get("rows"):
+            # Cleaned here rather than where the spec is first built, so
+            # every report already created is corrected on its next render
+            # instead of needing its stored data_binding rewritten.
+            table["heading"] = _readable_heading(table.get("heading"))
             tables.append(table)
 
     return tables
