@@ -329,6 +329,22 @@ def extract_with_ai(path: Path, file_type: str, category: str = "other",
     result.engine = provider_name()
     category_hint = (f"The auditor filed this document under the category "
                      f"'{category}'. ") if category != "other" else ""
+    # A category named for last year (a prior-year trial balance, signed
+    # accounts) describes what the WHOLE FILE is, not what every row inside
+    # it is. Without this, a model reading "filed under 'prior_trial_balance'"
+    # alongside the PERIODS rule below could tag every row period="previous"
+    # regardless of the dates actually printed - which then makes the whole
+    # document invisible to prior_year.py, which skips "previous" rows when
+    # reading a document (see _from_document), on the theory that a two-year
+    # comparative's own prior column belongs to the year before that.
+    if category.startswith("prior_") or category == "signed_accounts":
+        category_hint += (
+            "That category name describes the document as a whole, not "
+            "each row - still decide every row's period from the dates "
+            "actually printed in its own columns, per the PERIODS rule "
+            "below. A document with only one dated column is entirely "
+            "period=\"current\" even when its category name says "
+            "'prior'. ")
 
     try:
         parts = []
