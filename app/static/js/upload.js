@@ -76,19 +76,31 @@
       : 'Upload & extract';
   }
 
+  function alreadyStaged(file) {
+    return Array.from(staged.files).some(
+      f => f.name === file.name
+        && f.size === file.size
+        && f.lastModified === file.lastModified
+    );
+  }
+
   function addFiles(fileList) {
-    Array.from(fileList).forEach(f => staged.items.add(f));
+    Array.from(fileList).forEach(f => {
+      // The same file picked twice is the same document, not two of them.
+      if (!alreadyStaged(f)) staged.items.add(f);
+    });
     input.files = staged.files;
     render();
   }
 
   dropzone.addEventListener('click', () => input.click());
 
-  input.addEventListener('change', () => {
-    staged = new DataTransfer();
-    Array.from(input.files).forEach(f => staged.items.add(f));
-    render();
-  });
+  // Adds to the list rather than replacing it. The picker hands back only
+  // what was chosen in THAT dialog, so rebuilding the staged list from it
+  // threw away everything chosen before - which made it impossible to send
+  // up a batch a few files at a time, or to add one more after picking the
+  // rest. Dropping files already added to the list this way too.
+  input.addEventListener('change', () => addFiles(input.files));
 
   ['dragenter', 'dragover'].forEach(evt =>
     dropzone.addEventListener(evt, e => {
