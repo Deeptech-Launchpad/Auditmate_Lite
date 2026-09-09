@@ -31,6 +31,7 @@ import logging
 from decimal import Decimal
 
 from ..models import FinancialStatement, TrialBalanceAccount
+from . import prior_year
 
 log = logging.getLogger(__name__)
 
@@ -74,27 +75,24 @@ def _row(label, current, previous=None, *, bold=False, rule=False, ref=None):
 # --------------------------------------------------------------------------
 
 def _previous_totals_by_key(financial_year, keys):
-    """Prior-year trial balance, summed per standard key.
+    """Prior-year figures, summed per standard key.
 
     Matched by key rather than by account: a client's own account names
     are free text and are not the same row from one year to the next
     (a bank account renamed, two accounts merged), but the standard key
     an account was mapped to is stable, and it is the same thing every
     other comparative in this app is matched on.
+
+    Drawn from the same waterfall of sources the statement FACE gets its
+    comparative column from (see prior_year.balances) - a separate, narrower
+    query here once meant a client whose only prior year was a trial
+    balance's own comparative column, a signed accounts PDF, or a Xero pull
+    (the code's own description of the normal case, not the exception) saw
+    the comparative on every statement but "--" in every note.
     """
-    if not financial_year.previous_year_id:
-        return {}
-    prior_accounts = (TrialBalanceAccount.query
-                      .filter(TrialBalanceAccount.financial_year_id
-                              == financial_year.previous_year_id)
-                      .filter(TrialBalanceAccount.standard_key.in_(keys))
-                      .all())
-    totals = {}
-    for account in prior_accounts:
-        key = account.standard_key
-        totals[key] = totals.get(key, Decimal("0")) + Decimal(str(account.net or 0))
+    figures, _source = prior_year.balances(financial_year)
     return {key: (amount if amount >= 0 else -amount)
-            for key, amount in totals.items()}
+            for key, amount in figures.items() if key in keys}
 
 
 def _block_accounts(spec, financial_year, statements):
