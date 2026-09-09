@@ -66,6 +66,7 @@ class _Reader(HTMLParser):
         self._row = None
         self._cell = None
         self._header_row = False
+        self._cell_numeric = False
 
     # -- text collection --------------------------------------------------
 
@@ -142,6 +143,15 @@ class _Reader(HTMLParser):
         elif tag in ("td", "th") and self._in_table:
             self._cell = []
             self._text = []
+            # The report marks every numeric column `class="num"` - the
+            # figures themselves (see amount_cell) AND their header cells
+            # (a date, a currency symbol). Read here because it is the one
+            # reliable signal: guessing from a cell's own text later missed
+            # a nil value ("--", no digit in it at all) and every header
+            # cell (a date has two dots, "S$" has no digits either), which
+            # left them left-aligned under a column of right-aligned figures.
+            class_attr = next((v for k, v in attrs if k == "class"), "") or ""
+            self._cell_numeric = "num" in class_attr.split()
             if tag == "th":
                 self._header_row = True
         elif tag == "hr":
@@ -167,8 +177,9 @@ class _Reader(HTMLParser):
         elif tag in ("td", "th") and self._in_table:
             text = "".join(r[0] for r in self._flush()).strip()
             if self._row is not None:
-                self._row.append(text)
+                self._row.append((text, self._cell_numeric))
             self._cell = None
+            self._cell_numeric = False
         elif tag == "tr" and self._in_table:
             if self._row:
                 self.out.append(("row", self._header_row, self._row))
@@ -238,12 +249,16 @@ def build(html: str, title: str = None) -> bytes:
                 for is_header, cells in pending_rows:
                     row = docx_table.add_row()
                     for index in range(width):
-                        text = cells[index] if index < len(cells) else ""
+                        text, is_numeric = (cells[index] if index < len(cells)
+                                            else ("", False))
                         cell = row.cells[index]
                         paragraph = cell.paragraphs[0]
                         run = paragraph.add_run(text)
                         run.bold = is_header
-                        if NUMERIC.match(text or ""):
+                        # The column's own marked-up class wins; the regex is
+                        # a fallback for a table with no such marking at all
+                        # (a note an auditor typed by hand, say).
+                        if is_numeric or NUMERIC.match(text or ""):
                             paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 document.add_paragraph()
             table = None
