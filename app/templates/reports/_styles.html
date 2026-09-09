@@ -50,10 +50,23 @@
 
 {{ S }} .rpt-doc {
   font-family: "Times New Roman", Times, Georgia, serif;
-  font-size: {{ '10.5pt' if for_pdf else '13.5px' }};
+  /* 11pt, black, Times - what the firm's own annual report template is set
+     in, measured off it rather than chosen here. Stated in points for the
+     screen as well as the page so the preview is the size that comes out of
+     the export, instead of a 13.5px approximation of it. */
+  font-size: 11pt;
   line-height: 1.45;
   color: #000;
   text-align: justify;
+}
+/* Every heading in the document is the body face in bold, as the template
+   has them. Without this the note titles took the application's own
+   sans-serif heading font from app.css on screen while the PDF, which never
+   loads that stylesheet, set them in Times - so the preview disagreed with
+   the delivered file about what the report looks like. */
+{{ S }} .rpt-doc h1, {{ S }} .rpt-doc h2, {{ S }} .rpt-doc h3,
+{{ S }} .rpt-doc h4, {{ S }} .rpt-doc h5, {{ S }} .rpt-doc h6 {
+  font-family: inherit;
 }
 {{ S }} .rpt-doc p { margin: 0 0 8px; }
 {{ S }} .rpt-doc h4 {

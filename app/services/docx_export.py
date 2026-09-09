@@ -29,7 +29,7 @@ from html.parser import HTMLParser
 from docx import Document as DocxDocument
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt
+from docx.shared import Pt, RGBColor
 
 log = logging.getLogger(__name__)
 
@@ -219,10 +219,31 @@ def build(html: str, title: str = None) -> bytes:
 
     document = DocxDocument()
 
-    # A statutory set of accounts is set in a serif face at 10 or 11 point.
+    # Times New Roman 11pt, black - measured off the firm's own annual report
+    # template rather than chosen here, and the same size the PDF is set in.
     normal = document.styles["Normal"]
     normal.font.name = "Times New Roman"
-    normal.font.size = Pt(10.5)
+    normal.font.size = Pt(11)
+
+    # Word's built-in heading styles are a blue sans-serif (Heading 1 is
+    # 365F91, the rest 4F81BD) inherited from its default template, so every
+    # heading in the delivered accounts came out blue and in the wrong face
+    # while the body around it was black Times.
+    #
+    # Restyled rather than abandoned in favour of hand-formatted paragraphs:
+    # keeping the real heading styles is what gives the document its
+    # navigation pane and lets Word build a table of contents from it, which
+    # a set of accounts someone is about to edit wants to keep.
+    for level, size in ((0, 14), (1, 13), (2, 12), (3, 11), (4, 11)):
+        style = document.styles["Title" if level == 0 else f"Heading {level}"]
+        style.font.name = "Times New Roman"
+        style.font.size = Pt(size)
+        style.font.bold = True
+        style.font.color.rgb = RGBColor(0, 0, 0)
+        # A heading stranded at the foot of a page, with the table it
+        # introduces starting the next one, was the other half of the
+        # "headings move before the page" report.
+        style.paragraph_format.keep_with_next = True
 
     if title:
         document.add_heading(title, level=0)
