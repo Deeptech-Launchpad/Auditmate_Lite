@@ -117,6 +117,49 @@ def load_notes_catalogue():
     } for r in rows]
 
 
+def visible_statement_lines(lines, detailed=False):
+    """The lines of a statement that actually reach the face.
+
+    Two things keep a line off it:
+
+    A BREAKDOWN of a subtotal shown above it. Only the Detailed Profit and
+    Loss Statement expands those; the statutory face shows the subtotal.
+
+    A line the company has NO BALANCE ON IN EITHER YEAR. It is a line the
+    template offers and this company does not use, and a template's worth of
+    them buries the figures that are there - the profit and loss carries 36
+    lines and an ordinary small company uses barely half. A figure in even
+    one of the two years always prints, so a balance that arrived or went
+    away stays visible and the face still adds up to its own subtotals.
+
+    A subtotal is not an account, so nil alone does not drop it - it goes
+    only when nothing in its group printed either, which is the difference
+    between "this company has no investing activities at all" (the heading,
+    the lines under it and the subtotal all go together) and "its investing
+    activities happen to net to nil this year" (they are shown, and the
+    subtotal shows nil beneath them). The grand total always prints: it is
+    the statement's bottom line even when it is nil.
+
+    Group headings need no handling of their own. The template prints one
+    when it reaches the first visible line of a group, so a group with
+    nothing left in it never announces itself.
+    """
+    def carries(line):
+        return bool(line.effective_amount or line.amount_previous)
+
+    candidates = [line for line in lines if detailed or not line.is_detail]
+
+    live_groups = {line.group_key for line in candidates
+                   if carries(line) and not (line.is_total or line.is_subtotal)}
+
+    visible = []
+    for line in candidates:
+        if carries(line) or line.is_total:
+            visible.append(line)
+        elif line.is_subtotal and line.group_key in live_groups:
+            visible.append(line)
+    return visible
+
 
 def render_bindings(text: str, customer, financial_year,
                     chips: bool = False) -> str:

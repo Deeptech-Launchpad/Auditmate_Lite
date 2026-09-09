@@ -221,46 +221,29 @@
           </thead>
           <tbody>
             {% set ns = namespace(group=None) %}
-            {% for line in statement.lines %}
-              {# Two reasons a line stays off the face:
-                 - it is a breakdown of a subtotal shown above it (only the
-                   Detailed Profit and Loss Statement expands those); or
-                 - the company has no balance on it in EITHER year.
-
-                 A line carrying a figure in even one of the two years always
-                 prints, so a balance that arrived or went away is still
-                 visible and the face still adds up to its own subtotals.
-                 One nil in both is a line this company simply does not have,
-                 and a template's worth of them - the profit and loss carries
-                 36 lines and an ordinary small company uses barely half -
-                 buries the figures that ARE there among rows of dashes.
-
-                 Totals and subtotals are the statement's skeleton rather
-                 than accounts, so they are kept even at nil: dropping the
-                 cash flow's investing subtotal would take a category FRS
-                 expects to see presented off the statement altogether. #}
-              {% set nil_both = not line.effective_amount
-                   and not line.amount_previous
-                   and not line.is_total and not line.is_subtotal %}
-              {% if (detailed or not line.is_detail) and not nil_both %}
-                {% if line.group_key != ns.group %}
-                  {% set ns.group = line.group_key %}
-                  {% set heading = headings.get(line.group_key) %}
-                  {% if heading %}
-                    {% for part in heading.split('|') %}
-                      <tr class="group-head {{ 'major' if loop.first and heading.split('|')|length > 1 else 'minor' }}">
-                        <td colspan="{{ 4 if show_notes else 3 }}">{{ part }}</td>
-                      </tr>
-                    {% endfor %}
-                  {% endif %}
+            {# Which lines reach the face - breakdowns, and lines this
+               company has no balance on in either year, are left out. The
+               rule needs to look across a whole group to decide a subtotal,
+               so it lives in reports.visible_statement_lines rather than
+               here. #}
+            {% for line in visible_lines(statement.lines, detailed) %}
+              {% if line.group_key != ns.group %}
+                {% set ns.group = line.group_key %}
+                {% set heading = headings.get(line.group_key) %}
+                {% if heading %}
+                  {% for part in heading.split('|') %}
+                    <tr class="group-head {{ 'major' if loop.first and heading.split('|')|length > 1 else 'minor' }}">
+                      <td colspan="{{ 4 if show_notes else 3 }}">{{ part }}</td>
+                    </tr>
+                  {% endfor %}
                 {% endif %}
-                <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}{% if line.is_detail %} detail{% endif %}">
-                  <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ stmt_label(line) }}</td>
-                  {% if show_notes %}<td class="notes">{{ note_numbers.get(line.note_ref, '') if note_numbers else '' }}</td>{% endif %}
-                  {{ stmt_amount(line) }}
-                  {{ amount_cell(line.amount_previous) }}
-                </tr>
               {% endif %}
+              <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}{% if line.is_detail %} detail{% endif %}">
+                <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ stmt_label(line) }}</td>
+                {% if show_notes %}<td class="notes">{{ note_numbers.get(line.note_ref, '') if note_numbers else '' }}</td>{% endif %}
+                {{ stmt_amount(line) }}
+                {{ amount_cell(line.amount_previous) }}
+              </tr>
             {% endfor %}
           </tbody>
         </table>

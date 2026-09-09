@@ -21,7 +21,8 @@ bp = Blueprint("reports", __name__, url_prefix="/reports")
 @bp.context_processor
 def inject_report_globals():
     """Statement captions, shared by the builder preview and the export."""
-    return {"GROUP_HEADINGS": report_service.GROUP_HEADINGS}
+    return {"GROUP_HEADINGS": report_service.GROUP_HEADINGS,
+            "visible_lines": report_service.visible_statement_lines}
 
 
 def _assemble(report, chips=False):
