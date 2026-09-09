@@ -196,7 +196,10 @@ def _read_fixed_asset_register(document, path, file_type, raw_text) -> tuple:
 STATES_BALANCES = {"balance_sheet", "profit_and_loss", "general_ledger"}
 
 # Documents read for what the company SAID, not only for what it counted.
-NOTE_BEARING = {"signed_accounts", "prior_signed_accounts"}
+# "signed_accounts" IS the prior-year category - there is no current-year
+# signed accounts while this year's own are still being drafted, so there
+# is no separate "prior_signed_accounts" to name here.
+NOTE_BEARING = {"signed_accounts"}
 
 # Read for per-asset detail a trial balance cannot carry - see
 # _read_fixed_asset_register and services/depreciation_check.py.
@@ -309,6 +312,15 @@ def extract_document(document_id: int) -> dict:
     ai_used = False
     ai_error = None
 
+    # The rule-based read of the document's own text, kept aside from
+    # `result` because Stage 2 below can replace `result` wholesale with a
+    # fresh ExtractionResult that was never given this text back - it only
+    # returns figures, not the document's contents. Stage 3b/3c's second AI
+    # pass (last year's note wording, a fixed asset register's per-asset
+    # detail) needs the ORIGINAL text regardless of which stage the figures
+    # ended up coming from.
+    document_text = result.raw_text
+
     # --- Stage 2: AI fallback, only where it adds value ---------------------
     use_ai, reason = _should_use_ai(result, file_type)
     if use_ai:
@@ -331,6 +343,15 @@ def extract_document(document_id: int) -> dict:
                 db.session.commit()
                 return {"ok": False, "error": ai_result.error}
             ai_error = ai_result.error
+
+    # An auditor's standing "the years print backwards" correction (see
+    # documents.swap_years) applies to every fresh read of this document,
+    # not just the one it was clicked on - otherwise the next re-extraction
+    # (a different sheet, a re-read after adding an API key) silently
+    # reverts to the original, wrong reading.
+    if document.periods_swapped:
+        for row in result.rows:
+            row.period = "current" if row.period == "previous" else "previous"
 
     # --- Stage 3: score every row and persist -------------------------------
     for row in result.rows:
@@ -373,7 +394,7 @@ def extract_document(document_id: int) -> dict:
     notes_new = 0
     if document.category in NOTE_BEARING:
         notes_new, notes_note = _read_prior_year_notes(
-            document, path, file_type, result.raw_text)
+            document, path, file_type, document_text)
 
     # Read means read. Last year's signed accounts are wanted for their
     # WORDING, and a set of notes carries no figures at all - so judging the
@@ -395,7 +416,7 @@ def extract_document(document_id: int) -> dict:
     assets_note = None
     if result.rows and document.category in ASSET_BEARING:
         _assets_new, assets_note = _read_fixed_asset_register(
-            document, path, file_type, result.raw_text)
+            document, path, file_type, document_text)
 
     # Two different questions, and answering only the first turned a run
     # where every call failed into a green success banner. What the document
