@@ -66,8 +66,12 @@ def _identify_columns(header_cells):
                                     "name", "narration", "item")):
             mapping["label"] = idx
         elif mapping["amount"] is None and any(
+                # "cost" for a fixed asset register, whose figure column is
+                # headed that and nothing else - without it the register's
+                # amount column was never found and position decided it,
+                # which picked up the useful life in years instead.
                 w in text for w in ("amount", "balance", "total", "value",
-                                    "sgd", "current year")):
+                                    "sgd", "current year", "cost")):
             mapping["amount"] = idx
 
     # A sheet that gives both Dr and Cr usually also carries a derived

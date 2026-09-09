@@ -161,7 +161,17 @@ HEADER_WORDS = ("particular", "description", "account", "debit", "credit",
                 "amount", "balance", "total", "s/n", "code", "note",
                 "bucket", "ageing", "aging", "days", "item", "narration",
                 "value", "ref", "category", "classification", "opening",
-                "closing", "movement", "statement")
+                "closing", "movement", "statement",
+                # A schedule rather than a ledger: a fixed asset register,
+                # a depreciation schedule. Their columns share almost no
+                # vocabulary with a trial balance's, so a perfectly ordinary
+                # register headed "Description | Purchase Date | Cost |
+                # Useful Life" scored one word, was not recognised as a
+                # header at all, and every column was then guessed by
+                # position - which read the useful life as the amount and
+                # footed the register at 15 instead of 150,000.
+                "cost", "purchase", "acquired", "life", "rate", "asset",
+                "depreciation", "addition", "disposal", "quantity")
 
 # Short header abbreviations, matched against a whole cell rather than as a
 # substring. "dr" cannot be a substring test - it appears inside "address",
