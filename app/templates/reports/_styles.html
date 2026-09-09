@@ -8,7 +8,22 @@
 #}
 {% set S = scope|default('') %}
 
-{% if for_pdf %}
+{#
+  Paged-media rules, under @media print rather than gated on `for_pdf`.
+
+  WeasyPrint renders with the "print" media type by default (see
+  report_service.render_pdf - no media_type override is passed), so it
+  reads this block exactly as before. But `for_pdf` is only ever True on
+  the export/word and export routes; the on-screen preview - the page a
+  browser's own "Print - Save as PDF" is run FROM whenever WeasyPrint is
+  not installed on the server (typical on Windows dev machines) - is
+  rendered with for_pdf=False and used to get none of this at all: no
+  page-break avoidance on a statement row or a note heading, and no
+  @page margins, so that fallback PDF disagreed with what the on-screen
+  preview had shown. @media print reaches both paths from one block
+  instead of two that can drift apart.
+#}
+@media print {
 @page {
   size: A4;
   margin: 20mm 18mm 18mm;
@@ -19,8 +34,10 @@
     color: #000;
   }
 }
-/* Real page numbers on the contents page - WeasyPrint resolves these
-   against where each section actually lands. */
+/* Real page numbers on the contents page - resolved by WeasyPrint via
+   target-counter(); a browser's own print has no equivalent and simply
+   will not render this rule at all, leaving the dotted leader with no
+   number after it rather than a wrong one. */
 {{ S }} .contents .c-page a::after { content: target-counter(attr(href), page); }
 {{ S }} .contents .c-page a { text-decoration: none; color: inherit; }
 {{ S }} .page-break { break-before: page; }
@@ -29,7 +46,7 @@
 {{ S }} table.fin tr { break-inside: avoid; }
 {{ S }} .rpt-head { break-after: avoid; }
 {{ S }} h3.note-title, {{ S }} .tbl-head { break-after: avoid; }
-{% endif %}
+}
 
 {{ S }} .rpt-doc {
   font-family: "Times New Roman", Times, Georgia, serif;
