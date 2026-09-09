@@ -414,8 +414,14 @@
 
 {# The documents this trial balance was NOT built from. They describe the
    same year, so adding them in would count the same money twice - but the
-   client's own figure for a line is the best check there is on ours. #}
-{% if checks %}
+   client's own figure for a line is the best check there is on ours.
+
+   Hidden, not shown with an empty-handed pill, when nothing here was
+   actually comparable - a fixed asset register or prior-year signed
+   accounts can only ever be held back (see checks.held_back), never
+   checked line by line, so a customer holding only those got a card
+   with a heading and no finding at all. #}
+{% if checks and (checks.documents or checks.ledgers) %}
 <div class="card">
   <div class="card-head">
     <div>
