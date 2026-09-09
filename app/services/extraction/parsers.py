@@ -574,7 +574,23 @@ def extract_docx(path: Path) -> ExtractionResult:
                     result.rows.append(prior)
 
     # Keep the body text so the AI fallback has context if tables were empty.
-    result.raw_text = "\n".join(p.text for p in document.paragraphs if p.text.strip())
+    #
+    # The tables go in too, even though the row parser above has already been
+    # through them. document.paragraphs holds only top-level body text, so
+    # without this every table was invisible to the passes that read raw_text
+    # rather than rows - and a table is exactly where a Word document keeps
+    # the things those passes are looking for: an ACRA profile lists its
+    # directors and company secretary in one (leaving the cover of the
+    # accounts saying "[not provided]" for the board), and a set of signed
+    # accounts puts note disclosures in them.
+    text_parts = [p.text for p in document.paragraphs if p.text.strip()]
+    for table in document.tables:
+        for row in table.rows:
+            line = "\t".join(cell.text.strip() for cell in row.cells)
+            if line.strip():
+                text_parts.append(line)
+
+    result.raw_text = "\n".join(text_parts)
     return result
 
 
