@@ -225,12 +225,24 @@
               {# Two reasons a line stays off the face:
                  - it is a breakdown of a subtotal shown above it (only the
                    Detailed Profit and Loss Statement expands those); or
-                 - it is an optional line this company has no balance on.
-                 An optional line that DOES carry a balance always prints,
-                 otherwise the face would not add up to its own subtotals. #}
-              {% set nil_optional = line.line_key in OPTIONAL_LINES
-                   and not line.effective_amount and not line.amount_previous %}
-              {% if (detailed or not line.is_detail) and not nil_optional %}
+                 - the company has no balance on it in EITHER year.
+
+                 A line carrying a figure in even one of the two years always
+                 prints, so a balance that arrived or went away is still
+                 visible and the face still adds up to its own subtotals.
+                 One nil in both is a line this company simply does not have,
+                 and a template's worth of them - the profit and loss carries
+                 36 lines and an ordinary small company uses barely half -
+                 buries the figures that ARE there among rows of dashes.
+
+                 Totals and subtotals are the statement's skeleton rather
+                 than accounts, so they are kept even at nil: dropping the
+                 cash flow's investing subtotal would take a category FRS
+                 expects to see presented off the statement altogether. #}
+              {% set nil_both = not line.effective_amount
+                   and not line.amount_previous
+                   and not line.is_total and not line.is_subtotal %}
+              {% if (detailed or not line.is_detail) and not nil_both %}
                 {% if line.group_key != ns.group %}
                   {% set ns.group = line.group_key %}
                   {% set heading = headings.get(line.group_key) %}

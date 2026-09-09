@@ -15,10 +15,13 @@
 #   detail   - true = breakdown line. Feeds its group subtotal and appears in
 #              the Detailed Profit and Loss Statement, but NOT on the face of
 #              the statutory statement (which shows only the subtotal).
-#   optional - true = show on the face only when the line carries a balance.
-#              For lines many companies simply do not have (inventories,
-#              deferred tax, borrowings) - printing a page of "--" rows is
-#              not how a Singapore FRS statement is presented.
+# Every line here shows on the face only when it carries a balance in at
+# least one of the two years - printing a page of "--" rows for the lines a
+# company simply does not have (inventories, deferred tax, borrowings) is not
+# how a Singapore FRS statement is presented. That used to be opt-in per line
+# via an "optional" flag; it is now how every line behaves, so the flag is
+# gone. Totals and subtotals are the exception and always print, being the
+# statement's skeleton rather than accounts. See reports/_document.html.
 #   note     - note number shown in the "Notes" column
 
 trial_balance:
@@ -86,18 +89,18 @@ balance_sheet:
     # trial balance that already nets PPE at cost has no separate account
     # for this at all, and demanding one would be asking for a line that
     # cannot exist.
-    - {key: accumulated_depreciation, label: "Accumulated depreciation", group: non_current_assets, indent: 1, optional: true, note: property_plant_and_equipment}
-    - {key: investment_property,   label: "Investment property", group: non_current_assets, indent: 1, optional: true, note: investment_property}
-    - {key: intangible_assets,     label: "Intangible assets", group: non_current_assets, indent: 1, optional: true, note: intangible_assets}
-    - {key: right_of_use_assets,   label: "Right-of-use assets", group: non_current_assets, indent: 1, optional: true, note: right_of_use_assets}
-    - {key: investments,           label: "Investments", group: non_current_assets, indent: 1, optional: true, note: investments_in_subsidiaries}
+    - {key: accumulated_depreciation, label: "Accumulated depreciation", group: non_current_assets, indent: 1, note: property_plant_and_equipment}
+    - {key: investment_property,   label: "Investment property", group: non_current_assets, indent: 1, note: investment_property}
+    - {key: intangible_assets,     label: "Intangible assets", group: non_current_assets, indent: 1, note: intangible_assets}
+    - {key: right_of_use_assets,   label: "Right-of-use assets", group: non_current_assets, indent: 1, note: right_of_use_assets}
+    - {key: investments,           label: "Investments", group: non_current_assets, indent: 1, note: investments_in_subsidiaries}
     - {key: total_non_current_assets, label: "Total non-current assets", group: non_current_assets, subtotal: true, formula: sum_group_non_current_assets}
 
-    - {key: inventories,           label: "Inventories", group: current_assets, indent: 1, optional: true, note: inventories}
-    - {key: contract_assets,       label: "Contract assets", group: current_assets, indent: 1, optional: true, note: contract_balances}
+    - {key: inventories,           label: "Inventories", group: current_assets, indent: 1, note: inventories}
+    - {key: contract_assets,       label: "Contract assets", group: current_assets, indent: 1, note: contract_balances}
     - {key: trade_receivables,     label: "Trade receivables", group: current_assets, indent: 1, note: trade_receivables}
     - {key: prepayments,           label: "Deposits & Other Receivables", group: current_assets, indent: 1}
-    - {key: assets_held_for_sale,  label: "Assets held for sale", group: current_assets, indent: 1, optional: true, note: assets_held_for_sale}
+    - {key: assets_held_for_sale,  label: "Assets held for sale", group: current_assets, indent: 1, note: assets_held_for_sale}
     - {key: cash_and_equivalents,  label: "Cash and cash equivalents", group: current_assets, indent: 1, note: cash_and_cash_equivalents}
     - {key: total_current_assets,  label: "Total current assets", group: current_assets, subtotal: true, formula: sum_group_current_assets}
     - {key: total_assets,          label: "Total assets", group: assets_total, total: true, formula: total_assets}
@@ -107,16 +110,16 @@ balance_sheet:
     - {key: retained_earnings,     label: "Accumulated profit/ (loss)", group: equity, indent: 1, formula: retained_earnings, no_note: true}
     - {key: total_equity,          label: "Total capital and reserves", group: equity, subtotal: true, formula: sum_group_equity}
 
-    - {key: long_term_borrowings,  label: "Long-term borrowings", group: non_current_liabilities, indent: 1, optional: true, note: borrowings}
-    - {key: lease_liabilities,     label: "Lease liabilities", group: non_current_liabilities, indent: 1, optional: true, note: lease_liabilities}
-    - {key: provisions,            label: "Provisions", group: non_current_liabilities, indent: 1, optional: true, note: provisions}
-    - {key: deferred_tax,          label: "Deferred tax liabilities", group: non_current_liabilities, indent: 1, optional: true, note: deferred_tax_liabilities}
-    - {key: total_non_current_liabilities, label: "Total non-current liabilities", group: non_current_liabilities, subtotal: true, formula: sum_group_non_current_liabilities, optional: true}
+    - {key: long_term_borrowings,  label: "Long-term borrowings", group: non_current_liabilities, indent: 1, note: borrowings}
+    - {key: lease_liabilities,     label: "Lease liabilities", group: non_current_liabilities, indent: 1, note: lease_liabilities}
+    - {key: provisions,            label: "Provisions", group: non_current_liabilities, indent: 1, note: provisions}
+    - {key: deferred_tax,          label: "Deferred tax liabilities", group: non_current_liabilities, indent: 1, note: deferred_tax_liabilities}
+    - {key: total_non_current_liabilities, label: "Total non-current liabilities", group: non_current_liabilities, subtotal: true, formula: sum_group_non_current_liabilities}
 
     - {key: trade_payables,        label: "Other Payables", group: current_liabilities, indent: 1}
-    - {key: accruals,              label: "Accruals", group: current_liabilities, indent: 1, optional: true}
-    - {key: contract_liabilities,  label: "Contract liabilities", group: current_liabilities, indent: 1, optional: true, note: contract_balances}
-    - {key: short_term_borrowings, label: "Short-term borrowings", group: current_liabilities, indent: 1, optional: true, note: borrowings}
+    - {key: accruals,              label: "Accruals", group: current_liabilities, indent: 1}
+    - {key: contract_liabilities,  label: "Contract liabilities", group: current_liabilities, indent: 1, note: contract_balances}
+    - {key: short_term_borrowings, label: "Short-term borrowings", group: current_liabilities, indent: 1, note: borrowings}
     - {key: tax_payable,           label: "Provision for income tax", group: current_liabilities, indent: 1, no_note: true}
     - {key: total_current_liabilities, label: "Total current liabilities", group: current_liabilities, subtotal: true, formula: sum_group_current_liabilities}
     - {key: total_equity_and_liabilities, label: "Total equity and liabilities", group: liabilities_total, total: true, formula: total_equity_and_liabilities}
@@ -155,12 +158,12 @@ cash_flow:
     - {key: cf_operating_total,   label: "Net cash flow (used in)/generated from operating activities", group: operating_after, subtotal: true, formula: cf_operating_total}
 
     - {key: cf_purchase_ppe,      label: "Purchase of fixed assets", group: investing, indent: 1}
-    - {key: cf_investing_other,   label: "Other investing activities", group: investing, indent: 1, optional: true}
+    - {key: cf_investing_other,   label: "Other investing activities", group: investing, indent: 1}
     - {key: cf_investing_total,   label: "Net cash flow used in investing activities", group: investing, subtotal: true, formula: sum_group_investing}
 
     - {key: cf_share_capital,     label: "Share Capital", group: financing, indent: 1, formula: cf_share_capital}
-    - {key: cf_borrowings,        label: "Proceeds from / (repayment of) borrowings", group: financing, indent: 1, optional: true}
-    - {key: cf_dividends,         label: "Dividends paid", group: financing, indent: 1, optional: true}
+    - {key: cf_borrowings,        label: "Proceeds from / (repayment of) borrowings", group: financing, indent: 1}
+    - {key: cf_dividends,         label: "Dividends paid", group: financing, indent: 1}
     - {key: cf_financing_total,   label: "Net cash flow from financing activities", group: financing, subtotal: true, formula: sum_group_financing}
 
     - {key: cf_unexplained,       label: "Movement not yet analysed", group: summary, indent: 1, formula: cf_unexplained}

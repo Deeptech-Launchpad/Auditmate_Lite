@@ -118,24 +118,6 @@ def load_notes_catalogue():
 
 
 
-@functools.lru_cache(maxsize=1)
-def optional_line_keys():
-    """Line keys that appear on the face only when they carry a balance.
-
-    Read from config/statement_templates.yaml so the presentation rule lives
-    beside the line it applies to.
-    """
-    path = current_app.config["CONFIG_DIR"] / "statement_templates.yaml"
-    if not path.exists():
-        return frozenset()
-    with open(path, "r", encoding="utf-8") as handle:
-        spec = yaml.safe_load(handle) or {}
-    return frozenset(
-        line["key"]
-        for statement in spec.values() if isinstance(statement, dict)
-        for line in (statement.get("lines") or []) if line.get("optional"))
-
-
 def render_bindings(text: str, customer, financial_year,
                     chips: bool = False) -> str:
     """Substitute {{ binding }} placeholders in template section content.
@@ -809,9 +791,16 @@ def content_gaps(report, financial_year):
             if note_key and note_key in catalogue:
                 continue      # has a real note behind it
 
+            # Only a line that actually reaches the face can be missing a
+            # note on it. Every statement line nil in BOTH years is now left
+            # off (see reports/_document.html), not just the ones the
+            # template marks optional - so asking for a note on one would
+            # send the preparer looking for a disclosure to support a line
+            # the reader never sees.
             line = lines_by_key.get(spec["key"])
-            printing = bool(line and (line.amount_current or line.amount_previous))
-            if not spec.get("optional") or printing:
+            printing = bool(line and (line.effective_amount
+                                      or line.amount_previous))
+            if printing:
                 missing.append({"line": spec.get("label", spec["key"]),
                                "key": spec["key"], "statement": statement_type})
 
