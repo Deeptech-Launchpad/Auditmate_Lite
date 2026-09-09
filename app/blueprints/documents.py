@@ -311,6 +311,10 @@ def swap_years(document_id):
     for item in items:
         item.period = "current" if item.period == "previous" else "previous"
         swapped += 1
+    # Recorded so a later re-extraction (a different sheet chosen, a re-read
+    # after adding an API key) re-applies this correction instead of quietly
+    # reverting to the original, wrong reading - see extract_document.
+    document.periods_swapped = not document.periods_swapped
     db.session.commit()
 
     flash(f"The two years have been turned around on all {swapped} figures. "
@@ -731,6 +735,14 @@ def recategorise(document_id):
     # not the file name, and not a later re-read of the contents.
     document.category_source = "manual"
     document.category_reason = None
+    # A verified document can still be recategorised (only an approved
+    # trial balance's own active source is locked, above) - and changing
+    # what a document IS can change which document should build the
+    # accounts. tb_is_stale only notices a change through this timestamp,
+    # so without it a recategorise after verification left the "out of
+    # date" banner silent even though the source set had just changed.
+    if document.review_status == "verified":
+        document.reviewed_at = datetime.utcnow()
     record("document", document.id, "recategorise",
            before={"category": before}, after={"category": category})
     db.session.commit()

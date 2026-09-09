@@ -611,6 +611,15 @@ class Document(db.Model):
     # choice, not a guess. Empty means "decide automatically".
     source_sheets = db.Column(JSON)
 
+    # An auditor's standing correction that this document's two years print
+    # backwards - see documents.swap_years. Re-extraction rebuilds every
+    # ExtractedLineItem from scratch (a fresh AI/rule-based read, a different
+    # sheet chosen), which used to silently discard a swap already applied:
+    # the correction lived only on the rows just deleted. Recorded here so
+    # extract_document can re-apply it every time, the same way a manual
+    # category never reverts to a guessed one.
+    periods_swapped = db.Column(db.Boolean, default=False, nullable=False)
+
     extraction_status = db.Column(db.String(20), default="queued", nullable=False)
     extraction_engine = db.Column(db.String(40))   # openpyxl | csv | python-docx | pdfplumber | claude
     extraction_error = db.Column(db.Text)
