@@ -96,11 +96,27 @@
 {% set ccy = customer.books_currency or 'SGD' %}
 {% set ccy_sym = 'S$' if ccy == 'SGD' else ccy %}
 
+{# Which sections begin a fresh page, following the firm's own annual report
+   template: the cover, the directors' statement, the auditor's report and
+   each primary statement each start one, and the notes then RUN ON, several
+   to a page, breaking only where a page fills up.
+
+   Giving every section its own page instead - which is what this did - put
+   a three-line note on its own sheet of A4 and turned a 24-page set of
+   accounts into one of 29 mostly-white pages. #}
+{% set nsdoc = namespace(notes_started=false) %}
 {% for payload in payloads %}
   {% set section = payload.section %}
   {% set is_cover = section.section_key == 'cover_page' %}
+  {% set is_note = section.section_key.startswith('note_')
+       or section.section_key.startswith('custom_') %}
+  {# The first note still starts a page; the ones after it follow on. #}
+  {% set starts_page = not loop.first
+       and (not is_note or not nsdoc.notes_started) %}
+  {% if is_note %}{% set nsdoc.notes_started = true %}{% endif %}
 
-  <div class="rpt-page{% if not loop.first %} page-break{% endif %}"
+  <div class="rpt-page{% if starts_page %} page-break{% endif %}
+              {%- if is_note %} rpt-note{% endif %}"
        id="sec-{{ section.section_key }}">
 
     {# ---------------------------------------------------------- cover -- #}
@@ -261,11 +277,17 @@
 
     {# ---------------------------------------------- notes / narrative -- #}
     {% else %}
-      {% set is_note = section.section_key.startswith('note_') or section.section_key.startswith('custom_') %}
-      {{ page_header(
-           'Notes to the Financial Statements' if is_note else section.title,
-           ('- ' ~ (fy.end_date|datefmt('%d %B %Y'))) if is_note else '',
-           section_id=section.id if (editable and not is_note) else None) }}
+      {# The company name and "Notes to the Financial Statements" head the
+         notes once, where they begin. Printing them again for every note
+         would drop the whole three-line block into the middle of a page
+         between one note and the next, now that the notes run on rather
+         than taking a page each. #}
+      {% if starts_page %}
+        {{ page_header(
+             'Notes to the Financial Statements' if is_note else section.title,
+             ('- ' ~ (fy.end_date|datefmt('%d %B %Y'))) if is_note else '',
+             section_id=section.id if (editable and not is_note) else None) }}
+      {% endif %}
 
       {#
         In the builder these are live editing surfaces: click the text and

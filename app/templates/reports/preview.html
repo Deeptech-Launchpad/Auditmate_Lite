@@ -27,11 +27,14 @@
         body { background: #fff; padding: 0; }
         .print-bar { display: none; }
         .rpt-doc { max-width: none; }
+        /* The sheet-of-paper look is a screen device; on paper the page IS
+           the page. Which sections start a new one is decided by the
+           .page-break class in _document.html and the rule for it in
+           _styles.html - breaking before every .rpt-page here as well put
+           each note on a sheet of its own regardless. */
         .rpt-page {
           box-shadow: none; padding: 0; margin: 0; min-height: 0;
-          break-before: page;
         }
-        .rpt-page:first-child { break-before: auto; }
       }
     {% endif %}
   </style>
