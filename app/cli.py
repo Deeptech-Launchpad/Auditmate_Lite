@@ -27,6 +27,7 @@ def register_cli(app):
     app.cli.add_command(seed_beta)
     app.cli.add_command(seed_note_library)
     app.cli.add_command(setup_production)
+    app.cli.add_command(fix_report_layout)
 
 
 @click.command("init-db")
@@ -107,6 +108,97 @@ def sync_schema(do_apply):
     click.echo("")
     click.echo(f"Added {len(planned)} column(s). Existing rows keep NULL "
                f"until something writes to them.")
+
+
+@click.command("fix-report-layout")
+@with_appcontext
+def fix_report_layout():
+    """Patch two pagination bugs into reports created before the fix.
+
+    A note table's total row, and the directors' statement signature
+    block, are frozen into content_html/data_binding at report creation -
+    the same content a code fix does nothing for on a report that already
+    exists. This finds the exact pristine text each bug left behind and
+    rewrites just that, section by section:
+
+      - a note table's total row, built with an empty label ("" still
+        satisfies `"total" in spec`), so the footed row printed as two
+        bare figures with nothing in front of them
+      - the directors' statement signature block, three separate <p>
+        elements with nothing stopping a page break landing between them
+
+    Matches the exact original text only, so a section an auditor has
+    since edited by hand is left alone rather than re-anchored under it.
+    Safe to run more than once - a section already fixed no longer
+    contains the old text, so it is simply skipped the second time.
+    """
+    import copy
+    from .models import AuditReportSection, ReportFigureOverride
+
+    # --- note table totals --------------------------------------------
+    totals_fixed, totals_skipped = 0, 0
+    for section in AuditReportSection.query.filter(
+            AuditReportSection.data_binding.isnot(None)).all():
+        binding = section.data_binding or {}
+        specs = binding.get("note_table_specs")
+        if not specs:
+            continue
+        blank = [i for i, s in enumerate(specs)
+                 if isinstance(s.get("total"), str) and s.get("total") == ""]
+        if not blank:
+            continue
+        if ReportFigureOverride.query.filter_by(
+                report_id=section.report_id,
+                section_key=section.section_key).first():
+            totals_skipped += 1
+            continue
+        new_specs = copy.deepcopy(specs)
+        for i in blank:
+            new_specs[i]["total"] = "Total"
+        section.data_binding = {**binding, "note_table_specs": new_specs}
+        totals_fixed += 1
+
+    # --- directors' statement signature block ---------------------------
+    OLD_SIG = (
+        '<p class="sig-block">On Behalf of The Board of Directors:</p>\n'
+        '<p class="sig-line">_______________________<br>\n'
+        '{{ customer.director }}<br>Director</p>\n'
+        '<p>Singapore &nbsp;&nbsp; {{ today }}</p>'
+    )
+    NEW_SIG = (
+        '<div class="keep-together">\n'
+        '<p class="sig-block">On Behalf of The Board of Directors:</p>\n'
+        '<p class="sig-line">_______________________<br>\n'
+        '{{ customer.director }}<br>Director</p>\n'
+        '<p>Singapore &nbsp;&nbsp; {{ today }}</p>\n'
+        '</div>'
+    )
+    OLD_LIST = '<p>{{ customer.director }}</p>'
+    NEW_LIST = '<p class="keep-together">{{ customer.director }}</p>'
+
+    sig_fixed = 0
+    for section in AuditReportSection.query.filter_by(
+            section_key="directors_statement").all():
+        html = section.content_html or ""
+        changed = False
+        # NEW_SIG still contains OLD_SIG as a substring (the div only
+        # wraps it), so checking OLD_SIG alone would re-wrap an already
+        # fixed section in a second div every time this is run again.
+        if OLD_SIG in html and NEW_SIG not in html:
+            html = html.replace(OLD_SIG, NEW_SIG)
+            changed = True
+        if OLD_LIST in html:
+            html = html.replace(OLD_LIST, NEW_LIST)
+            changed = True
+        if changed:
+            section.content_html = html
+            sig_fixed += 1
+
+    db.session.commit()
+
+    click.echo(f"Note table totals:  {totals_fixed} section(s) fixed, "
+               f"{totals_skipped} skipped (had an auditor override)")
+    click.echo(f"Signature block:    {sig_fixed} section(s) fixed")
 
 
 @click.command("reset-db")
