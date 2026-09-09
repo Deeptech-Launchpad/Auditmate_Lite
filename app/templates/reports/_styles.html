@@ -44,6 +44,14 @@
 {{ S }} .rpt-page { break-inside: auto; }
 {{ S }} table.fin { break-inside: auto; }
 {{ S }} table.fin tr { break-inside: avoid; }
+/* A subtotal or total row is meaningless on its own - it is only ever read
+   together with the row above it. break-inside:avoid on tr stops a row's
+   own cells splitting mid-row, but does nothing to stop the WHOLE row
+   floating alone to the top of the next page while the rows it totals stay
+   behind - which is what a lone pair of figures with no label looks like.
+   break-before:avoid pulls the row before it down instead, so the two
+   travel together. */
+{{ S }} table.fin tr.subtotal, {{ S }} table.fin tr.total { break-before: avoid; }
 {{ S }} .rpt-head { break-after: avoid; }
 {{ S }} h3.note-title, {{ S }} .tbl-head { break-after: avoid; }
 }

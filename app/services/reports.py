@@ -488,8 +488,14 @@ def _assemble_note_content(note, present, first_year=False, period=None,
             if keys and dedup_key not in seen_table_keys:
                 seen_table_keys.add(dedup_key)
                 heading = piece.get("wording") or piece.get("requirement", "")
+                # An empty string here still satisfies "total" in spec (it
+                # is a str, just a blank one - see the label line in
+                # notes.py), so the footed row printed with two bare
+                # figures and nothing in front of them. Auditor-editable
+                # afterwards like the rest of this table, same as a
+                # statement's own "Total ..." rows.
                 table_specs.append({"source": "accounts", "keys": keys,
-                                    "heading": heading, "total": ""})
+                                    "heading": heading, "total": "Total"})
             # No resolvable trial balance keys: nothing to compute, so
             # nothing is added. The auditor adds it by hand if it applies -
             # see readiness.py for the equivalent "flag, don't fabricate"
