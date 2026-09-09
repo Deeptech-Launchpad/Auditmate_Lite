@@ -54,6 +54,16 @@
 {{ S }} table.fin tr.subtotal, {{ S }} table.fin tr.total { break-before: avoid; }
 {{ S }} .rpt-head { break-after: avoid; }
 {{ S }} h3.note-title, {{ S }} .tbl-head { break-after: avoid; }
+/* A short block of a few lines that only makes sense read together - a
+   director's signature, a list of names - marked explicitly in the section
+   content rather than inferred, since the same rule on every <p> would just
+   as happily strand a long narrative paragraph whole on the next page for
+   no reason. The directors' statement signature ("On Behalf of the Board",
+   the underline, both directors' names, the date) is three separate <p>
+   elements one after another; break-inside on any one of them does nothing
+   to stop the browser breaking BETWEEN them, so it is the wrapping
+   .keep-together div that is asked to travel as one piece. */
+{{ S }} .keep-together { break-inside: avoid; }
 }
 
 {{ S }} .rpt-doc {

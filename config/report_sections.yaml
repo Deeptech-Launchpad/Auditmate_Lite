@@ -67,7 +67,7 @@
 
     <h4>2. Directors</h4>
     <p>The directors of the Company in office at the date of this statement is:</p>
-    <p>{{ customer.director }}</p>
+    <p class="keep-together">{{ customer.director }}</p>
 
     <h4>3. Arrangements to enable directors to acquire shares or debenture</h4>
     <p>Neither at the end of nor at any time during the financial year was the
@@ -97,10 +97,12 @@
     auditors until the receipt of written requirement made under section (6) of
     Section 205B of the Act.</p>
 
+    <div class="keep-together">
     <p class="sig-block">On Behalf of The Board of Directors:</p>
     <p class="sig-line">_______________________<br>
     {{ customer.director }}<br>Director</p>
     <p>Singapore &nbsp;&nbsp; {{ today }}</p>
+    </div>
 
 # Only for engagements that are NOT audit-exempt. Off by default, because the
 # supplied template is for an exempt company.
