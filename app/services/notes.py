@@ -32,6 +32,8 @@ from decimal import Decimal
 
 from ..models import FinancialStatement, TrialBalanceAccount
 from . import prior_year
+from .outward import previous_year as outward_previous_year
+from .prior_year import ZERO
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +97,63 @@ def _previous_totals_by_key(financial_year, keys):
             for key, amount in figures.items() if key in keys}
 
 
+def _same_account(name) -> str:
+    """A client account name reduced to what is comparable between years."""
+    return " ".join((name or "").split()).strip().lower()
+
+
+def _previous_by_account(financial_year, keys):
+    """Last year per ACCOUNT, not merely per key - where that can be known.
+
+    A key-level total is the right granularity for a statement line, which
+    shows one figure per line, and it is what prior_year.balances returns.
+    A note is different: it lists one row per named account, and several
+    accounts routinely share one key (Sales and Service Income are both
+    revenue). Handing each of those rows the same key-level total states
+    every one of them at the combined figure, and a total row then adds
+    that same figure once per account - last year's revenue reported at
+    double, on the face of a note.
+
+    Only the two sources that keep account-level detail can answer this:
+    a previous engagement's own trial balance, and the comparative column
+    this year's trial balance carries per account. A figure read out of a
+    signed-accounts PDF has been through a statement and no longer has
+    accounts to match. Returns {(key, comparable name): amount}, and the
+    caller leaves a row blank rather than guessing when it is not in here.
+    """
+    matched = {}
+
+    # This year's own accounts, each carrying its prior column. Nothing to
+    # match by name at all: the figure is already on the row it belongs to.
+    for account in _accounts_for(financial_year, keys):
+        if account.prior_debit is None and account.prior_credit is None:
+            continue
+        net = (Decimal(str(account.prior_debit or 0))
+               - Decimal(str(account.prior_credit or 0)))
+        matched[(account.standard_key, _same_account(account.account_name))] = (
+            net if net >= 0 else -net)
+
+    # The previous engagement's approved trial balance, by account name.
+    # Ranked after the above only because it is reached second; the two
+    # rarely both exist, and where they do they are the same client's same
+    # accounts.
+    previous = outward_previous_year(financial_year)
+    if previous is not None:
+        prior_accounts = (TrialBalanceAccount.query
+                          .filter(TrialBalanceAccount.financial_year_id
+                                  == previous.id)
+                          .filter(TrialBalanceAccount.standard_key.in_(keys))
+                          .all())
+        for account in prior_accounts:
+            slot = (account.standard_key, _same_account(account.account_name))
+            if slot in matched:
+                continue
+            net = Decimal(str(account.net or 0))
+            matched[slot] = net if net >= 0 else -net
+
+    return matched
+
+
 def _block_accounts(spec, financial_year, statements):
     """One row per trial balance account inside the given standard keys.
 
@@ -105,12 +164,29 @@ def _block_accounts(spec, financial_year, statements):
     keys = spec.get("keys") or []
     rows = []
     prior_totals = _previous_totals_by_key(financial_year, keys)
+    accounts = _accounts_for(financial_year, keys)
 
-    for account in _accounts_for(financial_year, keys):
+    # Whether last year's figure for a key can be put against ONE row or has
+    # to be split between several - see _previous_by_account.
+    shared = {}
+    for account in accounts:
+        shared[account.standard_key] = shared.get(account.standard_key, 0) + 1
+    by_account = (_previous_by_account(financial_year, keys)
+                  if any(n > 1 for n in shared.values()) else {})
+
+    for account in accounts:
         amount = Decimal(str(account.net or 0))
         if amount < 0:
             amount = -amount
-        previous = prior_totals.get(account.standard_key)
+        if shared.get(account.standard_key, 0) > 1:
+            # Sole claim on the key's total is what makes it this row's
+            # figure. With siblings under the same key it has to be this
+            # account's own, or nothing - never the shared total, which
+            # would state each sibling at the combined figure.
+            previous = by_account.get(
+                (account.standard_key, _same_account(account.account_name)))
+        else:
+            previous = prior_totals.get(account.standard_key)
         rows.append(_row(account.account_name, amount, previous,
                          ref=f"tb:{account.id}"))
 
@@ -119,13 +195,19 @@ def _block_accounts(spec, financial_year, statements):
 
     if "total" in spec and len(rows) > 1:
         label = spec["total"] if isinstance(spec["total"], str) else ""
-        rows.append(_row(
-            label, sum(r["current"] for r in rows),
-            # Only foot the comparative column when every row has one - a
-            # partial total would misstate last year's figure as complete.
-            sum(Decimal(str(r["previous"])) for r in rows)
-            if all(r["previous"] is not None for r in rows) else None,
-            bold=True, rule=True))
+        # Footed from the key totals rather than by adding the rows up. The
+        # rows can hold the same key's figure more than once, or hold none
+        # where one account of several could not be told from its siblings;
+        # the key totals are the year's actual figure either way. Still only
+        # footed when every key on show has one - a partial total would
+        # misstate last year as complete.
+        keys_shown = {a.standard_key for a in accounts}
+        previous_total = (sum((prior_totals[k] for k in keys_shown), ZERO)
+                          if keys_shown and all(k in prior_totals
+                                                for k in keys_shown)
+                          else None)
+        rows.append(_row(label, sum(r["current"] for r in rows),
+                         previous_total, bold=True, rule=True))
 
     return {"heading": spec.get("heading"), "rows": rows,
             "columns": spec.get("columns")}
