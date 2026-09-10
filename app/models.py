@@ -333,6 +333,11 @@ class Customer(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    # Bumped on every view or edit (see customers.py detail()/edit()) so the
+    # customer list can surface whoever was worked on most recently. Kept
+    # separate from updated_at, which is a real audit-trail field and should
+    # only change when data actually changes, not just from being viewed.
+    last_activity_at = db.Column(db.DateTime)
 
     engagement_partner = db.relationship("User", foreign_keys=[engagement_partner_id])
     company_documents = db.relationship(

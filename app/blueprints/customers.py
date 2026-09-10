@@ -6,7 +6,7 @@ from pathlib import Path
 from flask import (Blueprint, abort, flash, redirect, render_template, request,
                    url_for)
 from flask_login import current_user, login_required
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from ..extensions import db
 from ..models import (Customer, CustomerDocument, Document, FinancialStatement,
@@ -83,7 +83,11 @@ def index():
                                  Customer.email.ilike(pattern),
                                  Customer.contact_person.ilike(pattern)))
 
-    pagination = (query.order_by(Customer.id.desc())
+    # Most recently opened or edited customer first; one never touched
+    # falls back to its creation order rather than sorting as if untouched
+    # means "oldest" or "newest" by accident.
+    recency = func.coalesce(Customer.last_activity_at, Customer.created_at)
+    pagination = (query.order_by(recency.desc(), Customer.id.desc())
                   .paginate(page=page, per_page=20, error_out=False))
 
     archived_count = Customer.query.filter_by(is_active=False).count()
@@ -330,6 +334,8 @@ def create():
 @login_required
 def detail(customer_id):
     customer = db.session.get(Customer, customer_id) or abort(404)
+    customer.last_activity_at = datetime.utcnow()
+    db.session.commit()
 
     # A sensible starting label for "Add a financial year" below, so a
     # second and third year need no typing at all - only a first year that
@@ -383,6 +389,7 @@ def edit(customer_id):
         customer.ssic_description = (request.form.get("ssic_description") or "").strip() or None
         customer.notes = (request.form.get("notes") or "").strip() or None
 
+        customer.last_activity_at = datetime.utcnow()
         record("customer", customer.id, "update", before=before,
                after={"name": customer.name, "uen": customer.uen})
         db.session.commit()
