@@ -83,7 +83,7 @@ def index():
                                  Customer.email.ilike(pattern),
                                  Customer.contact_person.ilike(pattern)))
 
-    pagination = (query.order_by(Customer.name)
+    pagination = (query.order_by(Customer.created_at.desc())
                   .paginate(page=page, per_page=20, error_out=False))
 
     archived_count = Customer.query.filter_by(is_active=False).count()
