@@ -527,10 +527,17 @@ def _assemble_note_content(note, present, first_year=False, period=None,
         return True
 
     def add_piece(piece):
+        # Checked before the trigger, not after: a MANUAL piece never
+        # reaches "triggered" at all (see _piece_triggered), so checking
+        # trigger first meant an unreviewed piece that was always going to
+        # need a person's confirmation never got its draft captured either -
+        # invisible, not just correctly un-printed. held_back() only cares
+        # about review status, never about whether the piece would have
+        # fired, so it belongs first regardless of what follows.
+        if held_back(piece):
+            return
         if not _piece_triggered(piece.get("tick_state"), piece.get("tb_keys"),
                                 present):
-            return
-        if held_back(piece):
             return
         if piece.get("output_form") == "Narrative paragraph":
             wording = piece.get("wording")
@@ -588,17 +595,24 @@ def _assemble_note_content(note, present, first_year=False, period=None,
                 if mismatch:
                     sub_parts.append(f"<p>{mismatch}</p>")
 
-            if _piece_triggered(sub.get("tick_state"), sub.get("trigger_keys"),
-                               present):
-                for piece in sub.get("pieces", []):
-                    if not _piece_triggered(piece.get("tick_state"),
-                                            piece.get("tb_keys"), present):
-                        continue
-                    if held_back(piece, heading=sub.get("heading")):
-                        continue
-                    if (piece.get("output_form") == "Narrative paragraph"
-                            and piece.get("wording")):
-                        sub_parts.append(f"<p>{piece['wording']}</p>")
+            # Same reordering as add_piece() above, for the same reason: a
+            # sub-section that never triggers (or a piece inside one that
+            # never does) still deserves its unreviewed wording captured as
+            # a draft, not silently dropped along with the printing decision
+            # that correctly keeps it off the page.
+            sub_triggered = _piece_triggered(sub.get("tick_state"),
+                                             sub.get("trigger_keys"), present)
+            for piece in sub.get("pieces", []):
+                if held_back(piece, heading=sub.get("heading")):
+                    continue
+                if not sub_triggered:
+                    continue
+                if not _piece_triggered(piece.get("tick_state"),
+                                        piece.get("tb_keys"), present):
+                    continue
+                if (piece.get("output_form") == "Narrative paragraph"
+                        and piece.get("wording")):
+                    sub_parts.append(f"<p>{piece['wording']}</p>")
 
         if sub_parts:
             html_parts.append(f"<h4>{sub['heading']}</h4>")
