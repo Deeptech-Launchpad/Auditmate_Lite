@@ -268,12 +268,19 @@
 }
 {{ S }} tr.stale td { background: rgba(200, 40, 40, .06); }
 
+/* "Made up of: ..." under a note table - see _document.html. Working-file
+   support, same family as the src-dot icon it stands in for at table
+   level, and hidden by the same two belts-and-braces rules below. */
+{{ S }} .tbl-source {
+  margin: -6px 0 12px; font-size: .82em; color: #5a6472; font-style: italic;
+}
+
 {% if for_pdf %}
 /* The delivered document carries no working marks at all. */
 {{ S }} .ed-label, {{ S }} .ed-amount {
   background: none; border-bottom: 0; box-shadow: none; padding: 0;
 }
-{{ S }} .src-dot, {{ S }} .stale-note { display: none; }
+{{ S }} .src-dot, {{ S }} .stale-note, {{ S }} .tbl-source { display: none; }
 {{ S }} tr.stale td { background: none; }
 {% endif %}
 
@@ -282,6 +289,6 @@
     background: none !important; border-bottom: 0 !important;
     box-shadow: none !important; padding: 0 !important;
   }
-  {{ S }} .src-dot, {{ S }} .stale-note { display: none !important; }
+  {{ S }} .src-dot, {{ S }} .stale-note, {{ S }} .tbl-source { display: none !important; }
   {{ S }} tr.stale td { background: none !important; }
 }

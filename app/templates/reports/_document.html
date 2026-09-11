@@ -379,6 +379,14 @@
             {% endfor %}
           </tbody>
         </table>
+        {% if editable and table.sourced_from %}
+          {# Working-file support only - never shown in the delivered
+             preview/export, which never sets `editable`. Answers "where
+             does this figure come from" for the table as a whole, without
+             clicking the per-cell info icon on every row. #}
+          <p class="tbl-source">Made up of: {{ table.sourced_from|join(', ') }}
+            — from the client's trial balance.</p>
+        {% endif %}
       {% endfor %}
     {% endif %}
 

@@ -364,6 +364,43 @@ def _readable_heading(heading):
     return " · ".join(part for part in parts if part)
 
 
+def _sourced_from(rows):
+    """Distinct trial balance account names behind a table's rows, in the
+    order they first appear.
+
+    Every "source: accounts" row already carries `ref="tb:<account id>"` -
+    that is what the existing per-figure info icon reads to answer "where
+    did this come from" for one cell. This answers the same question for
+    the table as a whole, so a preparer can see it without clicking
+    anything: which of the client's own accounts this note's figures are
+    made up of.
+
+    A row with no `ref` - a computed line, a tax reconciliation, a currency
+    split - is not backed by one account and is silently left out rather
+    than guessed at. A table where nothing resolves returns an empty list,
+    and the caption is not shown at all rather than shown empty.
+    """
+    ids, seen = [], set()
+    for row in rows:
+        ref = row.get("ref")
+        if ref and ref.startswith("tb:") and ref not in seen:
+            seen.add(ref)
+            ids.append(int(ref[3:]))
+    if not ids:
+        return []
+
+    accounts = {a.id: a.account_name for a in
+                TrialBalanceAccount.query.filter(
+                    TrialBalanceAccount.id.in_(ids)).all()}
+    names, seen_names = [], set()
+    for account_id in ids:
+        name = accounts.get(account_id)
+        if name and name not in seen_names:
+            seen_names.add(name)
+            names.append(name)
+    return names
+
+
 def build_tables(spec, financial_year):
     """Turn a section's `note_table:` config into renderable tables."""
     if not spec:
@@ -392,6 +429,7 @@ def build_tables(spec, financial_year):
             # every report already created is corrected on its next render
             # instead of needing its stored data_binding rewritten.
             table["heading"] = _readable_heading(table.get("heading"))
+            table["sourced_from"] = _sourced_from(table["rows"])
             tables.append(table)
 
     return tables
