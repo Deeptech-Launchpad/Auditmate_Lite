@@ -533,6 +533,46 @@ def load_line_code_map():
     return (doc.get("codes") or {}), set(doc.get("non_figure") or [])
 
 
+def load_condition_classes():
+    """Condition sentences a balance's presence actually answers.
+
+    Read fresh, same reasoning as `load_line_code_map` - and the same
+    fail-safe default applies if the file cannot be read: nothing is judged
+    testable, so nothing is auto-enabled that a person has not decided on
+    (see PRESENCE_FALLBACK below).
+    """
+    import yaml
+    from flask import current_app
+
+    path = current_app.config["CONFIG_DIR"] / "condition_classes.yaml"
+    if not path.exists():
+        log.warning("config/condition_classes.yaml is missing - every "
+                    "condition falls back to manual")
+        return set()
+    with open(path, "r", encoding="utf-8") as handle:
+        doc = yaml.safe_load(handle) or {}
+    return {str(t).strip().lower() for t in (doc.get("presence") or [])}
+
+
+def condition_class(condition_text, presence_texts):
+    """'always', 'presence' or 'judgment' for one condition sentence.
+
+    UNKNOWN TEXT IS JUDGMENT, NOT PRESENCE. A condition sentence this file
+    has never classified - a new note added to a future library, a text
+    typed slightly differently - must not be assumed safe to test just
+    because it happens to carry a line code. See the long comment at the
+    top of condition_classes.yaml: the cost of wrongly calling something
+    judgment is one extra tick from the preparer; the cost of wrongly
+    calling it presence is a sentence about the company nobody checked.
+    """
+    text = (condition_text or "").strip().lower()
+    if text in ("", "always"):
+        return "always"
+    if text in presence_texts:
+        return "presence"
+    return "judgment"
+
+
 def _codes_of(piece):
     return [c for c in (piece.get("line_codes") or []) if c]
 
@@ -547,13 +587,19 @@ def resolve_keys(codes, code_map):
     return keys
 
 
-def _resolve_pieces(pieces, code_map, non_figure):
-    """Fill each piece's tb_keys from its line codes.
+def _resolve_pieces(pieces, code_map, non_figure, presence_texts):
+    """Fill each piece's tb_keys, and decide whether TB-driven is honest.
 
-    A piece the library marked TB-driven whose codes resolve to no key at all
-    cannot be tested, so it is switched to manual rather than left looking
-    automatic and never firing. Narrative codes (STATIC, CLIENT and the rest)
-    are exempt: they were never about a balance in the first place.
+    Two separate questions, both answered here. Can the piece's line codes
+    resolve to a real key at all (`resolve_keys`)? And - the one Stage 1's
+    import did not ask - does the piece's own condition SENTENCE mean
+    "the balance exists", or something more specific a balance cannot prove
+    on its own, like "the loan has covenants" or "this is a related party"?
+    See condition_classes.yaml for the full reasoning.
+
+    A piece downgraded either way is marked so the reason is visible rather
+    than the piece just quietly not being the one that decides its note -
+    see `downgrade_reason` on the returned dict.
     """
     out = []
     for piece in pieces:
@@ -561,16 +607,51 @@ def _resolve_pieces(pieces, code_map, non_figure):
         codes = _codes_of(piece)
         piece["tb_keys"] = resolve_keys(codes, code_map)
 
-        if (piece.get("tick_state") == "tb_driven"
-                and not piece["tb_keys"]
-                and not any(c in non_figure for c in codes)):
+        # The workbook itself marks a small number of tables as never safe
+        # to auto-trigger - "PREPARER INPUT. Must never auto-trigger." on
+        # the assets-pledged-as-security tables, with a recorded failure:
+        # printed as a pledge on a laptop and on loan/receivable accounts in
+        # two test engagements where nothing was pledged. Those tables carry
+        # no condition_source of their own (`_pieces_for` never sets one for
+        # a synthetic table entry) and would otherwise pass straight through
+        # as "presence" below purely because their line codes resolve to
+        # real balances - which is exactly the failure mode being warned
+        # against. Checked before anything else, and it wins outright.
+        build_note = (piece.get("build_note") or "").lower()
+        if "never auto-trigger" in build_note or "never auto trigger" in build_note:
             piece["tick_state"] = "manual"
             piece["downgraded"] = True
+            piece["downgrade_reason"] = "preparer_input_only"
+            out.append(piece)
+            continue
+
+        if piece.get("tick_state") == "tb_driven":
+            # Only a piece that came from the Paragraphs sheet carries its
+            # own "Condition" sentence (`condition_source` is set, even to
+            # an empty string, by the Paragraphs loop above). The table
+            # pieces `_pieces_for` synthesises from the Tables sheet have no
+            # such column to read - a table is gated purely by whether its
+            # own line codes resolve, exactly as Stage 2 already had it, and
+            # must not be read as an empty condition and waved through as
+            # unconditional.
+            has_condition_text = piece.get("condition_source") is not None
+            cls = (condition_class(piece.get("condition_text"), presence_texts)
+                  if has_condition_text else "presence")
+            if cls == "always":
+                piece["tick_state"] = "always"
+            elif cls == "judgment":
+                piece["tick_state"] = "manual"
+                piece["downgraded"] = True
+                piece["downgrade_reason"] = "judgment"
+            elif not piece["tb_keys"] and not any(c in non_figure for c in codes):
+                piece["tick_state"] = "manual"
+                piece["downgraded"] = True
+                piece["downgrade_reason"] = "no_line_code"
         out.append(piece)
     return out
 
 
-def _note_dict(row, code_map, non_figure, inherited):
+def _note_dict(row, code_map, non_figure, presence_texts, inherited):
     """One library note in the shape `services/reports.py` reads.
 
     `inherited` is the flat catalogue's row for this note, or None. Where
@@ -595,17 +676,24 @@ def _note_dict(row, code_map, non_figure, inherited):
     automatically: `tick_state_library` carries it so the firm can review
     these notes and take the change deliberately.
     """
-    pieces = _resolve_pieces(row.pieces or [], code_map, non_figure)
+    pieces = _resolve_pieces(row.pieces or [], code_map, non_figure,
+                             presence_texts)
 
     if inherited is not None and inherited.trigger_keys:
         trigger_keys = list(inherited.trigger_keys)
     else:
-        codes = []
-        for piece in (row.pieces or []):
-            for code in _codes_of(piece):
-                if code not in codes:
-                    codes.append(code)
-        trigger_keys = resolve_keys(codes, code_map)
+        # Built from pieces that survived their OWN condition check, not
+        # from every line code the note happens to mention. A note-level
+        # trigger built from a judgment piece's line code would fire the
+        # whole note on a fact the paragraph itself is not allowed to
+        # assume - see _resolve_pieces.
+        trigger_keys = []
+        for piece in pieces:
+            if piece.get("tick_state") != "tb_driven":
+                continue
+            for key in piece.get("tb_keys", []):
+                if key not in trigger_keys:
+                    trigger_keys.append(key)
 
     tick_state = row.tick_state
     if tick_state == "tb_driven" and not trigger_keys:
@@ -660,6 +748,7 @@ def build_catalogue(version_id):
     recoverable and a note silently missing from the accounts is not.
     """
     code_map, non_figure = load_line_code_map()
+    presence_texts = load_condition_classes()
 
     rows = (NoteLibraryNote.query
             .filter_by(library_version_id=version_id)
@@ -675,13 +764,15 @@ def build_catalogue(version_id):
             parents.append(row)
 
     by_heading = {normalise_heading(r.heading): r.key for r in parents}
-    notes = {r.key: _note_dict(r, code_map, non_figure, inherited.get(r.key))
+    notes = {r.key: _note_dict(r, code_map, non_figure, presence_texts,
+                               inherited.get(r.key))
              for r in parents}
     order = [r.key for r in parents]
 
     for row in children:
         parent_key = by_heading.get(normalise_heading(row.sits_inside))
-        child = _note_dict(row, code_map, non_figure, inherited.get(row.key))
+        child = _note_dict(row, code_map, non_figure, presence_texts,
+                           inherited.get(row.key))
         if parent_key is None:
             log.warning("Library note %r says it sits inside %r, which is not "
                         "a numbered note in this version - promoting it",

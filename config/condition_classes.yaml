@@ -1,0 +1,134 @@
+# Notes library condition texts: which ones a trial balance can actually
+# answer.
+# ---------------------------------------------------------------------------
+# Every paragraph and table in the library carries a "Condition source" -
+# Line balance, Table binding, Preparer confirms, Client record, Firm
+# setting - and, for the two figure-derived sources, a "Condition" sentence
+# in English: "Where PPE exists", "Where covenants exist", "Where any going
+# concern indicator is present".
+#
+# Line balance and Table binding both sound like the same thing: read a
+# balance, decide whether to print. They are not. "Where PPE exists" IS
+# that - the account either carries a figure or it does not. "Where
+# covenants exist" is not - a company can hold a bank loan with no
+# covenants at all, and the trial balance cannot tell the two apart. Firing
+# a covenants paragraph off the mere presence of a loan balance would print
+# something about the company's borrowing terms that nobody has checked is
+# true, which is exactly the failure the firm's own rule on figures exists
+# to stop applied to words instead of numbers.
+#
+# So this file draws the real line. PRESENCE lists the condition sentences
+# where a balance existing is itself the whole answer - safe to test by
+# looking up the line codes already on the paragraph or table and checking
+# `config/line_code_map.yaml`. Everything else defaults to JUDGMENT and
+# stays manual: offered to the preparer to tick, never assumed.
+#
+# THE DEFAULT MATTERS MORE THAN THE LIST. A condition sentence this file has
+# never seen - because the library added a new note, or because a text was
+# typed slightly differently - falls to judgment automatically. Getting a
+# genuinely safe condition wrongly classified as manual costs the preparer
+# one tick. Getting a judgment call wrongly classified as automatic prints a
+# sentence about the company that was never checked.
+#
+# "Always" is not in either list. A condition literally worded "Always" is
+# treated as unconditional regardless of which source column it sits
+# under - a handful of rows in the workbook mark a paragraph "Table
+# binding" / "Always" together, which is the source column saying how the
+# content is built and the condition column saying it has no gate at all.
+
+presence:
+  # An asset, liability or P&L line whose account either has a balance or
+  # does not - the paragraph or table about it is switched on by exactly
+  # that fact and nothing more is claimed.
+  - "Where PPE exists"
+  - "Where accrual exists"
+  - "Where inventories exist"
+  - "Where investment property"
+  - "Where investment property is mapped"
+  - "Where intangibles"
+  - "Where an intangible asset is mapped"
+  - "Where investments held"
+  - "Where an investment in a subsidiary is mapped"
+  - "Where subsidiaries held"
+  - "Where leases"
+  - "Where a borrowing is mapped"
+  - "Where borrowings are mapped"
+  - "Where borrowings or leases"
+  - "Where deferred tax"
+  - "Where provisions"
+  - "Where provision exists"
+  - "Where contract balances"
+  - "Where contract liabilities"
+  - "Where a contract liability is mapped"
+  - "Where reserve exists"
+  - "Where dividends"
+  - "Where dividends paid"
+  - "Where held for sale"
+  - "Where an asset is classified as held for sale"
+  - "Where a grant income account is mapped"
+  - "Where capitalised contract costs are mapped"
+  - "Where lease income is mapped"
+  - "Where a share-based payment is mapped"
+  - "Where a hedging instrument is mapped"
+  - "Where research or development expenditure is mapped"
+  - "Where related party balances exist"
+  - "Where interest"
+  # Back-references to whatever the SAME paragraph's own line codes are
+  # about ("such assets", "such fees") - not a separate fact, the paragraph
+  # sits right under the balance-presence table it describes.
+  - "Where such assets"
+  - "Where such fees"
+  - "Where such instruments"
+  - "Where such inventories"
+  - "Where such obligations"
+
+# Everything below is documentation, not code read at runtime - it is what
+# was deliberately left OUT of `presence` and why, so the next person
+# extending this file can see the reasoning rather than re-deriving it.
+# These stay manual even though many share a resolvable line code, because
+# the code proves the account exists and the sentence asks something more:
+#
+#   Where covenants exist / Where default / Where floating rate debt / Where
+#   the account bears no interest    - loan TERMS, not the loan balance.
+#
+#   Where collateral / Where pledged - whether an asset is security for
+#   something, not whether the asset exists.
+#
+#   Where any going concern indicator is present / Where material / Where
+#   material impairment / Where losses exist                          - an
+#   auditor's judgement, by definition never a balance-presence test.
+#
+#   Where FX differences / Where FX exposure / Where FX transactions / Where
+#   a currency other than the presentation currency is held  - this system
+#   does not record a currency per account, so none of these can be tested
+#   at all yet.
+#
+#   Where FV disclosed / Where FV measured / Where FV model / Where FVOCI
+#   assets / Where Level 2 or 3 / Where Level 3 / Where an account carries a
+#   fair value measurement basis   - which valuation basis applies is an
+#   accounting policy decision, not a fact the balance itself states.
+#
+#   Where concentration / Where restricted cash / Where offsetting / Where
+#   exemption used / Where applicable / Where compensation received / Where
+#   a holding company exists / Where a parent exists / Where management
+#   entity used   - facts about the company's arrangements that a balance
+#   existing does not establish.
+#
+#   Where lessor / Where sublease / Where sale and leaseback / Where
+#   modification / Where low-value leases / Where short-term leases / Where
+#   variable payments  - specific lease scenarios; a lease liability balance
+#   says the company leases something, not which of these apply to it.
+#
+#   Where commitments exist / Where contingencies / Where the preparer
+#   records a contingent asset / Where unsatisfied performance obligations
+#   remain  - off-balance-sheet facts with no trial balance line at all.
+#
+#   Where impairment / Where write-down / Where reversal / Where non-cash
+#   items / Where transfers / Where events occur / Where a prior period
+#   error is corrected / Where an estimate changed materially  - specific
+#   events during the year; an asset balance existing says nothing about
+#   whether one of these happened to it.
+#
+#   First-time adoption / Function presentation / Manual confirmation only /
+#   Where asserted  - presentation choices and explicit manual markers, not
+#   balance facts at all.

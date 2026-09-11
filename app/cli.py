@@ -1238,6 +1238,37 @@ def note_library():
         click.echo(f"  Imported       {version.imported_at:%d %b %Y %H:%M} "
                    f"from {version.source_filename or '-'}")
 
+        # What the condition evaluator actually decided for this version's
+        # pieces - not just import-time labels, but the presence/judgment
+        # classification applied when the catalogue is read. Shown here so
+        # the firm can see how many paragraphs are genuinely automatic
+        # versus held for the preparer, without opening the report builder
+        # of every engagement pinned to it.
+        from .services import note_library as nl
+        try:
+            catalogue = nl.build_catalogue(version.id)
+        except Exception as exc:  # pragma: no cover - diagnostic path only
+            click.echo(f"  (could not classify pieces: {exc})")
+            continue
+        counts = {"always": 0, "tb_driven": 0, "manual": 0}
+        downgrades = {}
+        def _walk(notes):
+            for note in notes:
+                for piece in note.get("pieces", []):
+                    state = piece.get("tick_state", "manual")
+                    counts[state] = counts.get(state, 0) + 1
+                    reason = piece.get("downgrade_reason")
+                    if reason:
+                        downgrades[reason] = downgrades.get(reason, 0) + 1
+                _walk(note.get("subsections", []))
+        _walk(catalogue)
+        click.echo(f"  Paragraphs     {counts['always']} always-on, "
+                   f"{counts['tb_driven']} figure-driven, "
+                   f"{counts['manual']} for the preparer to tick")
+        if downgrades:
+            reasons = ", ".join(f"{v} {k}" for k, v in sorted(downgrades.items()))
+            click.echo(f"                 ({reasons})")
+
     unpinned = FinancialYear.query.filter(
         FinancialYear.library_version_id.is_(None)).count()
     click.echo("")
