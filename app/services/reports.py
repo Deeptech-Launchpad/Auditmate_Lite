@@ -87,10 +87,22 @@ def load_sections():
         return yaml.safe_load(handle) or []
 
 
-def load_notes_catalogue():
+def load_notes_catalogue(financial_year=None):
     """The FRS disclosure library: every note that could apply to a
     single-entity Singapore Pte Ltd, in the order the firm's own template
     presents them.
+
+    WHICH library depends on the engagement. A financial year pinned to a
+    notes library version reports under that version for the rest of its
+    life - see `note_library.pin_version`. That is the whole point of
+    versioning: FRS 118 replaces FRS 1 for periods beginning 1 January 2027,
+    and an FY2026 and an FY2027 engagement open in the same week must each
+    get the library that was in force for its own period.
+
+    Passing no financial year, or one that was never pinned, falls back to
+    the flat `note_library_entries` table - which is every engagement that
+    existed before versioning, and is why introducing it changed nothing for
+    work already in progress.
 
     Read from `note_library_entries`, not the YAML file - the table is what
     an auditor's "save to the library" actually writes to, and a note
@@ -105,16 +117,37 @@ def load_notes_catalogue():
     """
     from ..models import NoteLibraryEntry
 
-    rows = (NoteLibraryEntry.query
-            .order_by(NoteLibraryEntry.sort_order).all())
-    return [{
-        "key": r.key,
-        "heading": r.heading,
-        "tick_state": r.tick_state,
-        "trigger_keys": r.trigger_keys,
-        "pieces": r.pieces or [],
-        "subsections": r.subsections or [],
-    } for r in rows]
+    def flat(rows):
+        return [{
+            "key": r.key,
+            "heading": r.heading,
+            "tick_state": r.tick_state,
+            "trigger_keys": r.trigger_keys,
+            "pieces": r.pieces or [],
+            "subsections": r.subsections or [],
+        } for r in rows]
+
+    version_id = getattr(financial_year, "library_version_id", None)
+    if version_id is None:
+        return flat(NoteLibraryEntry.query
+                    .order_by(NoteLibraryEntry.sort_order).all())
+
+    from . import note_library
+
+    catalogue = note_library.build_catalogue(version_id)
+
+    # A note an auditor wrote belongs to the firm, not to a library version,
+    # so it survives every import and is offered to an engagement on any
+    # version. Appended rather than merged: if the new library happens to
+    # carry a note with the same key, the library's is the one the engagement
+    # reports under and the auditor's own is not silently duplicated beside it.
+    known = {n["key"] for n in catalogue}
+    catalogue.extend(flat(
+        NoteLibraryEntry.query
+        .filter_by(source="auditor_added")
+        .filter(NoteLibraryEntry.key.notin_(known) if known else True)
+        .order_by(NoteLibraryEntry.sort_order).all()))
+    return catalogue
 
 
 def visible_statement_lines(lines, detailed=False):
@@ -319,7 +352,7 @@ def ensure_report(financial_year) -> AuditReport:
 
     period = (financial_year.start_date, financial_year.end_date)
     previous_period = _previous_period_of(financial_year)
-    for note in load_notes_catalogue():
+    for note in load_notes_catalogue(financial_year):
         db.session.add(_build_note_section(
             note, present, order, report.id,
             first_year=bool(financial_year.is_first_year), period=period,
@@ -466,10 +499,38 @@ def _assemble_note_content(note, present, first_year=False, period=None,
     html_parts = []
     table_specs = []
     seen_table_keys = set()
+    drafts = []
+
+    def held_back(piece, heading=None):
+        """True if this piece is drafted wording nobody has reviewed yet.
+
+        68 paragraphs in the library were written for it rather than taken
+        from the disclosure index. They are plausible and they are not
+        approved, and that difference becomes invisible the moment wording
+        sits in a note looking like every other sentence in the accounts.
+
+        So they are not assembled at all. The note is built from reviewed
+        wording only, and the draft is handed to the preparer through
+        content_gaps() to read, judge and write in themselves. Any sentence
+        that reaches a client's financial statements is then one a person
+        put there - the same rule the figures already follow.
+        """
+        if piece.get("review_status") != "unreviewed":
+            return False
+        if piece.get("wording"):
+            drafts.append({
+                "heading": heading,
+                "wording": piece["wording"],
+                "requirement": piece.get("requirement") or "",
+                "ref": piece.get("ref") or "",
+            })
+        return True
 
     def add_piece(piece):
         if not _piece_triggered(piece.get("tick_state"), piece.get("tb_keys"),
                                 present):
+            return
+        if held_back(piece):
             return
         if piece.get("output_form") == "Narrative paragraph":
             wording = piece.get("wording")
@@ -530,9 +591,12 @@ def _assemble_note_content(note, present, first_year=False, period=None,
             if _piece_triggered(sub.get("tick_state"), sub.get("trigger_keys"),
                                present):
                 for piece in sub.get("pieces", []):
-                    if (_piece_triggered(piece.get("tick_state"),
-                                        piece.get("tb_keys"), present)
-                            and piece.get("output_form") == "Narrative paragraph"
+                    if not _piece_triggered(piece.get("tick_state"),
+                                            piece.get("tb_keys"), present):
+                        continue
+                    if held_back(piece, heading=sub.get("heading")):
+                        continue
+                    if (piece.get("output_form") == "Narrative paragraph"
                             and piece.get("wording")):
                         sub_parts.append(f"<p>{piece['wording']}</p>")
 
@@ -550,14 +614,24 @@ def _assemble_note_content(note, present, first_year=False, period=None,
     if not html_parts and not table_specs:
         html_parts.append(UNWRITTEN_NOTE_HTML)
 
-    return "\n".join(html_parts), table_specs
+    return "\n".join(html_parts), table_specs, drafts
 
 
 def _build_note_section(note, present, sort_order, report_id,
                         first_year=False, period=None, previous_period=None):
-    content_html, table_specs = _assemble_note_content(
+    content_html, table_specs, drafts = _assemble_note_content(
         note, present, first_year=first_year, period=period,
         previous_period=previous_period)
+
+    binding = {}
+    if table_specs:
+        binding["note_table_specs"] = table_specs
+    if drafts:
+        # Kept on the section rather than recomputed on each builder load, so
+        # the preparer still sees what the library drafted even after writing
+        # the note in their own words.
+        binding["draft_wording"] = drafts
+
     return AuditReportSection(
         report_id=report_id,
         section_key=f"{NOTE_PREFIX}{note['key']}",
@@ -566,7 +640,7 @@ def _build_note_section(note, present, sort_order, report_id,
         sort_order=sort_order,
         is_enabled=_note_triggered(note, present),
         content_html=content_html,
-        data_binding={"note_table_specs": table_specs} if table_specs else None,
+        data_binding=binding or None,
     )
 
 
@@ -608,7 +682,7 @@ def carry_forward_prior_wording(report, financial_year) -> int:
         return 0
 
     present = _present_keys(financial_year)
-    catalogue = {n["key"]: n for n in load_notes_catalogue()}
+    catalogue = {n["key"]: n for n in load_notes_catalogue(financial_year)}
     filled = 0
 
     for section in report.sections:
@@ -626,7 +700,7 @@ def carry_forward_prior_wording(report, financial_year) -> int:
         # Untouched means identical to what the library would generate right
         # now. Recomputed rather than remembered, so a section is correctly
         # treated as edited even if it was changed before this existed.
-        default_html, _specs = _assemble_note_content(
+        default_html, _specs, _drafts = _assemble_note_content(
             note, present, first_year=bool(financial_year.is_first_year),
             period=(financial_year.start_date, financial_year.end_date),
             previous_period=_previous_period_of(financial_year))
@@ -673,7 +747,7 @@ def prior_notes_dropped(report, financial_year):
     Returns a row per dropped note with the reason it is not there, so the
     preparer confirms the omission rather than discovering it after signing.
     """
-    catalogue = {n["key"]: n for n in load_notes_catalogue()}
+    catalogue = {n["key"]: n for n in load_notes_catalogue(financial_year)}
     present = _present_keys(financial_year)
     sections = {s.section_key: s for s in report.sections}
 
@@ -820,7 +894,7 @@ def content_gaps(report, financial_year):
     """
     from .statements import load_templates
 
-    catalogue = {n["key"]: n for n in load_notes_catalogue()}
+    catalogue = {n["key"]: n for n in load_notes_catalogue(financial_year)}
     templates = load_templates()
 
     missing = []
@@ -933,7 +1007,29 @@ def content_gaps(report, financial_year):
                        "no disclosure under it. Write it, or switch it off."),
         })
 
+    # Wording the library drafted but nobody has reviewed. Held out of the
+    # note itself by _assemble_note_content - see held_back() there - and
+    # shown here instead, so the preparer can read what was drafted, decide
+    # whether it is right for this company, and write it in themselves.
+    #
+    # Not a defect in the accounts like the categories above: a note can be
+    # complete with none of this used. It is offered, and offering it is the
+    # only safe place for wording that has not been signed off.
+    unreviewed = []
+    for section in ordered_sections(report):
+        if not section.is_enabled or section.section_type == "statement":
+            continue
+        for draft in (section.data_binding or {}).get("draft_wording", []):
+            unreviewed.append({
+                "note": section.title,
+                "heading": draft.get("heading") or "",
+                "wording": draft.get("wording") or "",
+                "requirement": draft.get("requirement") or "",
+                "ref": draft.get("ref") or "",
+            })
+
     return {"missing": grouped_missing, "thin": thin, "unwritten": unwritten,
+            "unreviewed": unreviewed,
             "has_gaps": bool(grouped_missing or thin or unwritten)}
 
 

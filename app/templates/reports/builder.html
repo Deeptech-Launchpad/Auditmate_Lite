@@ -167,6 +167,50 @@
   </div>
 {% endif %}
 
+{% if content_gaps and content_gaps.unreviewed %}
+  {# Wording the library drafted but no reviewer has approved. Deliberately
+     NOT in the note - see held_back() in services/reports.py. Offered here
+     to read and write in, so anything reaching a client was put there by a
+     person. Its own card, not a red gap row: a note can be complete without
+     using any of it. #}
+  <div class="card" style="margin-bottom:16px;border-left:3px solid #3f5266;background:#f7f8fa">
+    <div class="card-head">
+      <h2>{{ content_gaps.unreviewed|length }} drafted paragraph(s) awaiting review</h2>
+      <span class="hint">not included in the accounts</span>
+    </div>
+    <div class="card-body">
+      <p class="small" style="margin-top:0">
+        The notes library carries these as wording written for it rather than
+        taken from the disclosure index, so none of it has been reviewed. It
+        is <strong>not</strong> in the notes below and will not print. Read
+        each one, decide whether it is right for this company, and write it
+        into the note yourself.
+      </p>
+
+      {% for draft in content_gaps.unreviewed %}
+        <div class="gap-row">
+          <span class="pill pill-blue">DRAFT</span>
+          <div class="gap-body">
+            <div class="gap-title">
+              {{ draft.note }}{% if draft.heading %} &mdash; {{ draft.heading }}{% endif %}
+            </div>
+            {% if draft.requirement %}
+              <div class="gap-detail muted small">{{ draft.requirement }}</div>
+            {% endif %}
+            <div class="gap-detail small"
+                 style="margin-top:6px;padding:8px 10px;background:#fff;border:1px solid var(--border);border-radius:2px">
+              {{ draft.wording }}
+            </div>
+            {% if draft.ref %}
+              <div class="gap-detail muted small">Index ref {{ draft.ref }}</div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
 {% if prior_dropped %}
   {# Last year said something this year does not. Often correct - a loan is
      repaid, an asset sold - but never something to discover after signing,

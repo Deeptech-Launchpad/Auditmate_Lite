@@ -506,3 +506,189 @@ def apply_plan(data, digest, path, activate=False, user_id=None):
     log.info("Imported notes library %s (%d notes)",
              row.version_label, len(data["notes"]))
     return row
+
+
+# ---------------------------------------------------------------------------
+# Reading a version back out: nesting, and what makes a note fire
+# ---------------------------------------------------------------------------
+
+
+def load_line_code_map():
+    """The library's line codes against this system's standard keys.
+
+    Read fresh rather than cached at import time so an edit to the YAML takes
+    effect on the next report build, the same way `load_notes_catalogue`
+    deliberately re-reads the library table.
+    """
+    import yaml
+    from flask import current_app
+
+    path = current_app.config["CONFIG_DIR"] / "line_code_map.yaml"
+    if not path.exists():
+        log.warning("config/line_code_map.yaml is missing - every TB-driven "
+                    "note will fall back to manual")
+        return {}, set()
+    with open(path, "r", encoding="utf-8") as handle:
+        doc = yaml.safe_load(handle) or {}
+    return (doc.get("codes") or {}), set(doc.get("non_figure") or [])
+
+
+def _codes_of(piece):
+    return [c for c in (piece.get("line_codes") or []) if c]
+
+
+def resolve_keys(codes, code_map):
+    """Standard keys for a set of library line codes, in a stable order."""
+    keys = []
+    for code in codes:
+        for key in (code_map.get(code) or []):
+            if key not in keys:
+                keys.append(key)
+    return keys
+
+
+def _resolve_pieces(pieces, code_map, non_figure):
+    """Fill each piece's tb_keys from its line codes.
+
+    A piece the library marked TB-driven whose codes resolve to no key at all
+    cannot be tested, so it is switched to manual rather than left looking
+    automatic and never firing. Narrative codes (STATIC, CLIENT and the rest)
+    are exempt: they were never about a balance in the first place.
+    """
+    out = []
+    for piece in pieces:
+        piece = dict(piece)
+        codes = _codes_of(piece)
+        piece["tb_keys"] = resolve_keys(codes, code_map)
+
+        if (piece.get("tick_state") == "tb_driven"
+                and not piece["tb_keys"]
+                and not any(c in non_figure for c in codes)):
+            piece["tick_state"] = "manual"
+            piece["downgraded"] = True
+        out.append(piece)
+    return out
+
+
+def _note_dict(row, code_map, non_figure, inherited):
+    """One library note in the shape `services/reports.py` reads.
+
+    `inherited` is the flat catalogue's row for this note, or None. Where
+    there is one, TWO things carry over from it.
+
+    ITS TRIGGER KEYS WIN over anything derived from line codes. Those
+    triggers are in production today, hand-checked, and deciding notes for
+    live engagements. A new mapping is allowed to fill a gap; it is not
+    allowed to quietly change a note that already works.
+
+    AND A NOTE THAT APPEARS BY ITSELF TODAY GOES ON DOING SO. The new library
+    is stricter about several notes - it says, rightly, that a trial balance
+    cannot tell you whether assets have been pledged as security, so that one
+    is a manual confirmation. Rightly or not, adopting that here would mean a
+    note some engagements print this week silently stops appearing, and the
+    preparer is never told. A note switched on that should not be is visible
+    and takes one click to remove; a note missing from a set of accounts is
+    neither. So the more inclusive of the two states is kept, and the note
+    records that it was, for the changeover report to list.
+
+    The library's own stricter state is not lost, only not adopted
+    automatically: `tick_state_library` carries it so the firm can review
+    these notes and take the change deliberately.
+    """
+    pieces = _resolve_pieces(row.pieces or [], code_map, non_figure)
+
+    if inherited is not None and inherited.trigger_keys:
+        trigger_keys = list(inherited.trigger_keys)
+    else:
+        codes = []
+        for piece in (row.pieces or []):
+            for code in _codes_of(piece):
+                if code not in codes:
+                    codes.append(code)
+        trigger_keys = resolve_keys(codes, code_map)
+
+    tick_state = row.tick_state
+    if tick_state == "tb_driven" and not trigger_keys:
+        # Same reasoning as _resolve_pieces, at note level. A note wired to
+        # nothing would never appear and nobody would be told why.
+        tick_state = "manual"
+
+    tick_from_library = tick_state
+    preserved = False
+    if inherited is not None and tick_state == "manual":
+        if inherited.tick_state == "always":
+            tick_state, preserved = "always", True
+        elif inherited.tick_state == "tb_driven" and trigger_keys:
+            tick_state, preserved = "tb_driven", True
+
+    return {
+        "key": row.key,
+        "heading": row.heading,
+        "tick_state": tick_state,
+        "trigger_keys": trigger_keys,
+        "pieces": pieces,
+        "subsections": [],
+        # Carried through for the builder and the gap report; the report
+        # engine itself does not read these.
+        "section_no": row.section_no,
+        "section_name": row.section_name,
+        "standards": row.standards,
+        "trigger_text": row.trigger_text,
+        "library_code": row.library_code,
+        "tick_state_library": tick_from_library,
+        "tick_preserved": preserved,
+    }
+
+
+def build_catalogue(version_id):
+    """A library version as a flat list of numbered notes, each carrying its
+    own sub-sections.
+
+    NESTING. The workbook presents 91 rows: 45 numbered notes and 46
+    sub-sections that belong underneath one of them. Which is which is the
+    "Presented as" column, and the parent is "Sits inside".
+
+    "Sits inside" is only honoured on a row marked Sub-section. It is filled
+    in on 15 numbered notes as well, and there it is a fill-down artefact -
+    it claims Prior period errors sits inside Material accounting policy
+    information, and Lease liabilities inside Financial risk management.
+    Reading it on those rows would bury a third of the notes inside two of
+    them. A numbered note is top level; that is what being one means.
+
+    An unresolvable parent is not dropped - it is promoted to a numbered note
+    of its own, because a note the auditor can see and switch off is
+    recoverable and a note silently missing from the accounts is not.
+    """
+    code_map, non_figure = load_line_code_map()
+
+    rows = (NoteLibraryNote.query
+            .filter_by(library_version_id=version_id)
+            .order_by(NoteLibraryNote.sort_order, NoteLibraryNote.id).all())
+
+    inherited = {e.key: e for e in NoteLibraryEntry.query.all()}
+
+    parents, children = [], []
+    for row in rows:
+        if (row.presented_as or "").strip().lower() == "sub-section":
+            children.append(row)
+        else:
+            parents.append(row)
+
+    by_heading = {normalise_heading(r.heading): r.key for r in parents}
+    notes = {r.key: _note_dict(r, code_map, non_figure, inherited.get(r.key))
+             for r in parents}
+    order = [r.key for r in parents]
+
+    for row in children:
+        parent_key = by_heading.get(normalise_heading(row.sits_inside))
+        child = _note_dict(row, code_map, non_figure, inherited.get(row.key))
+        if parent_key is None:
+            log.warning("Library note %r says it sits inside %r, which is not "
+                        "a numbered note in this version - promoting it",
+                        row.key, row.sits_inside)
+            notes[row.key] = child
+            order.append(row.key)
+            continue
+        notes[parent_key]["subsections"].append(child)
+
+    return [notes[key] for key in order]

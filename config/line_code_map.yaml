@@ -1,0 +1,165 @@
+# Notes library line codes -> trial balance standard keys
+# ---------------------------------------------------------------------------
+# The notes library states which figure a paragraph or table explains as its
+# own short code - "BS-PPE", "PL-REV". Those codes are the library's
+# vocabulary, not this system's: nothing in the trial balance, the statement
+# templates or the mapping rules has ever heard of them.
+#
+# This file is the join. Every code the library uses appears below exactly
+# once, against the standard keys that mean the same figure here. A note is
+# then TB-driven in the real sense: it appears when the company has the
+# balance, and stays away when it does not.
+#
+# WRITTEN BY HAND, ON PURPOSE. It would be possible to guess these by
+# matching words - "BS-PPE" against "ppe" - and the guesses would mostly be
+# right. Mostly is the problem: a wrong join here does not fail loudly, it
+# quietly puts a disclosure about leases into the accounts of a company that
+# has none, or leaves out the one about borrowings from a company that does.
+# Every line below is a decision someone can be shown and can argue with.
+#
+# EMPTY LIST MEANS "NO FIGURE IN THIS SYSTEM ANSWERS TO THIS CODE", and it is
+# a real answer, not a gap left by accident. Each one carries the reason.
+# services/note_library.py turns a TB-driven note whose codes all resolve to
+# nothing into a MANUAL note, so the preparer ticks it themselves. A note the
+# preparer has to think about is a visible decision; a TB-driven note wired
+# to nothing would sit there looking automatic and never once fire.
+#
+# SUBTOTAL CODES list the subtotal key AND the lines that make it up. The
+# trial balance carries accounts, not totals - "total assets" is computed at
+# render time and is nowhere in the data `_present_keys` reads - so a code
+# mapped to the subtotal alone would never fire. The leaf keys are what
+# actually answers "does this company have any assets at all".
+#
+# Adding a code: put it here before the library that uses it is imported.
+# An unknown code is reported by `flask import-note-library`, never guessed.
+
+codes:
+
+  # --- Balance sheet: non-current assets ----------------------------------
+  BS-PPE:        [ppe, accumulated_depreciation]
+  BS-INVPROP:    [investment_property]
+  BS-INTAN:      [intangible_assets]
+  BS-ROU:        [right_of_use_assets]
+  BS-SUBS:       [investments]          # investment in subsidiaries/associates
+  BS-DTA:        []                     # the balance sheet template carries a
+                                        # deferred tax LIABILITY line only. A
+                                        # company in a net deferred tax asset
+                                        # position has nowhere to put it yet,
+                                        # so the note is the preparer's call.
+  BS-LEASEREC:   []                     # finance lease receivable - no line on
+                                        # the template; the firm's clients are
+                                        # lessees, not lessors.
+
+  # --- Balance sheet: current assets --------------------------------------
+  BS-INV:        [inventories]
+  BS-TR:         [trade_receivables]
+  BS-OR:         [prepayments]          # the template's "Deposits & Other
+                                        # Receivables" line is this figure.
+  BS-PREPAY:     [prepayments]
+  BS-CONTASSET:  [contract_assets]
+  BS-CONTCOST:   []                     # costs to obtain/fulfil a contract are
+                                        # not separated from contract assets on
+                                        # the template.
+  BS-CASH:       [cash_and_equivalents]
+  BS-HFS:        [assets_held_for_sale]
+  BS-RPR:        []                     # amounts due from related parties are
+                                        # not a separate line - they sit inside
+                                        # trade or other receivables, so their
+                                        # presence cannot be detected here.
+
+  # --- Balance sheet: equity ----------------------------------------------
+  BS-SC:         [share_capital]
+  BS-RES:        [retained_earnings]
+
+  # --- Balance sheet: liabilities -----------------------------------------
+  BS-TP:         [trade_payables]
+  BS-OP:         [trade_payables]       # the template's "Other Payables" line
+                                        # is the same stored line as TP.
+  BS-ACCR:       [accruals]
+  BS-BORR-C:     [short_term_borrowings]
+  BS-BORR-NC:    [long_term_borrowings]
+  BS-LEASE-C:    [lease_liabilities]
+  BS-LEASE-NC:   [lease_liabilities]    # the template holds one lease
+                                        # liability line, not split by term.
+  BS-PROV-C:     [provisions]
+  BS-PROV-NC:    [provisions]
+  BS-DTL:        [deferred_tax]
+  BS-TAXPAY:     [tax_payable]
+  BS-CONTLIAB:   [contract_liabilities]
+  BS-RPP:        []                     # as BS-RPR: related party payables are
+                                        # inside trade/other payables.
+  BS-GST:        []                     # the template's only GST line sits in
+                                        # the profit and loss, not the balance
+                                        # sheet. Mapping a balance sheet code
+                                        # to a P&L expense would make the note
+                                        # fire on the wrong fact.
+
+  # --- Balance sheet: subtotals -------------------------------------------
+  BS-CA:  [total_current_assets, cash_and_equivalents, trade_receivables,
+           inventories, prepayments, contract_assets]
+  BS-CL:  [total_current_liabilities, trade_payables, accruals,
+           short_term_borrowings, tax_payable, contract_liabilities]
+  BS-TA:  [total_assets, ppe, cash_and_equivalents, trade_receivables,
+           inventories, prepayments, investment_property, intangible_assets,
+           right_of_use_assets, investments]
+  BS-TL:  [total_current_liabilities, total_non_current_liabilities,
+           trade_payables, accruals, short_term_borrowings,
+           long_term_borrowings, lease_liabilities, deferred_tax, provisions,
+           tax_payable]
+  BS-TE:  [total_equity, share_capital, retained_earnings]
+
+  # --- Profit and loss -----------------------------------------------------
+  PL-REV:        [revenue]
+  PL-COS:        [purchases]
+  PL-OI:         [other_income, interest_income]
+  PL-GRANT:      [iras_rebate]          # the only government assistance the
+                                        # template identifies separately.
+  PL-FIN:        [interest_expense]
+  PL-TAX:        [tax_expense]
+  PL-OTHEXP:     [other_expenses]
+  PL-MGMTFEE:    [consulting_fee]
+  PL-LEASE:      [office_rent, staff_house_rental]
+  PL-SBP:        []                     # share-based payment - no line on the
+                                        # template and none of the firm's
+                                        # clients operate a scheme.
+  PL-ADM: [depreciation, staff_salaries, staff_bonus, cpf,
+           directors_remuneration, commission_employee, office_rent,
+           entertainment, secretarial_fee, accounting_charges, bank_charges,
+           training_expenses, other_expenses]
+
+  # --- Profit and loss: subtotals -----------------------------------------
+  PL-PBT: [profit_before_tax, revenue, purchases, staff_salaries,
+           other_expenses]
+  PL-PAT: [profit_for_year, revenue, tax_expense]
+
+  # --- Equity and cash flow ------------------------------------------------
+  EQ-DIV:        [cf_dividends]
+  CF-LEASEPAY:   []                     # the cash flow template does not
+                                        # analyse lease payments separately;
+                                        # they fall inside expenses paid.
+
+  # --- Codes that name no figure at all ------------------------------------
+  # These are not gaps. The library uses them to say a paragraph does not
+  # depend on a balance, which is why each one keeps whatever tick state the
+  # library gave it rather than being downgraded to manual.
+  STATIC:        []                     # fixed wording - accounting policies,
+                                        # basis of preparation, compliance
+                                        # statements. True of every company.
+  ALL:           []                     # applies across all figures, e.g. the
+                                        # rounding and presentation currency
+                                        # statements.
+  CLIENT:        []                     # supplied by the client outside the
+                                        # trial balance - directors' names,
+                                        # registered address, principal
+                                        # activities.
+  FIRM:          []                     # the audit firm's own standing
+                                        # details. Placeholders until the firm
+                                        # settings screen exists.
+  MEMO:          []                     # memorandum information that is not a
+                                        # recognised balance - commitments,
+                                        # contingencies, pledged assets.
+
+# Codes above whose empty list means "narrative, not a figure" rather than
+# "no figure answers to this". A TB-driven note built only from these is left
+# exactly as the library set it, instead of being downgraded to manual.
+non_figure: [STATIC, ALL, CLIENT, FIRM, MEMO]
