@@ -430,6 +430,14 @@ class FinancialYear(db.Model):
     tb_approved_at = db.Column(db.DateTime)
     tb_approved_by_name = db.Column(db.String(160))
 
+    # Which notes library this engagement reports under. Chosen once, from
+    # the year end, and not changed afterwards: a later library must not
+    # rewrite the wording of a period already reported on. NULL means the
+    # engagement predates versioning and falls back to the flat catalogue.
+    library_version_id = db.Column(db.Integer,
+                                   db.ForeignKey("note_library_versions.id"),
+                                   index=True)
+
     prior_notes = db.relationship(
         "PriorYearNote", back_populates="financial_year",
         cascade="all, delete-orphan")
@@ -1220,6 +1228,120 @@ class AuditReportSection(db.Model):
     children = db.relationship(
         "AuditReportSection", backref=db.backref("parent", remote_side=[id]),
         order_by="AuditReportSection.sort_order")
+
+
+class NoteLibraryVersion(db.Model):
+    """One import of the FRS notes library, valid for a range of year ends.
+
+    The library is versioned by financial year end because wording in force
+    for one period is not in force for another: version 1.0 covers year ends
+    to 31 December 2026, and FRS 118 requires a second version for periods
+    beginning 1 January 2027. Both have to exist at once - an FY2026 and an
+    FY2027 engagement can be open in the same week and must not share a
+    rulebook.
+
+    An engagement pins itself to a version and never moves, for the same
+    reason an approved trial balance does not move: a later change must not
+    reach backwards into a period already reported on.
+    """
+    __tablename__ = "note_library_versions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    version_label = db.Column(db.String(20), unique=True, nullable=False)
+    framework = db.Column(db.String(160))
+    entity_scope = db.Column(db.Text)
+
+    # What an engagement matches its own year end against.
+    valid_from = db.Column(db.Date, nullable=False)
+    valid_to = db.Column(db.Date, nullable=False)
+
+    # Which workbook produced this. The digest is what stops the same file
+    # being imported twice by accident, and lets a loaded version be traced
+    # back to the file it came from.
+    source_filename = db.Column(db.String(255))
+    source_sha256 = db.Column(db.String(64), index=True)
+
+    imported_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    imported_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+
+    # draft      - imported, not yet offered to engagements
+    # active     - new engagements may pin to it
+    # superseded - kept because engagements are still pinned to it
+    status = db.Column(db.String(20), default="draft", nullable=False)
+    notes_count = db.Column(db.Integer, default=0, nullable=False)
+
+    notes = db.relationship("NoteLibraryNote", back_populates="library_version",
+                            cascade="all, delete-orphan",
+                            order_by="NoteLibraryNote.sort_order")
+
+    def covers(self, year_end):
+        """Whether a period ending on this date belongs to this version."""
+        if year_end is None:
+            return False
+        return self.valid_from <= year_end <= self.valid_to
+
+    @property
+    def period_label(self):
+        return (f"{self.valid_from:%d %b %Y} to {self.valid_to:%d %b %Y}"
+                if self.valid_from and self.valid_to else "-")
+
+    def __repr__(self):
+        return f"<NoteLibraryVersion {self.version_label}>"
+
+
+class NoteLibraryNote(db.Model):
+    """One note or sub-section belonging to one library version.
+
+    Deliberately a separate table from `note_library_entries` rather than a
+    version column on it. That table's `key` is unique, which is correct for
+    a firm's own additions but collides the moment the same note arrives
+    again in a second library version. Keeping them apart also means an
+    import can never touch a note an auditor wrote.
+    """
+    __tablename__ = "note_library_notes"
+    __table_args__ = (
+        db.UniqueConstraint("library_version_id", "key",
+                            name="uq_note_library_notes_version_key"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    library_version_id = db.Column(db.Integer,
+                                   db.ForeignKey("note_library_versions.id"),
+                                   nullable=False, index=True)
+
+    # `key` is what the report engine already keys against, so a note we
+    # already held keeps the key it has always had - existing report
+    # sections reference it, including in reports already issued and frozen.
+    key = db.Column(db.String(120), nullable=False, index=True)
+    # The library's own code. Column B on the Notes sheet - the one every
+    # other sheet in the workbook joins on.
+    library_code = db.Column(db.String(120), index=True)
+    # Column K, the NOTE_/POL_ alias. Carried for traceability only.
+    library_code_alt = db.Column(db.String(120))
+
+    heading = db.Column(db.String(255), nullable=False)
+    tick_state = db.Column(db.String(20), default="manual", nullable=False)
+    sort_order = db.Column(db.Integer, default=500, nullable=False)
+
+    trigger_keys = db.Column(JSON)
+    pieces = db.Column(JSON)
+    subsections = db.Column(JSON)
+
+    # Structure and provenance the workbook carries and the old catalogue
+    # had nowhere to put.
+    section_no = db.Column(db.Integer)
+    section_name = db.Column(db.String(160))
+    standards = db.Column(db.String(255))
+    presented_as = db.Column(db.String(40))   # Numbered note | Sub-section
+    sits_inside = db.Column(db.String(255))
+    # The trigger as the library words it, in English. Kept verbatim so the
+    # conversion to real conditions stays reviewable - see Stage 3.
+    trigger_text = db.Column(db.Text)
+
+    library_version = db.relationship("NoteLibraryVersion", back_populates="notes")
+
+    def __repr__(self):
+        return f"<NoteLibraryNote {self.key}>"
 
 
 class NoteLibraryEntry(db.Model):

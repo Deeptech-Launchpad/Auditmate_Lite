@@ -26,6 +26,8 @@ def register_cli(app):
     app.cli.add_command(check_beta)
     app.cli.add_command(seed_beta)
     app.cli.add_command(seed_note_library)
+    app.cli.add_command(import_note_library)
+    app.cli.add_command(note_library)
     app.cli.add_command(setup_production)
     app.cli.add_command(fix_report_layout)
 
@@ -1104,3 +1106,141 @@ def setup_production(email, password, name, force):
     click.echo("")
     click.echo(f"Users in this database: {User.query.count()}")
     click.echo(f"Customers:              {Customer.query.count()}")
+
+
+@click.command("import-note-library")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--apply", "do_apply", is_flag=True,
+              help="Write the import. Without this, nothing is written.")
+@click.option("--activate", is_flag=True,
+              help="Mark the version active so engagements can pin to it.")
+@click.option("--force", is_flag=True,
+              help="Import even if this exact file was imported before.")
+@with_appcontext
+def import_note_library(path, do_apply, activate, force):
+    """Load a notes library workbook as a version.
+
+    Reports first and writes only when asked. The library is issued per
+    financial year end, so each import is a version an engagement can pin
+    itself to - and both versions stay loaded, because an FY2026 and an
+    FY2027 engagement can be open at the same time and must not share one.
+
+    Purely additive: nothing already in the database is modified, so an
+    import can never disturb an engagement already pinned to an earlier
+    version, or a note an auditor wrote.
+    """
+    from .services import note_library as lib
+
+    try:
+        report, data = lib.plan(path)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+
+    click.echo("")
+    click.echo(f"Library {report['version_label']}  ({report['framework'] or '-'})")
+    if report["valid_from"] and report["valid_to"]:
+        click.echo(f"  Valid for year ends {report['valid_from']:%d %b %Y} "
+                   f"to {report['valid_to']:%d %b %Y}")
+    else:
+        click.echo("  Valid for year ends: NOT STATED - import will be refused")
+    click.echo(f"  File digest {report['digest'][:16]}...")
+    click.echo("")
+    click.echo(f"  {report['total_notes']:>4} notes in the workbook")
+    click.echo(f"  {report['matched']:>4} matched to notes we already hold "
+               f"(they keep their existing key)")
+    click.echo(f"  {report['added']:>4} new to us")
+    click.echo(f"  {report['paragraphs']:>4} paragraphs")
+    click.echo(f"  {report['tables']:>4} figure tables")
+    click.echo("")
+    click.echo(f"  Tick states: {report['notes_always_on']} always on, "
+               f"{report['notes_tb_driven']} TB-driven, "
+               f"{report['notes_manual']} manual")
+    click.echo(f"  {report['unreviewed_paragraphs']} paragraphs are unreviewed "
+               f"drafts - held back from client documents")
+    click.echo(f"  {report['distinct_line_codes']} distinct line codes, none "
+               f"mapped yet - figures will not resolve until Stage 3")
+    click.echo(f"  {report['auditor_notes_untouched']} auditor-added notes, "
+               f"untouched by this import")
+
+    if report["orphan_paragraphs"] or report["orphan_tables"]:
+        click.echo("")
+        click.echo("  WARNING: rows reference a note code that is not on the "
+                   "Notes sheet:")
+        for code in report["orphan_paragraphs"][:5]:
+            click.echo(f"    paragraph -> {code}")
+        for code in report["orphan_tables"][:5]:
+            click.echo(f"    table     -> {code}")
+
+    if report["added"]:
+        click.echo("")
+        click.echo("  New notes:")
+        for heading in report["added_headings"]:
+            click.echo(f"    + {heading}")
+
+    if report["same_file_loaded_as"] and not force:
+        click.echo("")
+        raise click.ClickException(
+            f"This exact file is already loaded as version "
+            f"{report['same_file_loaded_as']}. Use --force to load it again.")
+
+    if report["already_loaded"] and not force:
+        click.echo("")
+        raise click.ClickException(
+            f"Version {report['version_label']} is already loaded. Bump the "
+            f"version on the Version sheet, or use --force.")
+
+    if not do_apply:
+        click.echo("")
+        click.echo("Nothing written. Re-run with --apply to import, and add "
+                   "--activate to let engagements pin to it.")
+        return
+
+    try:
+        version = lib.apply_plan(data, report["digest"], path,
+                                 activate=activate)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+
+    click.echo("")
+    click.echo(f"Imported version {version.version_label} "
+               f"({version.notes_count} notes), status {version.status}.")
+
+    if activate:
+        pinned, unmatched = lib.backfill_pins()
+        click.echo(f"Pinned {pinned} engagement(s) to a library version.")
+        if unmatched:
+            click.echo(f"{unmatched} engagement(s) have a year end no loaded "
+                       f"version covers - they keep the flat catalogue.")
+    else:
+        click.echo("Status is draft, so no engagement will pin to it yet. "
+                   "Re-run with --activate when you are ready.")
+
+
+@click.command("note-library")
+@with_appcontext
+def note_library():
+    """Show which library versions are loaded and what is pinned to them."""
+    from .models import FinancialYear, NoteLibraryEntry, NoteLibraryVersion
+
+    versions = (NoteLibraryVersion.query
+                .order_by(NoteLibraryVersion.valid_from).all())
+    if not versions:
+        click.echo("No library version loaded. The flat catalogue in "
+                   "note_library_entries is still in use.")
+    for version in versions:
+        pinned = FinancialYear.query.filter_by(
+            library_version_id=version.id).count()
+        click.echo("")
+        click.echo(f"{version.version_label}  [{version.status}]")
+        click.echo(f"  Year ends      {version.period_label}")
+        click.echo(f"  Notes          {version.notes_count}")
+        click.echo(f"  Engagements    {pinned} pinned")
+        click.echo(f"  Imported       {version.imported_at:%d %b %Y %H:%M} "
+                   f"from {version.source_filename or '-'}")
+
+    unpinned = FinancialYear.query.filter(
+        FinancialYear.library_version_id.is_(None)).count()
+    click.echo("")
+    click.echo(f"Engagements with no library version: {unpinned}")
+    click.echo(f"Auditor-added notes (all versions):  "
+               f"{NoteLibraryEntry.query.filter_by(source='auditor_added').count()}")
