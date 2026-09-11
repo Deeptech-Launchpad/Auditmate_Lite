@@ -992,6 +992,7 @@ def content_gaps(report, financial_year):
     # one here would renumber the rest and leave every "see Note N" on the
     # face of a statement pointing somewhere else.
     unwritten = []
+    unwritten_section_ids = set()
     for section in ordered_sections(report):
         if not section.is_enabled or section.section_type == "statement":
             continue
@@ -1000,6 +1001,7 @@ def content_gaps(report, financial_year):
         still_a_prompt = body in UNWRITTEN_NOTE_FORMS
         if not (still_a_prompt or (not body and not has_table)):
             continue
+        unwritten_section_ids.add(section.id)
         unwritten.append({
             "note": section.title,
             "detail": ("This note is switched on but nothing has been written "
@@ -1015,9 +1017,19 @@ def content_gaps(report, financial_year):
     # Not a defect in the accounts like the categories above: a note can be
     # complete with none of this used. It is offered, and offering it is the
     # only safe place for wording that has not been signed off.
+    #
+    # Shown ONLY for a note that is still unwritten. A note that already has
+    # real content - an auto-built table, reviewed paragraphs, or the
+    # preparer's own words - does not need this draft to be readable right
+    # now, and listing it anyway just makes the card longer for no reason:
+    # every enabled note that happened to carry one unreviewed piece would
+    # appear here regardless of whether the note itself needed anything.
+    # A note whose only content IS the placeholder is the one case where the
+    # draft is the most useful thing the preparer can be handed, so that is
+    # the only case this surfaces it in.
     unreviewed = []
     for section in ordered_sections(report):
-        if not section.is_enabled or section.section_type == "statement":
+        if section.id not in unwritten_section_ids:
             continue
         for draft in (section.data_binding or {}).get("draft_wording", []):
             unreviewed.append({
