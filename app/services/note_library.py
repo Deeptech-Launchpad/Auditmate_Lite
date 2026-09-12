@@ -18,8 +18,8 @@ import re
 from datetime import date
 
 from ..extensions import db
-from ..models import (FinancialYear, NoteLibraryEntry, NoteLibraryNote,
-                      NoteLibraryVersion)
+from ..models import (DISCLOSURE_SETTING_KEYS, FinancialYear,
+                      NoteLibraryEntry, NoteLibraryNote, NoteLibraryVersion)
 
 log = logging.getLogger(__name__)
 
@@ -573,6 +573,29 @@ def condition_class(condition_text, presence_texts):
     return "judgment"
 
 
+# The library writes its own blanks as {credit_terms_receivable}; this app
+# substitutes {{ binding }} and has done since before the library existed.
+# Rewritten on the way out rather than at import, so the stored row stays a
+# faithful copy of the workbook and an existing import needs no reloading.
+_LIBRARY_BLANK = re.compile(r"\{([a-z][a-z0-9_]*)\}")
+
+
+def _bind_blanks(wording):
+    """Turn the library's {placeholder} into this app's {{ firm.placeholder }}.
+
+    Only names the firm actually answers are rewritten. Anything else is left
+    exactly as the library wrote it - a stray brace in disclosure wording is
+    the auditor's text, not a binding, and quietly turning it into one would
+    print "[not set]" over something a person meant to say.
+    """
+    if not wording or "{" not in wording:
+        return wording
+    return _LIBRARY_BLANK.sub(
+        lambda m: ("{{ firm.%s }}" % m.group(1)
+                   if m.group(1) in DISCLOSURE_SETTING_KEYS else m.group(0)),
+        wording)
+
+
 def _codes_of(piece):
     return [c for c in (piece.get("line_codes") or []) if c]
 
@@ -723,6 +746,7 @@ def _resolve_pieces(pieces, code_map, non_figure, presence_texts,
         piece = dict(piece)
         codes = _codes_of(piece)
         piece["tb_keys"] = resolve_keys(codes, code_map)
+        piece["wording"] = _bind_blanks(piece.get("wording"))
 
         if allowed_keys is not None:
             narrowed = [k for k in piece["tb_keys"] if k in allowed_keys]

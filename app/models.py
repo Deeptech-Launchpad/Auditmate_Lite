@@ -1789,3 +1789,73 @@ class CustomerDocument(db.Model):
 
     def __repr__(self):
         return f"<CustomerDocument {self.kind} {self.original_filename!r}>"
+
+
+# Wording the FRS library leaves for the firm to fill in. Five phrases in the
+# notes carry a blank - "Trade receivables are generally granted credit terms
+# of {credit_terms_receivable}" - because the answer is a policy, not a
+# figure, and no trial balance holds it.
+#
+# Each is a firm-wide default that a single client can depart from: most of a
+# firm's clients are on the same terms, and the one that is not should not
+# force the other twenty to be set individually. See DisclosureSetting.
+DISCLOSURE_SETTINGS = (
+    ("credit_terms_receivable",
+     "Credit terms given to customers",
+     "e.g. 30 to 60 days",
+     "Appears in the Trade and other receivables note."),
+    ("credit_terms_payable",
+     "Credit terms received from suppliers",
+     "e.g. 30 days",
+     "Appears in the Trade and other payables note."),
+    ("sicr_days",
+     "Days overdue before credit risk has increased significantly",
+     "e.g. 30 days",
+     "The point at which a receivable is no longer considered low risk."),
+    ("default_days",
+     "Days overdue before a receivable is in default",
+     "e.g. 90 days",
+     "Appears in the Credit risk note."),
+    ("writeoff_days",
+     "Days overdue before a receivable is written off",
+     "e.g. 365 days",
+     "The point at which recovery is no longer considered likely."),
+)
+
+DISCLOSURE_SETTING_KEYS = {key for key, _l, _p, _h in DISCLOSURE_SETTINGS}
+
+
+class DisclosureSetting(db.Model):
+    """One piece of standing wording the notes need and no figure supplies.
+
+    ONE TABLE FOR BOTH LEVELS. `customer_id` NULL is the firm's own default,
+    applying to every engagement; a row with a customer is that client
+    departing from it. Kept as one table rather than a firm table plus client
+    columns because the fallback is then a single ordered lookup, and adding
+    a sixth setting is a row rather than a migration on two tables.
+
+    Values are free text, not numbers, deliberately. "30 to 60 days" and
+    "30 days from invoice date" are both real answers a firm gives, and
+    storing 30 would force the note to invent the rest of the sentence.
+    """
+
+    __tablename__ = "disclosure_settings"
+    __table_args__ = (
+        db.UniqueConstraint("customer_id", "key",
+                            name="uq_disclosure_setting_scope_key"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    # NULL = the firm's default. Set = this client's own answer.
+    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"),
+                            index=True)
+    key = db.Column(db.String(60), nullable=False, index=True)
+    value = db.Column(db.Text, nullable=False)
+
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow, nullable=False)
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+
+    def __repr__(self):
+        scope = f"customer {self.customer_id}" if self.customer_id else "firm"
+        return f"<DisclosureSetting {self.key} ({scope})>"

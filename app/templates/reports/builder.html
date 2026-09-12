@@ -120,7 +120,8 @@
     <div class="card-head">
       <h2 style="color:#c0392b">
         {{ content_gaps.missing|length + content_gaps.thin|length
-           + content_gaps.unwritten|length }} note(s) need the auditor's own wording
+           + content_gaps.unwritten|length
+           + content_gaps.unanswered|length }} note(s) need the auditor's own wording
       </h2>
     </div>
     <div class="card-body">
@@ -148,6 +149,25 @@
           <div class="gap-body">
             <div class="gap-title">{{ gap.note }}</div>
             <div class="gap-detail muted small">{{ gap.detail }}</div>
+          </div>
+        </div>
+      {% endfor %}
+
+      {# Standing wording nobody has answered. Prints a placeholder in the
+         note itself, so it is a defect not an offer - and it is fixed once
+         for every client, not per engagement. #}
+      {% for gap in content_gaps.unanswered %}
+        <div class="gap-row">
+          <span class="pill pill-red">NOT SET</span>
+          <div class="gap-body">
+            <div class="gap-title">{{ gap.label }}</div>
+            <div class="gap-detail muted small">
+              A note in these accounts uses this and it has never been
+              answered, so it prints a placeholder where the wording should
+              be.
+              <a href="{{ url_for('settings.disclosures') }}">Set it for the firm</a>,
+              or <a href="{{ url_for('settings.customer_disclosures', customer_id=fy.customer_id) }}">just for {{ fy.customer.name }}</a>.
+            </div>
           </div>
         </div>
       {% endfor %}

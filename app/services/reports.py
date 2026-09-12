@@ -237,8 +237,27 @@ def render_bindings(text: str, customer, financial_year,
         "firm.name": "AltiusNXT Audit",
     }
 
+    # The FRS library's own blanks - credit terms, the days-overdue
+    # thresholds. Resolved per client (its own answer, else the firm's), and
+    # deliberately NOT defaulted to anything here: a key with no answer is
+    # left out, so `replace` below prints "[not set]" exactly as it does for
+    # any other unfilled binding rather than inventing a policy.
+    from . import disclosure_settings
+
+    for key, value in disclosure_settings.resolved(customer).items():
+        values[f"firm.{key}"] = value
+
     def replace(match):
         key = match.group(1).strip()
+
+        # A library blank the firm has not answered yet. Named so the
+        # preview says which setting is missing, not just that something is.
+        if key.startswith("firm.") and key not in values:
+            body, css = f"[{key[5:].replace('_', ' ')} not set]", "missing-binding"
+            if chips:
+                return (f'<span class="ph missing-binding" '
+                        f'contenteditable="false" data-ph="{key}">{body}</span>')
+            return f'<span class="{css}">{body}</span>'
 
         if key not in values:
             # An unknown placeholder must never reach a client-facing report
@@ -1049,14 +1068,47 @@ def content_gaps(report, financial_year):
             unreviewed.append({
                 "note": section.title,
                 "heading": draft.get("heading") or "",
-                "wording": draft.get("wording") or "",
+                # Bindings resolved before the preparer reads it. The draft
+                # is there to be judged and written in; showing them
+                # "{{ firm.credit_terms_receivable }}" asks them to judge
+                # template syntax instead of a sentence, and hides whether
+                # the firm has actually answered it.
+                "wording": render_bindings(draft.get("wording") or "",
+                                           financial_year.customer,
+                                           financial_year),
                 "requirement": draft.get("requirement") or "",
                 "ref": draft.get("ref") or "",
             })
 
+    # Standing wording the firm has never answered. A note carrying an
+    # unanswered blank prints "[credit terms receivable not set]" into the
+    # accounts, which is as incomplete as a note nobody has written - so it
+    # counts towards has_gaps, unlike the drafted-wording offer above.
+    #
+    # Only reported where a note that actually uses it is switched on: a
+    # company with no receivables has no reason to be told the firm has not
+    # set its receivable credit terms.
+    from . import disclosure_settings
+
+    # Both what is printing and what is offered as a draft: a blank the
+    # preparer is about to paste in is exactly as unanswered as one already
+    # in the note, and telling them afterwards is worse than telling them
+    # while they are looking at it.
+    live = " ".join(
+        [(s.content_html or "") for s in ordered_sections(report)
+         if s.is_enabled]
+        + [d.get("wording") or ""
+           for s in ordered_sections(report) if s.is_enabled
+           for d in (s.data_binding or {}).get("draft_wording", [])])
+    unanswered = [{"key": key, "label": label}
+                  for key, label in disclosure_settings.unset_keys(
+                      financial_year.customer)
+                  if f"firm.{key}" in live]
+
     return {"missing": grouped_missing, "thin": thin, "unwritten": unwritten,
-            "unreviewed": unreviewed,
-            "has_gaps": bool(grouped_missing or thin or unwritten)}
+            "unreviewed": unreviewed, "unanswered": unanswered,
+            "has_gaps": bool(grouped_missing or thin or unwritten
+                             or unanswered)}
 
 
 def mapped_accounts(financial_year):

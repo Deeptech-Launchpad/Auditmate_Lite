@@ -75,6 +75,7 @@ def create_app(config_object=Config):
     # Public, no-login customer review.
     from .blueprints.review import bp as review_bp
     from .blueprints.integrations import bp as integrations_bp
+    from .blueprints.settings import bp as settings_bp
     from .blueprints.users import bp as users_bp
 
     app.register_blueprint(auth_bp)
@@ -86,6 +87,7 @@ def create_app(config_object=Config):
     app.register_blueprint(reports_bp)
     app.register_blueprint(review_bp)
     app.register_blueprint(integrations_bp)
+    app.register_blueprint(settings_bp)
     app.register_blueprint(users_bp)
 
     # --- Template helpers ---

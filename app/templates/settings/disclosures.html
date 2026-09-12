@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Disclosure wording · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  {% if customer %}
+    <a href="{{ url_for('settings.disclosures') }}">Disclosure wording</a> /
+    <span class="current">{{ customer.name }}</span>
+  {% else %}
+    <span class="current">Disclosure wording</span>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if customer %}{{ customer.name }} — disclosure wording{% else %}Disclosure wording{% endif %}</h1>
+    <p class="subtitle">
+      {% if customer %}
+        Where this client differs from the firm's standing answers · partner-only screen
+      {% else %}
+        The firm's standing answers, used by every client · partner-only screen
+      {% endif %}
+    </p>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-body">
+    <p class="small" style="margin-top:0">
+      The FRS notes library leaves these five phrases blank, because each is a
+      policy rather than a figure — nothing in a trial balance can supply
+      them. Until one is answered the note prints
+      <span class="missing-binding">[credit terms receivable not set]</span>
+      where the words should be.
+      {% if customer %}
+        Leave a box empty to use the firm's answer.
+      {% endif %}
+    </p>
+  </div>
+</div>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card">
+    <div class="card-body">
+      {% for row in rows %}
+        <div class="field" style="margin-bottom:18px">
+          <label for="{{ row.key }}" class="strong">{{ row.label }}</label>
+          <div class="muted small" style="margin:2px 0 6px">{{ row.help }}</div>
+          <input type="text" id="{{ row.key }}" name="{{ row.key }}"
+                 value="{{ row.value }}" placeholder="{{ row.placeholder }}"
+                 style="width:100%;max-width:420px">
+
+          {% if customer %}
+            <div class="muted small" style="margin-top:4px">
+              {% if row.source == 'customer' %}
+                This client's own wording.
+                {% if row.firm_value %}
+                  The firm's is “{{ row.firm_value }}”.
+                {% endif %}
+              {% elif row.source == 'firm' %}
+                Using the firm's answer: “{{ row.firm_value }}”.
+              {% else %}
+                <span style="color:#c0392b">Not answered by the firm either —
+                  this note will print a placeholder.</span>
+              {% endif %}
+            </div>
+          {% elif row.source == 'unset' %}
+            <div class="small" style="margin-top:4px;color:#c0392b">
+              Not answered — every client's note prints a placeholder until
+              this is filled in.
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      <button type="submit" class="btn btn-primary">Save</button>
+      {% if customer %}
+        <a href="{{ url_for('settings.disclosures') }}" class="btn">Back to firm wording</a>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
+{% if not customer and overriding %}
+  <div class="card" style="margin-top:16px">
+    <div class="card-head"><h2>Clients with their own wording</h2></div>
+    <div class="card-body tight">
+      <ul class="small">
+        {% for c in overriding %}
+          <li><a href="{{ url_for('settings.customer_disclosures', customer_id=c.id) }}">{{ c.name }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
