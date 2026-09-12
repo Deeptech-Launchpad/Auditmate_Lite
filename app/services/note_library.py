@@ -587,7 +587,124 @@ def resolve_keys(codes, code_map):
     return keys
 
 
-def _resolve_pieces(pieces, code_map, non_figure, presence_texts):
+def _subject_keys(note_key):
+    """The balances the statement templates say belong to this note.
+
+    `config/statement_templates.yaml` already carries a hand-written answer:
+    each statement line names the note that explains it. Read the other way
+    round, that is "Property, plant and equipment explains ppe and
+    accumulated_depreciation" - authoritative, maintained, and exactly the
+    set a table in that note may draw on.
+
+    Subtotal and total lines are skipped. "Administrative and other
+    expenses" is declared against `operating_expenses`, which is a computed
+    subtotal with no trial balance account behind it - narrowing a table to
+    it would leave the note with no rows at all rather than the expense
+    breakdown it is supposed to show. Where that leaves nothing usable the
+    caller falls back to the flat catalogue's own keys.
+    """
+    from .statements import load_templates
+
+    keys = []
+    for body in (load_templates() or {}).values():
+        for spec in (body or {}).get("lines", []):
+            if str(spec.get("note") or "") != note_key:
+                continue
+            if spec.get("subtotal") or spec.get("total"):
+                continue
+            key = spec.get("key")
+            if key and key not in keys:
+                keys.append(key)
+    return keys
+
+
+def _allowed_keys(inherited, note_key=None):
+    """The balances the hand-curated catalogue already agreed belong in this
+    note, gathered from its own pieces.
+
+    A library line code says what a note RELATES TO. That is the right
+    breadth for deciding whether the note applies at all - a company with
+    any administrative expense has administrative expenses to disclose - and
+    much too broad for deciding what goes in its TABLE. "PL-ADM" resolves to
+    thirteen expense accounts, so a Property, plant and equipment table
+    built from a piece tagged BS-PPE + PL-ADM listed Audit Fee, Directors'
+    Remuneration and Salaries underneath the company's motor vehicles, and
+    footed the lot to a meaningless total.
+
+    The flat catalogue's keys were written per table, by hand, and are in
+    production. So they are the ceiling: a table may draw on them, and on
+    nothing else. Same principle as the trigger inheritance in _note_dict -
+    a new mapping may fill a gap, never quietly widen what already works.
+    """
+    subject = _subject_keys(note_key) if note_key else []
+    if subject:
+        return subject
+    if inherited is None:
+        return None
+
+    allowed = []
+    for piece in (inherited.pieces or []):
+        for key in (piece.get("tb_keys") or []):
+            if key not in allowed:
+                allowed.append(key)
+    for key in (inherited.trigger_keys or []):
+        if key not in allowed:
+            allowed.append(key)
+    return allowed or None
+
+
+def _key_sides():
+    """Every statement line key against the statement it belongs to."""
+    from .statements import load_templates
+
+    sides = {}
+    for statement_type, body in (load_templates() or {}).items():
+        for spec in (body or {}).get("lines", []):
+            if spec.get("key"):
+                sides[spec["key"]] = statement_type
+    return sides
+
+
+def _note_side(note_key, sides):
+    """Which statement a note explains, or None if the templates don't say.
+
+    Subtotals count here, unlike in _subject_keys - "Profit before tax" is
+    declared against a computed subtotal, and that subtotal still tells us
+    perfectly well that the note belongs to the profit and loss.
+    """
+    from .statements import load_templates
+
+    for statement_type, body in (load_templates() or {}).items():
+        for spec in (body or {}).get("lines", []):
+            if str(spec.get("note") or "") == note_key:
+                return statement_type
+    return None
+
+
+def _same_side_only(keys, side, sides):
+    """Drop keys belonging to a different statement than the note's own.
+
+    A note explaining a profit and loss figure has no business listing
+    balance sheet accounts in its table, and vice versa - they are different
+    kinds of number and a column that foots them together means nothing.
+    "Profit before tax is stated after charging" was printing the company's
+    motor vehicles, office equipment and renovation among its expenses, and
+    footing the lot.
+
+    Only applied where the templates actually say which statement the note
+    belongs to. Cross-cutting notes - financial instruments by category,
+    capital management - are declared against nothing and are left alone,
+    because listing balances that other notes also explain is exactly what
+    they are for.
+    """
+    if not side:
+        return keys
+    kept = [k for k in keys if sides.get(k, side) == side]
+    return kept or keys
+
+
+def _resolve_pieces(pieces, code_map, non_figure, presence_texts,
+                    allowed_keys=None, side=None, sides=None):
     """Fill each piece's tb_keys, and decide whether TB-driven is honest.
 
     Two separate questions, both answered here. Can the piece's line codes
@@ -606,6 +723,16 @@ def _resolve_pieces(pieces, code_map, non_figure, presence_texts):
         piece = dict(piece)
         codes = _codes_of(piece)
         piece["tb_keys"] = resolve_keys(codes, code_map)
+
+        if allowed_keys is not None:
+            narrowed = [k for k in piece["tb_keys"] if k in allowed_keys]
+            if narrowed != piece["tb_keys"]:
+                piece["widened_keys"] = [k for k in piece["tb_keys"]
+                                         if k not in allowed_keys]
+            piece["tb_keys"] = narrowed
+
+        if side and sides:
+            piece["tb_keys"] = _same_side_only(piece["tb_keys"], side, sides)
 
         # The workbook itself marks a small number of tables as never safe
         # to auto-trigger - "PREPARER INPUT. Must never auto-trigger." on
@@ -651,7 +778,8 @@ def _resolve_pieces(pieces, code_map, non_figure, presence_texts):
     return out
 
 
-def _note_dict(row, code_map, non_figure, presence_texts, inherited):
+def _note_dict(row, code_map, non_figure, presence_texts, inherited,
+               sides=None):
     """One library note in the shape `services/reports.py` reads.
 
     `inherited` is the flat catalogue's row for this note, or None. Where
@@ -677,7 +805,9 @@ def _note_dict(row, code_map, non_figure, presence_texts, inherited):
     these notes and take the change deliberately.
     """
     pieces = _resolve_pieces(row.pieces or [], code_map, non_figure,
-                             presence_texts)
+                             presence_texts,
+                             _allowed_keys(inherited, row.key),
+                             _note_side(row.key, sides), sides)
 
     if inherited is not None and inherited.trigger_keys:
         trigger_keys = list(inherited.trigger_keys)
@@ -749,6 +879,7 @@ def build_catalogue(version_id):
     """
     code_map, non_figure = load_line_code_map()
     presence_texts = load_condition_classes()
+    sides = _key_sides()
 
     rows = (NoteLibraryNote.query
             .filter_by(library_version_id=version_id)
@@ -765,14 +896,14 @@ def build_catalogue(version_id):
 
     by_heading = {normalise_heading(r.heading): r.key for r in parents}
     notes = {r.key: _note_dict(r, code_map, non_figure, presence_texts,
-                               inherited.get(r.key))
+                               inherited.get(r.key), sides)
              for r in parents}
     order = [r.key for r in parents]
 
     for row in children:
         parent_key = by_heading.get(normalise_heading(row.sits_inside))
         child = _note_dict(row, code_map, non_figure, presence_texts,
-                           inherited.get(row.key))
+                           inherited.get(row.key), sides)
         if parent_key is None:
             log.warning("Library note %r says it sits inside %r, which is not "
                         "a numbered note in this version - promoting it",
