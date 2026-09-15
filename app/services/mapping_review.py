@@ -127,7 +127,8 @@ def review(financial_year):
                 suggestion, suggestion_from = last_year[name], "last year"
             else:
                 rule = match_label(account.account_name,
-                                   financial_year.customer_id)
+                                   financial_year.customer_id,
+                                   account_type=account.account_type)
                 if rule:
                     suggestion = rule["line_key"]
                     suggestion_from = ("last year"

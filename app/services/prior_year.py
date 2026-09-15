@@ -175,7 +175,8 @@ def _from_tb_comparative(financial_year):
         if row.prior_debit is None and row.prior_credit is None:
             continue                      # no comparative for this account
         net = (row.prior_debit or ZERO) - (row.prior_credit or ZERO)
-        rule = match_label(row.account_name, financial_year.customer_id)
+        rule = match_label(row.account_name, financial_year.customer_id,
+                           account_type=row.account_type)
         sign = rule["sign"] if rule else 1
         totals[row.standard_key] = totals.get(row.standard_key, ZERO) + net * sign
     return totals

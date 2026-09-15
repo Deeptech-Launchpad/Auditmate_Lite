@@ -80,7 +80,43 @@ def _customer_rules(customer_id: int):
     } for r in rows]
 
 
-def match_label(label: str, customer_id: int, statement_type: str = None):
+# Words in an account-type heading that settle which statement it belongs to.
+# Balance sheet words are tested first: "Unearned revenue" and "Income tax
+# payable" are liabilities, whatever else the heading says.
+_BALANCE_SHEET_TYPE_WORDS = ("asset", "liabilit", "equity", "bank", "payable",
+                             "receivable", "prepayment", "inventory",
+                             "credit card", "unearned", "deferred", "capital",
+                             "accumulated")
+_PROFIT_AND_LOSS_TYPE_WORDS = ("revenue", "income", "sales", "expense",
+                               "overhead", "cost of", "direct cost",
+                               "depreciation", "cogs")
+
+
+def statement_for_account_type(account_type):
+    """Which statement an account belongs to, judged by the type its books
+    give it - or None when the type does not say.
+
+    Accounting software classifies every account when it is created: Xero's
+    "Expense", "Current Liability", "Fixed Asset"; QuickBooks' "Other
+    Current Liabilities", "Cost of Goods Sold". That classification is the
+    most reliable single fact about an account, far more than its name,
+    which is whatever the bookkeeper typed.
+
+    None is the common answer, and it is safe: an account with no type, or a
+    type this does not recognise, is matched exactly as before.
+    """
+    text = (account_type or "").strip().lower()
+    if not text:
+        return None
+    if any(word in text for word in _BALANCE_SHEET_TYPE_WORDS):
+        return "balance_sheet"
+    if any(word in text for word in _PROFIT_AND_LOSS_TYPE_WORDS):
+        return "profit_and_loss"
+    return None
+
+
+def match_label(label: str, customer_id: int, statement_type: str = None,
+                account_type: str = None):
     """Find the best rule for one label without calling the AI.
 
     The winning rule is chosen across *all* statements by priority, then
@@ -96,25 +132,42 @@ def match_label(label: str, customer_id: int, statement_type: str = None):
     the balance sheet -- counting the same figure twice and unbalancing the
     accounts.
 
+    ACCOUNT TYPE, WHEN GIVEN, OVERRULES THE NAME. A rule on the wrong
+    statement for the account's type is passed over and the next match is
+    tried. The same word means different things: an account called "GST"
+    typed Expense is GST the company paid and could not reclaim; one typed
+    Current Liability is GST it owes. Matching the name alone put a
+    S$36,225 expense onto the balance sheet as GST payable, and the year's
+    tax charge onto tax payable - on the first real client file loaded.
+
+    Every caller holding an account should pass its type, and not only the
+    one that maps it: the sign a figure is presented with is read from the
+    same rule. A mapping that honoured the type while the sign lookup did
+    not would place an expense correctly and then print it negative.
+
     Returns the matching rule dict, or None when the label matches nothing or
     belongs to a different statement.
     """
     if not label:
         return None
     normalised = label.lower().strip()
+    side = statement_for_account_type(account_type)
+
+    def fits(rule):
+        return side is None or rule["statement_type"] == side
 
     # Customer rules first -- a correction made for this client beats a
     # generic seed rule every time. Both lists are already priority-sorted,
     # so the first match in each is the best one.
     best = None
     for rule in _customer_rules(customer_id):
-        if _matches(rule, normalised):
+        if _matches(rule, normalised) and fits(rule):
             best = rule
             break
 
     if best is None:
         for rule in _seed_rules():
-            if _matches(rule, normalised):
+            if _matches(rule, normalised) and fits(rule):
                 best = rule
                 break
 
@@ -185,7 +238,8 @@ def map_line_items(line_items, customer_id: int, statement_type: str,
 
     # --- Tier 1 + 2: deterministic rules -----------------------------------
     for item in line_items:
-        rule = match_label(item.label, customer_id, statement_type)
+        rule = match_label(item.label, customer_id, statement_type,
+                           account_type=getattr(item, "account_type", None))
 
         if rule and rule["line_key"] in valid_line_keys:
             mapped.setdefault(rule["line_key"], []).append((item, rule["sign"]))
@@ -208,7 +262,8 @@ def map_line_items(line_items, customer_id: int, statement_type: str,
         # No rule for this statement. Before calling it unmapped, check
         # whether it belongs to a different statement - a revenue account is
         # not "unmapped" just because we're building the balance sheet.
-        if match_label(item.label, customer_id) is None:
+        if match_label(item.label, customer_id,
+                       account_type=getattr(item, "account_type", None)) is None:
             unmatched.append(item)
 
     # --- Tier 3: AI, only for what's left ----------------------------------

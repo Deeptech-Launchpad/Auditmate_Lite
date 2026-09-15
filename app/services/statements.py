@@ -144,7 +144,8 @@ def build_statement(financial_year_id: int, statement_type: str,
 
     def _signed(account):
         net = Decimal(str(account.debit or 0)) - Decimal(str(account.credit or 0))
-        rule = match_label(account.account_name, financial_year.customer_id)
+        rule = match_label(account.account_name, financial_year.customer_id,
+                           account_type=account.account_type)
         sign = rule["sign"] if rule else 1
         return net * sign
 

@@ -249,7 +249,8 @@ def build(financial_year_id: int, user_id=None) -> dict:
         standard_key = remembered.get(key)
         statement_type = None
         if not standard_key:
-            rule = match_label(name, customer_id)
+            rule = match_label(name, customer_id,
+                               account_type=item.account_type)
             if rule:
                 standard_key = rule["line_key"]
                 statement_type = rule["statement_type"]
@@ -298,7 +299,8 @@ def build(financial_year_id: int, user_id=None) -> dict:
     # Backfill statement_type for anything mapped but missing it.
     for account in merged.values():
         if account.standard_key and not account.statement_type:
-            rule = match_label(account.account_name, customer_id)
+            rule = match_label(account.account_name, customer_id,
+                               account_type=account.account_type)
             if rule:
                 account.statement_type = rule["statement_type"]
 

@@ -224,7 +224,8 @@ def load(path, replace=False, user_id=None):
                 key = account["standard_key"]
                 from_file += 1
             else:
-                rule = match_label(account["name"], customer.id)
+                rule = match_label(account["name"], customer.id,
+                                   account_type=account.get("type"))
                 key = rule["line_key"] if rule else None
             if key is None:
                 unmapped.append(account["name"])

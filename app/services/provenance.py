@@ -61,7 +61,8 @@ def _contribution(account):
 
     net = Decimal(str(account.debit or 0)) - Decimal(str(account.credit or 0))
     rule = match_label(account.account_name,
-                       account.financial_year.customer_id)
+                       account.financial_year.customer_id,
+                       account_type=account.account_type)
     return net * (rule["sign"] if rule else 1)
 
 
@@ -252,6 +253,7 @@ def coverage(financial_year_id):
             "net": float(Decimal(str(account.debit or 0))
                          - Decimal(str(account.credit or 0))),
             "standard_key": account.standard_key,
+            "account_type": account.account_type,
             "mapped_by": "auditor" if account.mapping_is_manual else "auto",
         }
         if not account.standard_key:
@@ -307,7 +309,8 @@ def suggest(financial_year_id, use_ai=True):
     suggestions, still_stuck = [], []
 
     for entry in missing:
-        rule = match_label(entry["name"], financial_year.customer_id)
+        rule = match_label(entry["name"], financial_year.customer_id,
+                           account_type=entry.get("account_type"))
         key = rule.get("line_key") if rule else None
         if key and key in consumed:
             suggestions.append({**entry, "suggested_key": key, "by": "rule",

@@ -44,7 +44,9 @@
 - {pattern: "professional fee",     statement: profit_and_loss, line: accounting_charges, priority: 10}
 - {pattern: "legal fee",            statement: profit_and_loss, line: accounting_charges, priority: 10}
 - {pattern: "accounting fee",       statement: profit_and_loss, line: accounting_charges, priority: 10}
-- {pattern: "interest expense",     statement: profit_and_loss, line: bank_charges, priority: 10}
+# Was bank_charges, written before the template had an interest expense
+# line of its own. The finance costs note discloses interest separately.
+- {pattern: "interest expense",     statement: profit_and_loss, line: interest_expense, priority: 10}
 - {pattern: "bank charge",          statement: profit_and_loss, line: bank_charges, priority: 15}
 - {pattern: "finance cost",         statement: profit_and_loss, line: bank_charges, priority: 10}
 - {pattern: "utilities",            statement: profit_and_loss, line: other_expenses, priority: 20}
@@ -100,6 +102,9 @@
 - {pattern: "accrual",              statement: balance_sheet, line: accruals, priority: 10, sign: -1}
 - {pattern: "accrued",              statement: balance_sheet, line: accruals, priority: 10, sign: -1}
 - {pattern: "provision for tax",    statement: balance_sheet, line: tax_payable, priority: 5, sign: -1}
+# The year's charge, booked to an expense account under the same name as
+# the liability it creates. Typed as an expense, it is tax expense.
+- {pattern: "provision for tax",    statement: profit_and_loss, line: tax_expense, priority: 5}
 - {pattern: "tax payable",          statement: balance_sheet, line: tax_payable, priority: 5, sign: -1}
 - {pattern: "deferred tax",         statement: balance_sheet, line: deferred_tax, priority: 5, sign: -1}
 - {pattern: "bank loan",            statement: balance_sheet, line: long_term_borrowings, priority: 10, sign: -1}
@@ -167,7 +172,12 @@
 # beat: "Loan from Director" was being claimed by the catch-all "director"
 # rule (priority 5) and booked as director's remuneration - an expense -
 # when it is a liability owed to him.
-- {pattern: "loan from director",   statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
+# Other payables, not borrowings. A balance owed to a director is presented
+# as an amount due to a related party - the client's notes library puts it
+# on BS-RPP, and the client's own filed accounts show it within other
+# payables. Filed under borrowings it switched on the borrowings note, with
+# its wording about security and covenants, for a company with no bank loan.
+- {pattern: "loan from director",   statement: balance_sheet, line: trade_payables, priority: 2, sign: -1}
 - {pattern: "loan to director",     statement: balance_sheet, line: prepayments, priority: 2}
 - {pattern: "repayment of loan",    statement: balance_sheet, line: short_term_borrowings, priority: 3, sign: -1}
 - {pattern: "loan to 3rd part",     statement: balance_sheet, line: prepayments, priority: 3}
@@ -189,6 +199,12 @@
 - {pattern: "gst payment",          statement: profit_and_loss, line: gst_payables_expense, priority: 6}
 - {pattern: "income tax payment",   statement: profit_and_loss, line: tax_expense, priority: 6}
 - {pattern: "laptop",               statement: balance_sheet, line: ppe, priority: 8}
+# Common short forms that matched nothing. "Accum Dep - Office Equip" is not
+# a substring of "accumulated depreciation", so the balance sat unmapped and
+# the fixed assets reached the balance sheet at cost rather than net.
+- {pattern: "accum dep",            statement: balance_sheet, line: accumulated_depreciation, priority: 5}
+- {pattern: "aged receivable",      statement: balance_sheet, line: trade_receivables, priority: 6}
+- {pattern: "accounts fee",         statement: profit_and_loss, line: accounting_charges, priority: 10}
 - {pattern: "computer",             statement: balance_sheet, line: ppe, priority: 8}
 - {pattern: "furniture",            statement: balance_sheet, line: ppe, priority: 8}
 - {pattern: "asset ",               statement: balance_sheet, line: ppe, priority: 20}
@@ -262,6 +278,12 @@
 # GST standing on a balance sheet is money owed to IRAS. Priority is set well
 # below "gst payable" and "gst (p&l)" so those keep their sharper meaning.
 - {pattern: "gst",                  statement: balance_sheet, line: trade_payables, priority: 25, sign: -1}
+# The same word on the other statement. match_label passes over a rule on
+# the wrong statement for an account's type, so an account called "GST"
+# typed as an expense lands here instead of on GST payable. An account with
+# no type still takes the balance sheet rule above, as it always has -
+# equal priority, and that rule comes first in the file.
+- {pattern: "gst",                  statement: profit_and_loss, line: gst_payables_expense, priority: 25}
 
 # Everyday words for staff pay that the salary/wages patterns do not contain.
 - {pattern: "payroll",              statement: profit_and_loss, line: staff_salaries, priority: 10}
