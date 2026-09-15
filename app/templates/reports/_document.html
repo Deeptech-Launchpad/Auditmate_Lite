@@ -32,6 +32,11 @@
   <td class="num">{{ value|stmt }}</td>
 {% endmacro %}
 
+{# A figure nobody can source yet. Never a dash - a dash says nil. #}
+{% macro held_cell(reason) %}
+  <td class="num held" title="{{ reason }}">Incomplete</td>
+{% endmacro %}
+
 {#
   Editable cells.
 
@@ -350,7 +355,10 @@
                           has not been applied.">edit no longer matches</span>
                   {% endif %}
                 </td>
-                {% if row.current is none %}
+                {% if row.held_current or row.held_previous %}
+                  {% if row.held_current %}{{ held_cell(row.held_current) }}{% else %}{{ amount_cell(row.current) }}{% endif %}
+                  {% if row.held_previous %}{{ held_cell(row.held_previous) }}{% else %}{{ amount_cell(row.previous) }}{% endif %}
+                {% elif row.current is none and row.previous is none %}
                   <td class="num"></td><td class="num"></td>
                 {% elif editable %}
                   <td class="num ed-cell{{ ' is-overridden' if row.overridden }}{{ ' from-tb' if acct_id and not row.overridden }}">

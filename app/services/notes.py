@@ -31,7 +31,7 @@ import logging
 from decimal import Decimal
 
 from ..models import FinancialStatement, TrialBalanceAccount
-from . import prior_year
+from . import bindings, prior_year
 from .outward import previous_year as outward_previous_year
 from .prior_year import ZERO
 
@@ -339,6 +339,8 @@ BUILDERS = {
     "lines": _block_lines,
     "tax_reconciliation": _block_tax,
     "currency": _block_currency,
+    # Library 2.x tables, row by row from each row's own binding.
+    "bindings": bindings.build_table,
 }
 
 
@@ -382,10 +384,11 @@ def _sourced_from(rows):
     """
     ids, seen = [], set()
     for row in rows:
-        ref = row.get("ref")
-        if ref and ref.startswith("tb:") and ref not in seen:
-            seen.add(ref)
-            ids.append(int(ref[3:]))
+        refs = [row.get("ref")] + [f"tb:{i}" for i in row.get("ids") or []]
+        for ref in refs:
+            if ref and ref.startswith("tb:") and ref not in seen:
+                seen.add(ref)
+                ids.append(int(ref[3:]))
     if not ids:
         return []
 

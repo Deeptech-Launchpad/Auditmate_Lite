@@ -184,10 +184,14 @@
   background: #fff3cd; color: #7a5b00; padding: 0 3px; border-radius: 2px;
   font-style: italic;
 }
+{{ S }} td.held {
+  background: #fdecea; color: #8a1c10; font-style: italic; font-size: .9em;
+}
 {% if for_pdf %}
 /* Nothing needs highlighting in a delivered PDF, but it must still be
    visible that a field was never filled in. */
 {{ S }} .missing-binding { background: none; color: #000; }
+{{ S }} td.held { background: none; color: #000; }
 {% endif %}
 
 /* ----------------------------------------------------------------------

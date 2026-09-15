@@ -30,6 +30,8 @@ def register_cli(app):
     app.cli.add_command(note_library)
     app.cli.add_command(load_test_engagement)
     app.cli.add_command(assign_line_codes)
+    app.cli.add_command(activate_note_library)
+    app.cli.add_command(move_to_library)
     app.cli.add_command(setup_production)
     app.cli.add_command(fix_report_layout)
 
@@ -1412,3 +1414,63 @@ def assign_line_codes(financial_year_id):
     click.echo(f"{financial_year.customer.name} {financial_year.year_label}")
     _echo_line_codes(summary)
 
+
+
+@click.command("activate-note-library")
+@click.argument("version_label")
+@with_appcontext
+def activate_note_library(version_label):
+    """Make a loaded library version the active one for its year ends."""
+    from .models import NoteLibraryVersion
+    from .services import note_library as nl
+
+    version = (NoteLibraryVersion.query.filter_by(version_label=version_label)
+               .order_by(NoteLibraryVersion.imported_at.desc()).first())
+    if version is None:
+        raise click.ClickException(f"No library version {version_label} loaded")
+    retired = nl.activate(version)
+    click.echo(f"{version.version_label} is active for year ends "
+               f"{version.period_label}.")
+    click.echo(f"Superseded: {', '.join(retired) or 'nothing'}. Engagements "
+               f"already pinned keep their version.")
+
+
+@click.command("move-to-library")
+@click.argument("financial_year_id", type=int)
+@click.argument("version_label")
+@click.option("--reason", required=True, help="Why this engagement moves.")
+@click.option("--rebuild-notes", is_flag=True,
+              help="Rebuild the report's notes from the new version. Removes "
+                   "figure edits made on the old notes.")
+@with_appcontext
+def move_to_library(financial_year_id, version_label, reason, rebuild_notes):
+    """Re-pin one engagement to another library version, with a reason."""
+    from .models import AuditReport, FinancialYear, NoteLibraryVersion
+    from .services import line_codes, note_library as nl, reports
+
+    financial_year = db.session.get(FinancialYear, financial_year_id)
+    if financial_year is None:
+        raise click.ClickException(f"No financial year {financial_year_id}")
+    version = (NoteLibraryVersion.query.filter_by(version_label=version_label)
+               .order_by(NoteLibraryVersion.imported_at.desc()).first())
+    if version is None:
+        raise click.ClickException(f"No library version {version_label} loaded")
+    try:
+        previous = nl.move_engagement(financial_year, version, reason)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+    click.echo(f"{financial_year.customer.name} {financial_year.year_label}: "
+               f"{previous.version_label if previous else 'none'} -> "
+               f"{version.version_label}")
+    _echo_line_codes(line_codes.assign_year(financial_year))
+
+    report = AuditReport.query.filter_by(
+        financial_year_id=financial_year.id).first()
+    if report is None:
+        click.echo("No report yet; it will be built from the new version.")
+    elif rebuild_notes:
+        removed, added = reports.rebuild_note_sections(report, financial_year)
+        click.echo(f"Report notes rebuilt: {removed} removed, {added} added.")
+    else:
+        click.echo("The existing report still holds notes from the old "
+                   "version. Run again with --rebuild-notes to rebuild them.")

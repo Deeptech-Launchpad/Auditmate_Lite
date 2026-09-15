@@ -810,6 +810,57 @@ def apply_plan(data, digest, path, activate=False, user_id=None):
     return row
 
 
+def activate(version):
+    """Make a loaded draft the active version for its year ends. Recorded."""
+    from .audit import record
+
+    before = version.status
+    retired = supersede_overlapping(version)
+    record("note_library_version", version.id, "activate",
+           before={"status": before},
+           after={"status": "active", "superseded": retired})
+    db.session.commit()
+    return retired
+
+
+def move_engagement(financial_year, version, reason):
+    """Re-pin an engagement to a different library version. Recorded.
+
+    Pins are deliberately permanent - a later library must not reach back into
+    a period already reported on - so moving one is an exception a person
+    makes, with a reason, never something an import does by itself. Refused
+    for an engagement whose report is final.
+    """
+    from ..models import AuditReport
+    from .audit import record
+
+    if not (reason or "").strip():
+        raise ValueError("Moving an engagement to another library version "
+                         "needs a reason")
+    final = (AuditReport.query.filter_by(financial_year_id=financial_year.id,
+                                         status="final").first())
+    if final is not None:
+        raise ValueError(f"{financial_year.year_label} has a final report; its "
+                         f"library version cannot change")
+
+    previous = (db.session.get(NoteLibraryVersion,
+                               financial_year.library_version_id)
+                if financial_year.library_version_id else None)
+    if previous is not None and previous.id == version.id:
+        return previous                      # nothing moves, nothing recorded
+    financial_year.library_version_id = version.id
+    record("financial_year", financial_year.id, "library_moved",
+           before={"library_version": previous.version_label if previous else None},
+           after={"library_version": version.version_label,
+                  "within_version_years": bool(
+                      financial_year.end_date
+                      and version.valid_from <= financial_year.end_date
+                      <= version.valid_to),
+                  "reason": reason.strip()})
+    db.session.commit()
+    return previous
+
+
 def supersede_overlapping(version):
     """Make `version` the active one for its year ends. Returns labels retired.
 
@@ -901,6 +952,20 @@ def condition_class(condition_text, presence_texts):
 _LIBRARY_BLANK = re.compile(r"\{([a-z][a-z0-9_]*)\}")
 
 
+# Library 2.x also writes blanks in capitals - {COMPANY_NAME}, {AMOUNT}. The
+# ones the client record answers become its bindings; the rest are questions
+# for the preparer, rendered in words until answered.
+_CLIENT_BLANK = re.compile(r"\{([A-Z][A-Z0-9_]*)\}")
+CLIENT_RECORD_BLANKS = {
+    "COMPANY_NAME": "customer.legal_name",
+    "REGISTERED_OFFICE": "customer.address",
+    "ADDRESS": "customer.address",
+    "PRINCIPAL_ACTIVITIES": "customer.principal_activities",
+    "PERIOD_START": "fy.start_date",
+    "PERIOD_END": "fy.end_date",
+}
+
+
 def _bind_blanks(wording):
     """Turn the library's {placeholder} into this app's {{ firm.placeholder }}.
 
@@ -911,6 +976,10 @@ def _bind_blanks(wording):
     """
     if not wording or "{" not in wording:
         return wording
+    wording = _CLIENT_BLANK.sub(
+        lambda m: "{{ %s }}" % CLIENT_RECORD_BLANKS.get(
+            m.group(1), "input." + m.group(1).lower()),
+        wording)
     return _LIBRARY_BLANK.sub(
         lambda m: ("{{ firm.%s }}" % m.group(1)
                    if m.group(1) in DISCLOSURE_SETTING_KEYS else m.group(0)),
@@ -1198,6 +1267,7 @@ def _note_dict(row, code_map, non_figure, presence_texts, inherited,
         "standards": row.standards,
         "trigger_text": row.trigger_text,
         "library_code": row.library_code,
+        "library_version_id": row.library_version_id,
         "tick_state_library": tick_from_library,
         "tick_preserved": preserved,
     }

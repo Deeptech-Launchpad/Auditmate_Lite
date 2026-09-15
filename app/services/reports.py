@@ -233,6 +233,7 @@ def render_bindings(text: str, customer, financial_year,
         "customer.phone": customer.phone or "",
         "customer.email": customer.email or "",
         "customer.currency": customer.books_currency or "SGD",
+        "customer.principal_activities": customer.principal_activities or "",
         "today": date.today().strftime("%d %B %Y"),
         "firm.name": "AltiusNXT Audit",
     }
@@ -254,6 +255,15 @@ def render_bindings(text: str, customer, financial_year,
         # preview says which setting is missing, not just that something is.
         if key.startswith("firm.") and key not in values:
             body, css = f"[{key[5:].replace('_', ' ')} not set]", "missing-binding"
+            if chips:
+                return (f'<span class="ph missing-binding" '
+                        f'contenteditable="false" data-ph="{key}">{body}</span>')
+            return f'<span class="{css}">{body}</span>'
+
+        # A blank in library 2.x wording the preparer fills - the holding
+        # company's name, an amount. Named in words, never as template code.
+        if key.startswith("input.") and key not in values:
+            body, css = f"[{key[6:].replace('_', ' ').lower()} not provided]", "missing-binding"
             if chips:
                 return (f'<span class="ph missing-binding" '
                         f'contenteditable="false" data-ph="{key}">{body}</span>')
@@ -431,6 +441,15 @@ def _note_triggered(note, present):
 
 TABLE_FORMS = {"Table", "Figure in note", "Narrative + table"}
 
+TABLE_PLACEHOLDER = re.compile(r"^\s*\[table ([^\]]+)\]\s*$")
+
+
+def _all_pieces(note):
+    pieces = list(note.get("pieces") or [])
+    for sub in note.get("subsections") or []:
+        pieces.extend(sub.get("pieces") or [])
+    return pieces
+
 
 def _first_period_wording(period):
     """The comparative-information paragraph for a first financial period.
@@ -520,6 +539,38 @@ def _assemble_note_content(note, present, first_year=False, period=None,
     seen_table_keys = set()
     drafts = []
 
+    # Library 2.x: every table is placed by a paragraph whose whole text is
+    # "[table <id>]", and each of its rows names its own figure. Such a note
+    # builds its tables from those bindings, never from a flat account list,
+    # and the placing paragraph is an instruction, not wording to print.
+    version_id = note.get("library_version_id")
+    bound_tables = {p["table_id"] for p in _all_pieces(note)
+                    if p.get("table_id") and p.get("rows")}
+
+    def place_table(piece):
+        """True if this piece places a bound table (added or deliberately not)."""
+        if not bound_tables:
+            return False
+        if piece.get("table_id") in bound_tables:
+            return True                     # placed by its paragraph instead
+        match = TABLE_PLACEHOLDER.match(piece.get("wording") or "")
+        if not match:
+            return False
+        table_id = match.group(1).strip()
+        # A plain TABLE paragraph places its table whenever the note is in;
+        # the table itself decides whether it has anything to show. A TOGGLE
+        # or MANUAL one asks a question first, and until it is answered the
+        # table stays out rather than being assumed.
+        if (piece.get("tag") == "TABLE"
+                or _piece_triggered(piece.get("tick_state"),
+                                    piece.get("tb_keys"), present)):
+            if table_id in bound_tables and table_id not in seen_table_keys:
+                seen_table_keys.add(table_id)
+                table_specs.append({"source": "bindings",
+                                    "version_id": version_id,
+                                    "table_id": table_id})
+        return True
+
     def held_back(piece, heading=None):
         """True if this piece is drafted wording nobody has reviewed yet.
 
@@ -554,6 +605,8 @@ def _assemble_note_content(note, present, first_year=False, period=None,
         # about review status, never about whether the piece would have
         # fired, so it belongs first regardless of what follows.
         if held_back(piece):
+            return
+        if place_table(piece):
             return
         if not _piece_triggered(piece.get("tick_state"), piece.get("tb_keys"),
                                 present):
@@ -626,6 +679,8 @@ def _assemble_note_content(note, present, first_year=False, period=None,
                     continue
                 if not sub_triggered:
                     continue
+                if place_table(piece):
+                    continue
                 if not _piece_triggered(piece.get("tick_state"),
                                         piece.get("tb_keys"), present):
                     continue
@@ -675,6 +730,43 @@ def _build_note_section(note, present, sort_order, report_id,
         content_html=content_html,
         data_binding=binding or None,
     )
+
+
+def rebuild_note_sections(report, financial_year):
+    """Replace a report's notes with ones assembled from its current library.
+
+    For an engagement moved to another library version. Every note section is
+    rebuilt, and figure edits made against the old notes are removed with
+    them - their rows no longer exist. Non-note sections (cover, directors'
+    statement, the statements) are untouched. Returns (removed, added).
+    """
+    from ..models import ReportFigureOverride
+
+    notes = [s for s in report.sections if s.section_key.startswith(NOTE_PREFIX)]
+    if notes:
+        ReportFigureOverride.query.filter(
+            ReportFigureOverride.report_id == report.id,
+            ReportFigureOverride.section_key.in_([s.section_key for s in notes]),
+        ).delete(synchronize_session=False)
+    for section in notes:
+        report.sections.remove(section)
+        db.session.delete(section)
+    db.session.flush()
+
+    order = max((s.sort_order for s in report.sections), default=-1) + 1
+    present = _present_keys(financial_year)
+    period = (financial_year.start_date, financial_year.end_date)
+    previous_period = _previous_period_of(financial_year)
+    added = 0
+    for note in load_notes_catalogue(financial_year):
+        db.session.add(_build_note_section(
+            note, present, order, report.id,
+            first_year=bool(financial_year.is_first_year), period=period,
+            previous_period=previous_period))
+        order += 1
+        added += 1
+    db.session.commit()
+    return len(notes), added
 
 
 def prior_year_wording(financial_year):
