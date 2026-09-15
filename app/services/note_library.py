@@ -19,7 +19,8 @@ from datetime import date
 
 from ..extensions import db
 from ..models import (DISCLOSURE_SETTING_KEYS, FinancialYear,
-                      NoteLibraryEntry, NoteLibraryNote, NoteLibraryVersion)
+                      NoteLibraryEntry, NoteLibraryNote, NoteLibrarySheet,
+                      NoteLibraryVersion)
 
 log = logging.getLogger(__name__)
 
@@ -85,11 +86,16 @@ def version_for(year_end):
     """
     if year_end is None:
         return None
+    # Active only. A superseded version stays loaded for the engagements
+    # already pinned to it, but a new engagement must never pin to wording
+    # the client has since corrected - version 2.1 covers exactly the same
+    # year ends as 1.0, so "not draft" would have offered both.
     return (NoteLibraryVersion.query
-            .filter(NoteLibraryVersion.status != "draft")
+            .filter(NoteLibraryVersion.status == "active")
             .filter(NoteLibraryVersion.valid_from <= year_end)
             .filter(NoteLibraryVersion.valid_to >= year_end)
-            .order_by(NoteLibraryVersion.valid_from.desc())
+            .order_by(NoteLibraryVersion.valid_from.desc(),
+                      NoteLibraryVersion.imported_at.desc())
             .first())
 
 
@@ -179,6 +185,42 @@ def _split_list(text, pipe=False):
         return []
     parts = re.split(r"\|", str(text)) if pipe else re.split(r"[;,\n]", str(text))
     return [p.strip() for p in parts if p and p.strip() and p.strip() != "-"]
+
+
+def _json_safe(value):
+    """A cell value that survives a JSON column unchanged in meaning."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float, bool)):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    text = str(value).strip()
+    return text or None
+
+
+def _records(ws):
+    """Every data row of a reference sheet, as a dict keyed by its header.
+
+    The header is row 3 on every sheet the client issues. Where two columns
+    share a title the first wins - the rule `_sheet_rows` already follows,
+    because version 1's Notes sheet carried a second, retired "Note code"
+    column, and reading the last duplicate would bind to the dead vocabulary.
+    """
+    index, body = _sheet_rows(ws)
+    names = sorted(index, key=index.get)
+    rows = []
+    for raw in body:
+        rows.append({name: _json_safe(raw[index[name]])
+                     if index[name] < len(raw) else None
+                     for name in names})
+    return rows
+
+
+# Sheets the engine reads but never prints. Everything on them is stored with
+# the version as-is; Notes, Paragraphs and Tables are unpacked into the notes
+# themselves and Version into the version row, so they are not repeated here.
+CORE_SHEETS = {"Version", "Notes", "Paragraphs", "Tables"}
 
 
 def _int_or_none(value):
@@ -276,9 +318,16 @@ def read_workbook(path):
                 "condition_source": _cell(row, pi, "Condition source"),
                 "line_codes": _split_list(_cell(row, pi, "Line codes")),
                 "binds_to": _cell(row, pi, "Binds to"),
-                # 68 paragraphs are drafted rather than taken from the index
-                # and must not reach a client document before a reviewer has
-                # seen them. Recorded per paragraph so the gate is real.
+                # What the engine does when the question behind a paragraph
+                # goes unanswered: Hold the note incomplete, or Omit the
+                # paragraph. Added in library 2.x; "-" on paragraphs that ask
+                # nothing, and absent altogether on a 1.0 workbook.
+                "if_unanswered": _cell(row, pi, "If unanswered"),
+                "source": _cell(row, pi, "Source"),
+                # Version 1.0 marked 68 paragraphs as drafted, and those were
+                # held back from client documents. From 1.2 none carries that
+                # marker - every paragraph was reviewed, and the firm has
+                # confirmed the wording comes from an approved source.
                 "review_status": ("unreviewed" if source.startswith("drafted")
                                   else "from_index"),
             })
@@ -290,11 +339,23 @@ def read_workbook(path):
             code = _cell(row, ti, "Note code")
             if not code:
                 continue
+            labels = _split_list(_cell(row, ti, "Row labels"), pipe=True)
+            bindings = _split_list(_cell(row, ti, "Row bindings"), pipe=True)
             tables.setdefault(code, []).append({
                 "table_id": _cell(row, ti, "Table ID"),
                 "sort_order": _int_or_none(_cell(row, ti, "sort_order")) or 0,
                 "ref": _cell(row, ti, "Index ref"),
-                "row_labels": _split_list(_cell(row, ti, "Row labels"), pipe=True),
+                "row_labels": labels,
+                # One binding token per row label, in the same order - where
+                # each printed row takes its figure from. The fix, from
+                # library 1.1, for rows that previously had nothing joining
+                # a label to a code. Paired only when the counts agree;
+                # check_integrity refuses the import when they do not, so a
+                # label can never be matched to its neighbour's figure.
+                "row_bindings": bindings,
+                "rows": ([{"label": label, "binding": binding}
+                          for label, binding in zip(labels, bindings)]
+                         if len(labels) == len(bindings) else []),
                 "column_labels": _cell(row, ti, "Column labels"),
                 "periods": _cell(row, ti, "Periods presented"),
                 "comparative": _cell(row, ti, "Comparative"),
@@ -339,15 +400,192 @@ def read_workbook(path):
                                  key=lambda t: t["sort_order"]),
             })
 
+        # --- Everything else, kept whole with the version ----------------
+        reference = {name: _records(wb[name]) for name in wb.sheetnames
+                     if name not in CORE_SHEETS}
+
         known = {n["library_code"] for n in notes}
         return {
             "version": version,
             "notes": notes,
+            "reference": reference,
+            "sheet_names": list(wb.sheetnames),
             "orphan_paragraphs": sorted(set(paragraphs) - known),
             "orphan_tables": sorted(set(tables) - known),
         }
     finally:
         wb.close()
+
+
+# ---------------------------------------------------------------------------
+# Integrity
+# ---------------------------------------------------------------------------
+
+TAGS = {"FIXED", "TOGGLE", "REPLACE", "MANUAL", "TABLE"}
+CONDITION_SOURCES = {"unconditional", "line balance", "table binding",
+                     "preparer confirms", "client record", "firm setting"}
+
+# The binding grammar from the Read me sheet. A token either names a
+# statement line, composes several, reads a field from a supporting
+# document, or is one of these literals.
+LITERAL_TOKENS = {"CALC", "CLIENT", "FIRM", "MANUAL", "MEMO", "STATIC",
+                  "FI:assets", "FI:liabilities"}
+LINE_PREFIXES = ("BS-", "PL-", "CF-", "EQ-")
+COMPOSED_PREFIXES = ("PRIOR:", "SUM:", "EACH:")
+FIELD_PREFIXES = ("FAR:", "AGED:", "TAX:", "REG:", "LOAN:", "GL:", "BANK:")
+
+_PLACEHOLDER = re.compile(r"\{([A-Za-z][A-Za-z0-9_]*)\}")
+
+
+def _problems_in_token(token, line_codes, fields):
+    """What in one binding token does not resolve. Empty when it all does."""
+    if token in LITERAL_TOKENS:
+        return []
+    if token.startswith(LINE_PREFIXES):
+        return [] if token in line_codes else [f"line code {token}"]
+    # PRIOR wraps another token rather than only a bare code: the library
+    # uses PRIOR:SUM:BS-PROV-C+BS-PROV-NC for last year's value of a sum -
+    # every movement table whose opening balance spans two lines. The Read me
+    # grammar lists PRIOR and SUM separately and never shows them nested, so
+    # this is read as composition, not flagged as a malformed token.
+    if token.startswith("PRIOR:"):
+        return _problems_in_token(token[len("PRIOR:"):], line_codes, fields)
+    for prefix in COMPOSED_PREFIXES:
+        if token.startswith(prefix):
+            codes = [c for c in token[len(prefix):].split("+") if c]
+            return [f"line code {c} (in {token})"
+                    for c in codes if c not in line_codes]
+    for prefix in FIELD_PREFIXES:
+        if token.startswith(prefix):
+            key = (prefix[:-1], token[len(prefix):])
+            return [] if key in fields else [f"field {token}"]
+    return [f"token {token} is not in the binding grammar"]
+
+
+def check_integrity(data):
+    """Structural checks on a parsed workbook. Returns (errors, warnings).
+
+    ERRORS stop the import. Each one would put a wrong figure or a wrong
+    note into a client document without anyone being told: a table whose
+    labels and bindings differ in number pairs a label with its neighbour's
+    figure; a paragraph for a note that does not exist is silently lost.
+
+    WARNINGS are reported and do not stop it. They are references into the
+    library's own reference sheets that do not resolve - worth fixing in the
+    workbook, but they affect one row or one placeholder, and the engine
+    already treats an unresolved binding as "incomplete" rather than
+    inventing a figure.
+
+    A version 1.0 workbook has none of the reference sheets, so only the
+    checks that apply to it are run.
+    """
+    errors, warnings = [], []
+    notes = data["notes"]
+    reference = data.get("reference") or {}
+    has_bindings = "Statement lines" in reference
+
+    codes = [n["library_code"] for n in notes]
+    duplicates = sorted({c for c in codes if codes.count(c) > 1})
+    if duplicates:
+        errors.append("Note codes used more than once: " + ", ".join(duplicates))
+
+    for code in data.get("orphan_paragraphs") or []:
+        errors.append(f"Paragraphs point at note {code}, which is not on "
+                      f"the Notes sheet")
+    for code in data.get("orphan_tables") or []:
+        errors.append(f"Tables point at note {code}, which is not on "
+                      f"the Notes sheet")
+
+    para_ids = [p.get("para_id") for n in notes for p in n["pieces"]
+                if p.get("para_id")]
+    table_ids = [t.get("table_id") for n in notes for t in n["tables"]
+                 if t.get("table_id")]
+    for label, ids in (("Paragraph", para_ids), ("Table", table_ids)):
+        repeated = sorted({i for i in ids if ids.count(i) > 1})
+        if repeated:
+            errors.append(f"{label} IDs used more than once: "
+                          + ", ".join(repeated))
+
+    headings = {normalise_heading(n["heading"]) for n in notes}
+    for note in notes:
+        if (note.get("presented_as") or "").strip().lower() != "sub-section":
+            continue
+        if normalise_heading(note.get("sits_inside")) not in headings:
+            errors.append(f"Sub-section '{note['heading']}' sits inside "
+                          f"'{note.get('sits_inside')}', which is not a note")
+
+    if has_bindings:
+        for note in notes:
+            for table in note["tables"]:
+                labels, bindings = table["row_labels"], table["row_bindings"]
+                if len(labels) != len(bindings):
+                    errors.append(
+                        f"Table {table['table_id']} has {len(labels)} row "
+                        f"labels but {len(bindings)} row bindings")
+
+    # --- references into the reference sheets ------------------------------
+    if not has_bindings:
+        return errors, warnings
+
+    line_codes = {r.get("Line code") for r in reference.get("Statement lines", [])
+                  if r.get("Line code")}
+    fields = {(r.get("Token"), r.get("Field"))
+              for r in reference.get("Binding fields", [])
+              if r.get("Token") and r.get("Field")}
+    placeholders = ({r.get("Field") for r in reference.get("Fields", [])}
+                    | {r.get("Setting") for r in reference.get("Firm settings", [])})
+
+    unresolved = {}
+    for note in notes:
+        for table in note["tables"]:
+            for token in table["row_bindings"]:
+                for problem in _problems_in_token(token, line_codes, fields):
+                    unresolved.setdefault(problem, []).append(table["table_id"])
+            for code in table["line_codes"]:
+                if code not in line_codes:
+                    unresolved.setdefault(f"line code {code}", []).append(
+                        table["table_id"])
+        for piece in note["pieces"]:
+            for code in piece["line_codes"]:
+                if code not in line_codes:
+                    unresolved.setdefault(f"line code {code}", []).append(
+                        piece.get("para_id"))
+            for name in _PLACEHOLDER.findall(piece.get("wording") or ""):
+                if name not in placeholders:
+                    unresolved.setdefault(f"placeholder {{{name}}}", []).append(
+                        piece.get("para_id"))
+            if (piece.get("tag") or "") not in TAGS:
+                warnings.append(f"Paragraph {piece.get('para_id')} has an "
+                                f"unknown tag '{piece.get('tag')}'")
+            source = (piece.get("condition_source") or "").strip().lower()
+            if source and source not in CONDITION_SOURCES:
+                warnings.append(f"Paragraph {piece.get('para_id')} has an "
+                                f"unknown condition source '{source}'")
+    for problem, where in sorted(unresolved.items()):
+        shown = ", ".join(sorted({str(w) for w in where})[:3])
+        warnings.append(f"Does not resolve: {problem} - used by {shown}")
+
+    # Every table is put into its note by exactly one paragraph.
+    inserted = {tid: 0 for tid in table_ids}
+    for note in notes:
+        for piece in note["pieces"]:
+            text = " ".join(filter(None, (piece.get("wording"),
+                                          piece.get("binds_to"))))
+            for tid in inserted:
+                if tid in text:
+                    inserted[tid] += 1
+    for tid, count in sorted(inserted.items()):
+        if count != 1:
+            warnings.append(f"Table {tid} is inserted by {count} paragraphs, "
+                            f"expected exactly one")
+
+    live = set(para_ids)
+    for rule in reference.get("Rules", []):
+        if rule.get("Para ID") and rule["Para ID"] not in live:
+            warnings.append(f"Rule for {rule['Para ID']} points at a "
+                            f"paragraph that does not exist")
+
+    return errors, warnings
 
 
 # ---------------------------------------------------------------------------
@@ -369,14 +607,32 @@ def plan(path):
         version_label=version["version_label"]).first()
     same_file = NoteLibraryVersion.query.filter_by(source_sha256=digest).first()
 
-    # Notes already held, folded by heading, so a note we have keeps the key
-    # the report engine already references - including from reports that have
-    # been issued and frozen.
+    # The key a note had in the version before, found by its note code. The
+    # guide is explicit that the code is the one stable identifier - headings
+    # get reworded between versions ("Trade receivables" became "Trade and
+    # other receivables"), codes do not. So a note keeps the same key across
+    # every version that carries its code, and anything in the report engine
+    # that references the key keeps working after an upgrade.
+    earlier = {}
+    for row in (NoteLibraryNote.query
+                .join(NoteLibraryVersion)
+                .order_by(NoteLibraryVersion.imported_at.asc()).all()):
+        if row.library_code:
+            earlier[row.library_code] = row.key
+
+    # Failing that, a note the flat catalogue holds, folded by heading - how
+    # version 1.0 was first keyed against the catalogue that predates versions.
     current = {normalise_heading(row.heading): row
                for row in NoteLibraryEntry.query.all()}
 
     matched, added = [], []
+    carried_by_code = 0
     for note in data["notes"]:
+        if note["library_code"] in earlier:
+            note["key"] = earlier[note["library_code"]]
+            carried_by_code += 1
+            matched.append(note)
+            continue
         folded = normalise_heading(note["heading"])
         hit = current.get(folded)
         if hit is None:
@@ -390,6 +646,20 @@ def plan(path):
         else:
             note["key"] = note["library_code"]
             added.append(note)
+
+    errors, warnings = check_integrity(data)
+    reference = data.get("reference") or {}
+
+    # Active versions whose year ends this one overlaps. Activating it
+    # supersedes them: two active versions for one period would leave which
+    # wording an engagement gets to the order rows come back from the database.
+    overlapping = [v.version_label for v in NoteLibraryVersion.query
+                   .filter(NoteLibraryVersion.status == "active")
+                   .filter(NoteLibraryVersion.version_label != version["version_label"])
+                   .all()
+                   if version["valid_from"] and version["valid_to"]
+                   and v.valid_from <= version["valid_to"]
+                   and v.valid_to >= version["valid_from"]]
 
     unreviewed = sum(1 for n in data["notes"] for p in n["pieces"]
                      if p["review_status"] == "unreviewed")
@@ -424,6 +694,20 @@ def plan(path):
                                if n["tick_state"] == "tb_driven"),
         "notes_manual": sum(1 for n in data["notes"]
                             if n["tick_state"] == "manual"),
+        # --- library 2.x -----------------------------------------------
+        "carried_by_code": carried_by_code,
+        "sheets": len(data.get("sheet_names") or []),
+        "reference_sheets": {name: len(rows) for name, rows in reference.items()},
+        "table_rows": sum(len(t["row_labels"]) for n in data["notes"]
+                          for t in n["tables"]),
+        "row_bindings": sum(len(t["row_bindings"]) for n in data["notes"]
+                            for t in n["tables"]),
+        "statement_lines": len(reference.get("Statement lines", [])),
+        "firm_settings": len(reference.get("Firm settings", [])),
+        "preparer_inputs": len(reference.get("Preparer inputs", [])),
+        "integrity_errors": errors,
+        "integrity_warnings": warnings,
+        "supersedes": overlapping,
     }
     return report, data
 
@@ -443,6 +727,8 @@ def _pieces_for(note):
             "tag": "TABLE",
             "table_id": table["table_id"],
             "row_labels": table["row_labels"],
+            "row_bindings": table.get("row_bindings") or [],
+            "rows": table.get("rows") or [],
             "column_labels": table["column_labels"],
             "periods": table["periods"],
             "total_row": table["total_row"],
@@ -466,6 +752,13 @@ def apply_plan(data, digest, path, activate=False, user_id=None):
             "The Version sheet does not state which financial year ends this "
             "library is valid for, so no engagement could be matched to it. "
             "Refusing to import.")
+
+    errors, _warnings = check_integrity(data)
+    if errors:
+        raise ValueError(
+            "The workbook has structural errors that would put wrong figures "
+            "or lose notes in a client document. Refusing to import:\n  - "
+            + "\n  - ".join(errors))
 
     row = NoteLibraryVersion(
         version_label=version["version_label"],
@@ -502,10 +795,38 @@ def apply_plan(data, digest, path, activate=False, user_id=None):
             trigger_text=note["trigger_text"],
         ))
 
+    for name, rows in (data.get("reference") or {}).items():
+        db.session.add(NoteLibrarySheet(
+            library_version_id=row.id, name=name,
+            rows=rows, row_count=len(rows)))
+
+    if activate:
+        supersede_overlapping(row)
+
     db.session.commit()
-    log.info("Imported notes library %s (%d notes)",
-             row.version_label, len(data["notes"]))
+    log.info("Imported notes library %s (%d notes, %d reference sheets)",
+             row.version_label, len(data["notes"]),
+             len(data.get("reference") or {}))
     return row
+
+
+def supersede_overlapping(version):
+    """Make `version` the active one for its year ends. Returns labels retired.
+
+    Any other active version covering an overlapping range becomes
+    superseded. It is not deleted: an engagement already pinned to it keeps
+    reading it, which is the promise versioning makes. It simply stops being
+    offered to engagements pinning for the first time.
+    """
+    retired = []
+    for other in (NoteLibraryVersion.query
+                  .filter(NoteLibraryVersion.status == "active")
+                  .filter(NoteLibraryVersion.id != version.id).all()):
+        if other.valid_from <= version.valid_to and other.valid_to >= version.valid_from:
+            other.status = "superseded"
+            retired.append(other.version_label)
+    version.status = "active"
+    return retired
 
 
 # ---------------------------------------------------------------------------

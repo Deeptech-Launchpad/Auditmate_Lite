@@ -1145,22 +1145,59 @@ def import_note_library(path, do_apply, activate, force):
         click.echo("  Valid for year ends: NOT STATED - import will be refused")
     click.echo(f"  File digest {report['digest'][:16]}...")
     click.echo("")
+    click.echo(f"  {report['sheets']:>4} sheets")
     click.echo(f"  {report['total_notes']:>4} notes in the workbook")
     click.echo(f"  {report['matched']:>4} matched to notes we already hold "
-               f"(they keep their existing key)")
+               f"(they keep their existing key"
+               + (f"; {report['carried_by_code']} by note code)"
+                  if report['carried_by_code'] else ")"))
     click.echo(f"  {report['added']:>4} new to us")
     click.echo(f"  {report['paragraphs']:>4} paragraphs")
     click.echo(f"  {report['tables']:>4} figure tables")
+    if report["row_bindings"]:
+        click.echo(f"  {report['table_rows']:>4} table rows, "
+                   f"{report['row_bindings']} carrying a binding")
+    if report["statement_lines"]:
+        click.echo(f"  {report['statement_lines']:>4} statement line codes")
+        click.echo(f"  {report['firm_settings']:>4} firm settings")
+        click.echo(f"  {report['preparer_inputs']:>4} preparer inputs")
     click.echo("")
     click.echo(f"  Tick states: {report['notes_always_on']} always on, "
                f"{report['notes_tb_driven']} TB-driven, "
                f"{report['notes_manual']} manual")
-    click.echo(f"  {report['unreviewed_paragraphs']} paragraphs are unreviewed "
-               f"drafts - held back from client documents")
-    click.echo(f"  {report['distinct_line_codes']} distinct line codes, none "
-               f"mapped yet - figures will not resolve until Stage 3")
+    if report["unreviewed_paragraphs"]:
+        click.echo(f"  {report['unreviewed_paragraphs']} paragraphs are "
+                   f"unreviewed drafts - held back from client documents")
+    else:
+        click.echo("  No paragraph is marked as a draft")
     click.echo(f"  {report['auditor_notes_untouched']} auditor-added notes, "
                f"untouched by this import")
+
+    if report["reference_sheets"]:
+        click.echo("")
+        click.echo("  Reference sheets kept with the version:")
+        for name, count in report["reference_sheets"].items():
+            click.echo(f"    {count:>4}  {name}")
+
+    click.echo("")
+    if report["integrity_errors"]:
+        click.echo(f"  INTEGRITY: {len(report['integrity_errors'])} error(s) "
+                   f"- import will be refused")
+        for problem in report["integrity_errors"]:
+            click.echo(f"    x {problem}")
+    else:
+        click.echo("  INTEGRITY: no structural errors")
+    if report["integrity_warnings"]:
+        click.echo(f"  {len(report['integrity_warnings'])} warning(s):")
+        for problem in report["integrity_warnings"]:
+            click.echo(f"    ! {problem}")
+
+    if report["supersedes"]:
+        click.echo("")
+        click.echo(f"  Covers the same year ends as active version(s) "
+                   f"{', '.join(report['supersedes'])}. With --activate they "
+                   f"become superseded: engagements already on them stay, "
+                   f"new engagements get this one.")
 
     if report["orphan_paragraphs"] or report["orphan_tables"]:
         click.echo("")
@@ -1204,6 +1241,8 @@ def import_note_library(path, do_apply, activate, force):
     click.echo("")
     click.echo(f"Imported version {version.version_label} "
                f"({version.notes_count} notes), status {version.status}.")
+    if activate and report["supersedes"]:
+        click.echo(f"Superseded: {', '.join(report['supersedes'])}.")
 
     if activate:
         pinned, unmatched = lib.backfill_pins()

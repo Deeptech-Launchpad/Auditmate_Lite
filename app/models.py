@@ -1273,6 +1273,16 @@ class NoteLibraryVersion(db.Model):
     notes = db.relationship("NoteLibraryNote", back_populates="library_version",
                             cascade="all, delete-orphan",
                             order_by="NoteLibraryNote.sort_order")
+    sheets = db.relationship("NoteLibrarySheet", back_populates="library_version",
+                             cascade="all, delete-orphan",
+                             order_by="NoteLibrarySheet.name")
+
+    def sheet(self, name):
+        """Rows of one reference sheet in this version, or an empty list."""
+        for held in self.sheets:
+            if held.name == name:
+                return held.rows or []
+        return []
 
     def covers(self, year_end):
         """Whether a period ending on this date belongs to this version."""
@@ -1287,6 +1297,42 @@ class NoteLibraryVersion(db.Model):
 
     def __repr__(self):
         return f"<NoteLibraryVersion {self.version_label}>"
+
+
+class NoteLibrarySheet(db.Model):
+    """One reference sheet of a library version, held as the rows it carries.
+
+    Version 1 of the library was five sheets and the notes table held all of
+    it. Version 2 added fifteen more that the notes engine reads rather than
+    prints - the statement lines every figure binds to, the source document
+    behind each binding token, the firm settings and their defaults, the
+    preparer questions, the alias table for last year's headings, and so on.
+
+    Kept per version, not as shared lookup tables, for the reason the notes
+    are: the line codes, the questions and the defaults are part of the
+    library in force for a period. FRS 118 will change several of them for
+    2027, and an FY2026 engagement must keep reading the 2026 set.
+
+    Held as JSON rather than one table per sheet. The engine reads a sheet
+    whole and small - the largest is 326 rows - and a table per sheet would
+    tie the schema to one version's column layout, which the client has
+    already changed four times.
+    """
+    __tablename__ = "note_library_sheets"
+    __table_args__ = (db.UniqueConstraint("library_version_id", "name",
+                                          name="uq_note_library_sheets_version_name"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    library_version_id = db.Column(db.Integer,
+                                   db.ForeignKey("note_library_versions.id"),
+                                   nullable=False, index=True)
+    # The sheet's own tab name, exactly as the workbook spells it.
+    name = db.Column(db.String(80), nullable=False)
+    rows = db.Column(JSON)
+    row_count = db.Column(db.Integer, default=0, nullable=False)
+
+    library_version = db.relationship("NoteLibraryVersion",
+                                      back_populates="sheets")
 
 
 class NoteLibraryNote(db.Model):
