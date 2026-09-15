@@ -29,6 +29,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from ..extensions import db
+from .audit import record
 from ..models import (AccountMapping, Connection, Customer, Document,
                       ExtractedLineItem, FinancialYear, NoteLibraryVersion,
                       TrialBalanceAccount)
@@ -241,6 +242,34 @@ def load(path, replace=False, user_id=None):
                 confidence=1.0 if key else 0.0,
                 needs_review=key is None))
 
+        # A deliberate exception to the library's own version rule, stated in
+        # the file and recorded, never inferred. The client's acceptance-test
+        # year can fall outside the version it is meant to test: library 2.1
+        # is valid for year ends from 1 January 2024, and the test year ends
+        # 31 December 2023. pin_version() rightly refuses that. Pinning it
+        # anyway is a test decision someone made, so it carries its reason
+        # into the audit trail, and `flask note-library` lists it.
+        exception = None
+        if year.get("library_version"):
+            version = NoteLibraryVersion.query.filter_by(
+                version_label=str(year["library_version"])).first()
+            if version is None:
+                raise ValueError(f"{year['year_label']}: library version "
+                                 f"{year['library_version']} is not loaded")
+            if not year.get("library_exception"):
+                raise ValueError(
+                    f"{year['year_label']}: pinning library "
+                    f"{version.version_label} by hand needs a "
+                    f"library_exception saying why")
+            financial_year.library_version_id = version.id
+            exception = year["library_exception"]
+            record("financial_year", financial_year.id, "library_exception",
+                   after={"library_version": version.version_label,
+                          "version_status": version.status,
+                          "valid_from": version.valid_from.isoformat(),
+                          "valid_to": version.valid_to.isoformat(),
+                          "year_end": financial_year.end_date.isoformat(),
+                          "reason": exception})
         note_library.pin_version(financial_year)
         report_years.append({
             "label": financial_year.year_label,
@@ -250,10 +279,20 @@ def load(path, replace=False, user_id=None):
             "approved": bool(year.get("approved")),
             "unmapped": unmapped,
             "from_file": from_file,
+            "library_exception": exception,
             "library": (db.session.get(NoteLibraryVersion,
                                        financial_year.library_version_id).version_label
                         if financial_year.library_version_id else None),
         })
+
+    db.session.flush()
+    # Finer categories after every year exists, oldest first, so an open year
+    # can carry a category its prior year settled.
+    from . import line_codes
+    for entry in report_years:
+        summary = line_codes.assign_year(
+            db.session.get(FinancialYear, entry["id"]), commit=False)
+        entry["line_codes"] = summary
 
     db.session.commit()
     log.info("Loaded test engagement %s (customer %s)", customer.name, customer.id)

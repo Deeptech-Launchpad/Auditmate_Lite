@@ -1,0 +1,219 @@
+# Notes library line codes, filed under AuditMate's statement lines
+# ---------------------------------------------------------------------------
+# Two vocabularies, two jobs.
+#
+#   AuditMate's statement line (standard_key)   builds the FACE of the
+#       statements - the balance sheet, profit and loss and cash flow the
+#       firm already issues. Unchanged by this file.
+#
+#   The notes library's line code               builds the NOTES. Every
+#       table row in library 2.x names the line code it takes its figure
+#       from, and a composite row adds several: "Other receivables" in the
+#       credit risk note is SUM:BS-OR+BS-DEP+BS-STAFFLN+BS-RPR.
+#
+# So every trial balance account carries both, and this file says which line
+# codes may sit under each statement line. An account gets exactly ONE line
+# code, and always the most specific that applies - a deposit is BS-DEP, not
+# the catch-all BS-OR, or the credit risk total above would count it twice
+# or not at all.
+#
+# HOW AN ACCOUNT'S LINE CODE IS CHOSEN - services/line_codes.py
+#   codes has one entry    that code, settled; nothing to ask
+#   codes has several      the first `split` rule matching the account's
+#                          name (and side, where given) proposes one; failing
+#                          that, `default` is proposed; failing that, the
+#                          preparer is asked on the mapping screen
+#
+# A proposal is shown as a proposal. Only a single-code line is settled
+# without a person, because only there is there nothing to decide.
+#
+# Where the two vocabularies disagree in grain it runs both ways. The library
+# is finer on the balance sheet (AuditMate's "Deposits & Other Receivables"
+# holds five library codes) and AuditMate is finer on the profit and loss
+# (entertainment, training and secretarial fees are each a line here, and all
+# administrative expenses in the library). Both are fine: the face is built
+# from the statement line, the notes from the line code.
+#
+# Written for library 2.1's 107 codes. Every code is checked against the
+# engagement's library version when it is used, and anything that does not
+# resolve is reported rather than assigned.
+
+lines:
+
+  # --- Profit and loss: revenue, cost of sales, other income ---------------
+  revenue:               {codes: [PL-REV]}
+  purchases:             {codes: [PL-COS]}
+  design_implementation: {codes: [PL-COS]}
+  service_charges:       {codes: [PL-COS]}
+  interest_income:       {codes: [PL-OI]}
+  iras_rebate:
+    # An IRAS rebate or credit is government assistance, which FRS 20
+    # discloses as grant income.
+    codes: [PL-GRANT, PL-OI]
+    default: PL-GRANT
+  other_income:
+    codes: [PL-OI, PL-GRANT, PL-FX, PL-GAINDISP, PL-LEASEINC]
+    default: PL-OI
+    split:
+      - {match: "grant|rebate|jobs support|wage credit|jss|subsid", code: PL-GRANT}
+      - {match: "exchange|forex|\\bfx\\b", code: PL-FX}
+      - {match: "disposal", code: PL-GAINDISP}
+      - {match: "rental income|lease income", code: PL-LEASEINC}
+
+  # --- Profit and loss: staff ---------------------------------------------
+  staff_salaries:         {codes: [PL-STAFF]}
+  staff_bonus:            {codes: [PL-STAFF]}
+  commission_employee:    {codes: [PL-STAFF]}
+  cpf:                    {codes: [PL-CPF]}
+  directors_remuneration: {codes: [PL-DIRFEE]}
+
+  # --- Profit and loss: depreciation, leases, finance, tax ----------------
+  depreciation:
+    codes: [PL-DEP, PL-DEPROU, PL-AMORT]
+    default: PL-DEP
+    split:
+      - {match: "right.of.use|\\brou\\b", code: PL-DEPROU}
+      - {match: "amortis|amortiz", code: PL-AMORT}
+  office_rent:
+    # FRS 116 requires short-term, low-value and variable lease expense as
+    # three separate figures, and a rent account's name rarely says which.
+    # Short-term is proposed because it is what an SME renting premises on
+    # a lease of a year or less has - and it is shown as a proposal.
+    codes: [PL-LEASE-ST, PL-LEASE-LV, PL-LEASE-VAR]
+    default: PL-LEASE-ST
+    split:
+      - {match: "low.value", code: PL-LEASE-LV}
+      - {match: "variable", code: PL-LEASE-VAR}
+  staff_house_rental:
+    codes: [PL-LEASE-ST, PL-LEASE-LV, PL-LEASE-VAR]
+    default: PL-LEASE-ST
+  interest_expense:       {codes: [PL-FIN]}
+  gst_payables_expense:   {codes: [PL-GST]}
+  tax_expense:            {codes: [PL-TAX]}
+  other_comprehensive_income: {codes: [PL-OCI]}
+
+  # --- Profit and loss: administrative and other expenses -----------------
+  accounting_charges:
+    codes: [PL-ADM, PL-AUDIT]
+    default: PL-ADM
+    split:
+      - {match: "audit", code: PL-AUDIT}
+  bank_charges:
+    codes: [PL-ADM, PL-FIN]
+    default: PL-ADM
+    split:
+      - {match: "interest", code: PL-FIN}
+  consulting_fee:
+    codes: [PL-ADM, PL-MGMTFEE]
+    default: PL-ADM
+    split:
+      - {match: "management fee", code: PL-MGMTFEE}
+  website_expenses:    {codes: [PL-ADM]}
+  manpower_supply:     {codes: [PL-ADM]}
+  mom_application_fee: {codes: [PL-ADM]}
+  entertainment:       {codes: [PL-ADM]}
+  petty_cash_expenses: {codes: [PL-ADM]}
+  secretarial_fee:     {codes: [PL-ADM]}
+  training_expenses:   {codes: [PL-ADM]}
+  other_expenses:
+    codes: [PL-OTHEXP, PL-ADM, PL-DIST, PL-IMPAIR, PL-ECL, PL-FX, PL-RD, PL-SBP]
+    default: PL-OTHEXP
+    split:
+      - {match: "bad debt|doubtful|expected credit|\\becl\\b", code: PL-ECL}
+      - {match: "impairment", code: PL-IMPAIR}
+      - {match: "exchange|forex|\\bfx\\b", code: PL-FX}
+      - {match: "research|development cost", code: PL-RD}
+      - {match: "share.based", code: PL-SBP}
+      - {match: "distribution|delivery|freight|carriage", code: PL-DIST}
+
+  # --- Balance sheet: non-current assets ----------------------------------
+  ppe:                      {codes: [BS-PPE]}
+  accumulated_depreciation: {codes: [BS-PPE]}
+  investment_property:      {codes: [BS-INVPROP]}
+  intangible_assets:        {codes: [BS-INTAN]}
+  right_of_use_assets:      {codes: [BS-ROU]}
+  investments:              {codes: [BS-SUBS]}
+
+  # --- Balance sheet: current assets --------------------------------------
+  inventories:
+    codes: [BS-INV, BS-INVALLOW]
+    default: BS-INV
+    split:
+      - {match: "allowance|obsolete|obsolescence|write.down|provision", code: BS-INVALLOW}
+  contract_assets:
+    codes: [BS-CONTASSET, BS-CONTCOST]
+    default: BS-CONTASSET
+    split:
+      - {match: "contract cost|capitalised cost|capitalized cost", code: BS-CONTCOST}
+  trade_receivables:
+    codes: [BS-TR, BS-LOSSALLOW, BS-RPR]
+    default: BS-TR
+    split:
+      - {match: "allowance|doubtful|impairment|expected credit|provision", code: BS-LOSSALLOW}
+      - {match: "related part|director|holding compan|subsidiar|shareholder", code: BS-RPR}
+  prepayments:
+    # AuditMate's "Deposits & Other Receivables" - the line the library
+    # splits most finely, and the one Dynamic's other receivables note turns
+    # on: staff loan 21,200 and deposits 8,014 are separate rows.
+    codes: [BS-DEP, BS-STAFFLN, BS-PREPAY, BS-RPR, BS-LEASEREC, BS-OR]
+    default: BS-OR
+    split:
+      - {match: "deposit", code: BS-DEP}
+      - {match: "staff|employee", code: BS-STAFFLN}
+      - {match: "prepa", code: BS-PREPAY}
+      - {match: "related part|director|holding compan|subsidiar|shareholder", code: BS-RPR}
+      - {match: "lease receivable", code: BS-LEASEREC}
+  assets_held_for_sale: {codes: [BS-HFS]}
+  cash_and_equivalents:
+    codes: [BS-CASH, BS-FD, BS-CASHREST]
+    default: BS-CASH
+    split:
+      - {match: "fixed deposit|time deposit", code: BS-FD}
+      - {match: "restricted|pledged|escrow", code: BS-CASHREST}
+
+  # --- Balance sheet: equity ----------------------------------------------
+  share_capital:     {codes: [BS-SC]}
+  retained_earnings: {codes: [BS-RE]}
+  working_capital:
+    # Presented within share capital in the client's own statement of changes
+    # in equity. A reserve would be BS-RES; proposed, not settled.
+    codes: [BS-SC, BS-RES]
+    default: BS-SC
+
+  # --- Balance sheet: liabilities -----------------------------------------
+  trade_payables:
+    # AuditMate's "Other Payables". Note that no table in library 2.1 binds
+    # BS-GST, so a GST payable account is correctly filed here and then
+    # appears in no note - the payables note will not add up to this line
+    # for a client that owes GST. Reported to the client.
+    codes: [BS-TP, BS-OP, BS-RPP, BS-GST, BS-TP-RP]
+    default: BS-OP
+    split:
+      - {match: "\\bgst\\b|goods and services tax", code: BS-GST}
+      - {match: "related part|director|holding compan|subsidiar|shareholder", code: BS-RPP}
+      - {match: "trade creditor|trade payable|accounts payable", code: BS-TP}
+  accruals:             {codes: [BS-ACCR]}
+  contract_liabilities: {codes: [BS-CONTLIAB]}
+  short_term_borrowings: {codes: [BS-BORR-C]}
+  long_term_borrowings:  {codes: [BS-BORR-NC]}
+  tax_payable:           {codes: [BS-TAXPAY]}
+  lease_liabilities:
+    # Current or non-current depends on when payments fall due, which the
+    # lease schedule says and an account name almost never does. No
+    # default: a guess here misstates the maturity analysis.
+    codes: [BS-LEASE-C, BS-LEASE-NC]
+    split:
+      - {match: "non.current|long.term", code: BS-LEASE-NC}
+      - {match: "current|short.term", code: BS-LEASE-C}
+  provisions:
+    codes: [BS-PROV-C, BS-PROV-NC]
+    split:
+      - {match: "non.current|long.term", code: BS-PROV-NC}
+      - {match: "current|short.term", code: BS-PROV-C}
+  deferred_tax:
+    # AuditMate holds one deferred tax line; the library separates an asset
+    # from a liability. The balance's side decides it, not the name.
+    codes: [BS-DTL, BS-DTA]
+    default: BS-DTL
+    split:
+      - {side: debit, code: BS-DTA}

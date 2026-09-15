@@ -215,6 +215,18 @@ def build(financial_year_id: int, user_id=None) -> dict:
         and a.source not in PROTECTED_SOURCES
     }
 
+    # The same for finer categories, and for the same reason: only a person's
+    # choice survives a rebuild. Kept with the statement line it was chosen
+    # under - a category chosen for one statement line means nothing once the
+    # account maps somewhere else.
+    chosen_categories = {
+        (a.account_code or "", (a.account_name or "").lower()):
+            (a.standard_key, a.line_code)
+        for a in financial_year.tb_accounts
+        if a.line_code and a.line_code_source == "manual"
+        and a.source not in PROTECTED_SOURCES
+    }
+
     # Replace source-derived rows only; auditor rows are preserved.
     (TrialBalanceAccount.query
      .filter_by(financial_year_id=financial_year_id)
@@ -304,6 +316,15 @@ def build(financial_year_id: int, user_id=None) -> dict:
             if rule:
                 account.statement_type = rule["statement_type"]
 
+    from . import line_codes
+    for account in merged.values():
+        chosen = chosen_categories.get(
+            (account.account_code or "", (account.account_name or "").lower()))
+        if chosen and chosen[0] == account.standard_key:
+            account.line_code, account.line_code_source = chosen[1], "manual"
+    db.session.flush()
+    line_codes.assign_year(financial_year, commit=False)
+
     db.session.commit()
 
     totals = financial_year.tb_totals
@@ -353,6 +374,10 @@ def add_account(financial_year_id, account_name, debit=None, credit=None,
         created_by=user_id,
     )
     db.session.add(account)
+    from . import line_codes
+    line_codes.assign(account,
+                      last_year=line_codes.last_year_settled(financial_year),
+                      codes=line_codes.known_codes(financial_year))
     record("trial_balance_account", None,
            "adjustment" if is_adjustment else "manual_add",
            after={"account": account.account_name,
@@ -386,6 +411,16 @@ def set_mapping(account_id, standard_key, user_id=None, learn=True):
     # Chosen by a person, so a rebuild must not overwrite it.
     account.mapping_is_manual = bool(standard_key)
 
+    # A new statement line has its own set of finer categories. assign()
+    # keeps a person's category only while it is still allowed here, so
+    # remapping an account never leaves it pointing at another line's note.
+    from . import line_codes
+    before_code = account.line_code
+    financial_year = account.financial_year
+    line_codes.assign(account,
+                      last_year=line_codes.last_year_settled(financial_year),
+                      codes=line_codes.known_codes(financial_year))
+
     # Remember the decision against this customer, so the same account maps
     # itself next year and on the next rebuild.
     if learn and standard_key:
@@ -393,10 +428,14 @@ def set_mapping(account_id, standard_key, user_id=None, learn=True):
                       statement_type, standard_key, user_id)
 
     record("trial_balance_account", account.id, "map",
-           before={"standard_key": before},
-           after={"standard_key": standard_key})
+           before={"standard_key": before, "line_code": before_code},
+           after={"standard_key": standard_key,
+                  "line_code": account.line_code,
+                  "line_code_source": account.line_code_source})
     db.session.commit()
-    return {"ok": True, "statement_type": statement_type}
+    return {"ok": True, "statement_type": statement_type,
+            "line_code": account.line_code,
+            "line_code_source": account.line_code_source}
 
 
 def update_amounts(account_id, debit=None, credit=None, user_id=None):
@@ -413,6 +452,12 @@ def update_amounts(account_id, debit=None, credit=None, user_id=None):
         account.credit = Decimal(str(credit)) if credit != "" else ZERO
 
     account.needs_review = False
+    # Deferred tax is an asset or a liability by the side of its balance, so
+    # a corrected figure can change the category. A person's choice is kept.
+    from . import line_codes
+    line_codes.assign(account,
+                      last_year=line_codes.last_year_settled(account.financial_year),
+                      codes=line_codes.known_codes(account.financial_year))
     record("trial_balance_account", account.id, "edit", before=before,
            after={"debit": str(account.debit), "credit": str(account.credit)})
     db.session.commit()

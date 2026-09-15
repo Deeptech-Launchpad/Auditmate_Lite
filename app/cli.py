@@ -29,6 +29,7 @@ def register_cli(app):
     app.cli.add_command(import_note_library)
     app.cli.add_command(note_library)
     app.cli.add_command(load_test_engagement)
+    app.cli.add_command(assign_line_codes)
     app.cli.add_command(setup_production)
     app.cli.add_command(fix_report_layout)
 
@@ -1275,6 +1276,15 @@ def note_library():
         click.echo(f"  Year ends      {version.period_label}")
         click.echo(f"  Notes          {version.notes_count}")
         click.echo(f"  Engagements    {pinned} pinned")
+        outside = (FinancialYear.query
+                   .filter_by(library_version_id=version.id)
+                   .filter((FinancialYear.end_date < version.valid_from)
+                           | (FinancialYear.end_date > version.valid_to))
+                   .all())
+        for fy in outside:
+            click.echo(f"                 ! {fy.customer.name} {fy.year_label} "
+                       f"ends {fy.end_date:%d %b %Y}, outside this version's "
+                       f"years - pinned by exception")
         click.echo(f"  Imported       {version.imported_at:%d %b %Y %H:%M} "
                    f"from {version.source_filename or '-'}")
 
@@ -1347,6 +1357,8 @@ def load_test_engagement(path, replace):
         click.echo(f"    {year['accounts']} accounts, balanced at "
                    f"{year['debit']:,.2f} each way")
         click.echo(f"    Notes library: {year['library'] or 'none covers this year end'}")
+        if year.get("library_exception"):
+            click.echo(f"      TEST EXCEPTION: {year['library_exception']}")
         by_rules = year["accounts"] - len(year["unmapped"]) - year["from_file"]
         if year["from_file"]:
             click.echo(f"    {year['from_file']} mapped as the file states "
@@ -1355,6 +1367,7 @@ def load_test_engagement(path, replace):
                    f"{len(year['unmapped'])} left for the mapping screen")
         for name in year["unmapped"]:
             click.echo(f"      ? {name}")
+        _echo_line_codes(year.get("line_codes"), indent="    ")
     if report["known_disagreements"]:
         click.echo("")
         click.echo("  Known disagreements in the source files (loaded as found):")
@@ -1362,4 +1375,40 @@ def load_test_engagement(path, replace):
             click.echo(f"    - {item}")
     click.echo("")
     click.echo("  AI was not used.")
+
+
+def _echo_line_codes(summary, indent="  "):
+    """Print a line_codes.assign_year summary."""
+    if not summary:
+        return
+    c = summary["counts"]
+    settled = c["only"] + c["carried"] + c["manual"]
+    proposed = c["rule"] + c["default"]
+    click.echo(f"{indent}Finer categories: {settled} settled, {proposed} "
+               f"proposed, {c['ask']} to choose"
+               + (f", {c['unmapped']} not mapped yet" if c["unmapped"] else ""))
+    for item in summary["needs_choice"]:
+        click.echo(f"{indent}  ? {item['account']} - one of "
+                   f"{', '.join(item['options'])}")
+
+
+@click.command("assign-line-codes")
+@click.argument("financial_year_id", type=int)
+@with_appcontext
+def assign_line_codes(financial_year_id):
+    """Decide each account's notes library line code for one engagement.
+
+    Keeps anything a person chose. Settles what only one code fits, carries
+    what was settled last year, proposes the rest from the account's name,
+    and lists what still needs a person. Never calls the AI.
+    """
+    from .models import FinancialYear
+    from .services import line_codes
+
+    financial_year = db.session.get(FinancialYear, financial_year_id)
+    if financial_year is None:
+        raise click.ClickException(f"No financial year {financial_year_id}")
+    summary = line_codes.assign_year(financial_year)
+    click.echo(f"{financial_year.customer.name} {financial_year.year_label}")
+    _echo_line_codes(summary)
 

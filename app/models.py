@@ -1002,6 +1002,20 @@ class TrialBalanceAccount(db.Model):
     standard_key = db.Column(db.String(80), index=True)
     statement_type = db.Column(db.String(40))
 
+    # The notes library's finer category for this account - the line code
+    # every note table row takes its figure from. standard_key builds the
+    # face of the statements; line_code builds the notes. See
+    # config/line_code_categories.yaml and services/line_codes.py.
+    line_code = db.Column(db.String(20), index=True)
+    # Where it came from, because a settled category and a proposed one must
+    # not look the same on the mapping screen:
+    #   only     the statement line allows one code - nothing to decide
+    #   rule     proposed from the account's name or side
+    #   default  proposed as the line's usual code, nothing more specific
+    #   carried  the same account's category last year
+    #   manual   a person chose it
+    line_code_source = db.Column(db.String(12))
+
     debit = db.Column(Numeric(18, 2), default=0)
     credit = db.Column(Numeric(18, 2), default=0)
 
