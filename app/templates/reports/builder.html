@@ -31,6 +31,11 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn">Reopen engagement</button>
       </form>
+    {% elif fy.can_close and incomplete %}
+      <button type="button" class="btn" disabled
+              title="{{ incomplete|length }} note(s) are incomplete">
+        ✓ Approve &amp; close engagement
+      </button>
     {% elif fy.can_close %}
       <form method="post" style="display:inline"
             action="{{ url_for('reports.finalise', fy_id=fy.id) }}"
@@ -59,6 +64,37 @@
     worse than no version control at all.
   </div>
 </div>
+{% endif %}
+
+{% if incomplete %}
+  {# The library's rule: unknown is not nil. While anything is incomplete the
+     accounts can be downloaded to review - stamped DRAFT - INCOMPLETE on
+     every page - but not approved. #}
+  <div class="card" style="margin-bottom:16px;border-left:3px solid #c0392b;background:#fdf2f1">
+    <details>
+      <summary class="card-head" style="cursor:pointer">
+        <h2 style="display:inline;color:#c0392b">Incomplete &mdash; {{ incomplete|length }} note(s) waiting</h2>
+        <span class="hint">downloads are stamped DRAFT &mdash; INCOMPLETE</span>
+      </summary>
+      <div class="card-body">
+        <p class="small" style="margin-top:0">
+          A figure whose document is missing, a question not yet answered, or a
+          blank not filled in. Each is marked <strong>Incomplete</strong> in the
+          report below, never shown as a dash. The accounts can be approved once
+          all of these are resolved.
+        </p>
+        {% for title, reasons in incomplete %}
+          <div class="gap-row">
+            <span class="pill pill-red">INCOMPLETE</span>
+            <div class="gap-body">
+              <div class="gap-title">{{ title }}</div>
+              <div class="gap-detail muted small">{{ reasons[:4]|join(' · ') }}{% if reasons|length > 4 %} · and {{ reasons|length - 4 }} more{% endif %}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
 {% endif %}
 
 <div class="notice">

@@ -1195,6 +1195,11 @@ class AuditReport(db.Model):
     title = db.Column(db.String(255), default="Independent Auditor's Report")
     status = db.Column(db.String(20), default="draft")     # draft | final
     version = db.Column(db.Integer, default=1)
+    # Sections the last render found incomplete (a question unanswered, a
+    # figure unsourced, a blank unfilled). None until first rendered. Kept so
+    # a dashboard can say "Incomplete" without rendering every report.
+    incomplete_notes = db.Column(db.Integer)
+    completeness_checked_at = db.Column(db.DateTime)
     generated_at = db.Column(db.DateTime, default=datetime.utcnow)
     generated_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     pdf_path = db.Column(db.String(500))

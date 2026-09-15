@@ -283,7 +283,10 @@ def render_bindings(text: str, customer, financial_year,
             # preview that something needs filling in.
             body, css = f"[{key} not set]", "missing-binding"
         elif not str(values[key]).strip():
-            body, css = "[not provided]", "missing-binding"
+            # Named, so the preparer knows which field on the client record
+            # to fill in rather than hunting for it.
+            body = f"[{key.split('.')[-1].replace('_', ' ')} not provided]"
+            css = "missing-binding"
         else:
             # Several directors are stored one per line; render them so.
             body, css = str(values[key]).replace(chr(10), "<br>"), ""
@@ -607,7 +610,8 @@ def _assemble_v2_note(note, financial_year, first_year=False, period=None,
                     placed.add(table_id)
                     table_specs.append({"source": "bindings",
                                         "version_id": note.get("library_version_id"),
-                                        "table_id": table_id})
+                                        "table_id": table_id,
+                                        "note_code": note.get("library_code")})
                 continue
             if wording.strip():
                 parts.append(f"<p>{wording}</p>")
@@ -1487,8 +1491,59 @@ def section_payload(section, customer, financial_year, chips: bool = False):
         payload["tables"] = notes_service.build_tables(
             note_table_spec, financial_year)
         apply_note_overrides(section, payload["tables"])
+        payload["incomplete"] = incomplete_reasons(section, payload)
 
     return payload
+
+
+_MISSING_BLANK = re.compile(r'class="[^"]*missing-binding[^"]*"[^>]*>([^<]+)<')
+
+
+def incomplete_reasons(section, payload):
+    """Why a section cannot be issued yet, in words. Empty when it can.
+
+    Three things hold a note incomplete, all from the library's own rules:
+    a question the preparer has not answered, a figure whose source is
+    missing, and a blank in the wording nobody has filled. Worked out from
+    what is actually rendered, so it can never disagree with the page.
+    """
+    reasons = []
+    for item in (section.data_binding or {}).get("awaiting_preparer", []):
+        question = (item.get("question") or "").strip()
+        if question.lower() in ("", "-", "always"):
+            question = item.get("heading") or section.title
+        reasons.append(f"Waiting for the preparer: {question}")
+
+    for table in payload.get("tables") or []:
+        for reason in table.get("held_table") or []:
+            if reason not in reasons:
+                reasons.append(reason)
+        for row in table.get("rows") or []:
+            for column in ("held_current", "held_previous"):
+                reason = row.get(column)
+                if reason and reason not in reasons:
+                    reasons.append(reason)
+
+    for blank in _MISSING_BLANK.findall(payload.get("html") or ""):
+        text = f"Not filled in: {blank.strip('[]')}"
+        if text not in reasons:
+            reasons.append(text)
+    return reasons
+
+
+def record_completeness(report, payloads):
+    """Remember how many sections are incomplete, for screens that list many
+    engagements and cannot afford to render every report. Returns the list
+    of (title, reasons) that are incomplete."""
+    from datetime import datetime
+
+    incomplete = [(p["section"].title, p["incomplete"])
+                  for p in payloads if p.get("incomplete")]
+    if report.incomplete_notes != len(incomplete):
+        report.incomplete_notes = len(incomplete)
+        report.completeness_checked_at = datetime.utcnow()
+        db.session.commit()
+    return incomplete
 
 
 def apply_note_overrides(section, tables):

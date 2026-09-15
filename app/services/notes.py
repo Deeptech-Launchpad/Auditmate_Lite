@@ -427,7 +427,7 @@ def build_tables(spec, financial_year):
             # sees the narrative and no table rather than a 500.
             log.exception("Note table failed: %s", block)
             continue
-        if table and table.get("rows"):
+        if table and (table.get("rows") or table.get("held_table")):
             # Cleaned here rather than where the spec is first built, so
             # every report already created is corrected on its next render
             # instead of needing its stored data_binding rewritten.

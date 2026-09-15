@@ -2,6 +2,25 @@
 {% block title %}Dashboard · Auditmate Lite{% endblock %}
 
 {% block content %}
+{#
+  The accounts' own state, in words - never a dash. A dash in this business
+  means nil; "we have not looked" and "not finished" must not look like it.
+#}
+{% macro report_state(year) %}
+  {%- set r = year.report -%}
+  {%- if not r -%}
+    <span class="pill pill-grey">Not started</span>
+  {%- elif r.status == 'final' -%}
+    <span class="pill pill-purple">Final</span>
+  {%- elif r.incomplete_notes is none -%}
+    <span class="pill pill-grey" title="Open the report to check it">Not checked yet</span>
+  {%- elif r.incomplete_notes -%}
+    <span class="pill pill-red" title="{{ r.incomplete_notes }} note(s) waiting for a document, a figure or an answer">Incomplete</span>
+  {%- else -%}
+    <span class="pill pill-green">Ready to approve</span>
+  {%- endif -%}
+{% endmacro %}
+
 <div class="page-head">
   <div>
     <h1>Dashboard</h1>
@@ -61,6 +80,7 @@
                   <th>Customer</th>
                   <th>Fin-Yr</th>
                   <th>Status</th>
+                  <th>Accounts</th>
                   <th class="num">No. Doc.</th>
                   <th></th>
                 </tr>
@@ -97,6 +117,7 @@
                       <span class="pill pill-grey">{{ year.status_label }}</span>
                     {% endif %}
                   </td>
+                  <td class="nowrap">{{ report_state(year) }}</td>
                   <td class="num nowrap">
                     {{ year.documents|length }}
                     {% if year.documents_pending_review %}

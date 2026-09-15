@@ -312,7 +312,15 @@
         {% set _n = note_numbers.get(section.section_key) if note_numbers else None %}
         <h3 class="note-title">{% if _n %}<span class="note-num">{{ _n }}.</span> {% endif %}<span{% if editable %} contenteditable="true"
             data-section-id="{{ section.id }}" data-field="title"
-            data-placeholder="Section title"{% endif %}>{{ section.title }}</span></h3>
+            data-placeholder="Section title"{% endif %}>{{ section.title }}</span>{% if editable and payload.incomplete %}
+          <span class="incomplete-badge" title="{{ payload.incomplete|join(' · ') }}">Incomplete</span>{% endif %}</h3>
+        {% if editable and payload.incomplete %}
+          {# Working file only: what this note is waiting for. #}
+          <ul class="incomplete-why">
+            {% for reason in payload.incomplete[:6] %}<li>{{ reason }}</li>{% endfor %}
+            {% if payload.incomplete|length > 6 %}<li>and {{ payload.incomplete|length - 6 }} more</li>{% endif %}
+          </ul>
+        {% endif %}
       {% endif %}
 
       <div class="rpt-body"{% if editable %} contenteditable="true"
@@ -322,6 +330,12 @@
       {% for table in payload.tables %}
         {% set loop_table = loop.index0 %}
         {% if table.heading %}<p class="tbl-head">{{ table.heading }}</p>{% endif %}
+        {% if table.held_table %}
+          {# Every figure in it waits on a document or an answer. One line
+             naming what it needs - never a grid of dashes, which would read
+             as nil. #}
+          <p class="held-table">Incomplete &mdash; {{ table.held_table|join('; ') }}.</p>
+        {% else %}
         <table class="fin note-table">
           <thead>
             <tr class="hdr-dates">
@@ -394,6 +408,7 @@
              clicking the per-cell info icon on every row. #}
           <p class="tbl-source">Made up of: {{ table.sourced_from|join(', ') }}
             — from the client's trial balance.</p>
+        {% endif %}
         {% endif %}
       {% endfor %}
     {% endif %}

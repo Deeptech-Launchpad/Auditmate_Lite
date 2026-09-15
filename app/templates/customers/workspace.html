@@ -9,6 +9,25 @@
 {% endblock %}
 
 {% block content %}
+{#
+  The accounts' own state, in words - never a dash. A dash in this business
+  means nil; "we have not looked" and "not finished" must not look like it.
+#}
+{% macro report_state(year) %}
+  {%- set r = year.report -%}
+  {%- if not r -%}
+    <span class="pill pill-grey">Not started</span>
+  {%- elif r.status == 'final' -%}
+    <span class="pill pill-purple">Final</span>
+  {%- elif r.incomplete_notes is none -%}
+    <span class="pill pill-grey" title="Open the report to check it">Not checked yet</span>
+  {%- elif r.incomplete_notes -%}
+    <span class="pill pill-red" title="{{ r.incomplete_notes }} note(s) waiting for a document, a figure or an answer">Incomplete</span>
+  {%- else -%}
+    <span class="pill pill-green">Ready to approve</span>
+  {%- endif -%}
+{% endmacro %}
+
 <div class="page-head">
   <div>
     <h1>{{ fy.year_label }} — {{ customer.name }}</h1>
@@ -18,6 +37,7 @@
     </p>
   </div>
   <div class="page-actions">
+    {% if fy.report and fy.report.status != 'final' %}{{ report_state(fy) }}{% endif %}
     {% if fy.report and fy.report.status == 'final' %}
       <span class="pill pill-purple"><span class="dot"></span>Report generated</span>
     {% elif fy.tb_is_approved %}

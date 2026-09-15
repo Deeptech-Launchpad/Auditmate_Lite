@@ -211,13 +211,23 @@ def _write_runs(paragraph, runs):
         run.italic = italic
 
 
-def build(html: str, title: str = None) -> bytes:
-    """The report's HTML as a .docx file, returned as bytes."""
+def build(html: str, title: str = None, draft: bool = False) -> bytes:
+    """The report's HTML as a .docx file, returned as bytes.
+
+    `draft` stamps DRAFT - INCOMPLETE in the header of every page: accounts
+    with anything incomplete can be reviewed, never issued as a clean copy.
+    """
     reader = _Reader()
     reader.feed(html)
     instructions = reader.close()
 
     document = DocxDocument()
+    if draft:
+        header = document.sections[0].header.paragraphs[0]
+        header.alignment = 1                                   # centre
+        stamp = header.add_run("DRAFT \u2014 INCOMPLETE")
+        stamp.bold = True
+        stamp.font.size = Pt(12)
 
     # Times New Roman 11pt, black - measured off the firm's own annual report
     # template rather than chosen here, and the same size the PDF is set in.

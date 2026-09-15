@@ -78,10 +78,14 @@ def builder(fy_id):
     available_accounts = ([a for a in all_accounts if a["key"] in gap_account_keys]
                           if gap_account_keys else all_accounts)
 
+    payloads = _assemble(report, chips=editable)
+    incomplete = report_service.record_completeness(report, payloads)
+
     return render_template("reports/builder.html",
                            report=report, fy=financial_year,
                            editable=editable,
-                           payloads=_assemble(report, chips=editable),
+                           incomplete=incomplete,
+                           payloads=payloads,
                            ordered_sections=report_service.ordered_sections(report),
                            note_numbers=report_service.note_number_map(report),
                            content_gaps=gaps,
@@ -547,6 +551,14 @@ def finalise(fy_id):
               "error")
         return redirect(url_for("reports.builder", fy_id=fy_id))
 
+    # No clean final copy while anything is incomplete.
+    incomplete = report_service.record_completeness(report, _assemble(report))
+    if incomplete:
+        flash(f"{len(incomplete)} note(s) are still incomplete, so the "
+              f"accounts cannot be approved yet. Each is marked Incomplete "
+              f"in the report, with what it is waiting for.", "error")
+        return redirect(url_for("reports.builder", fy_id=fy_id))
+
     note = (request.form.get("note") or "").strip() or None
 
     report.status = "final"
@@ -594,12 +606,15 @@ def reopen(fy_id):
 @login_required
 def preview(report_id):
     report = db.session.get(AuditReport, report_id) or abort(404)
+    payloads = _assemble(report)
+    incomplete = report_service.record_completeness(report, payloads)
 
     return render_template("reports/preview.html",
                            report=report,
                            fy=report.financial_year,
                            customer=report.financial_year.customer,
-                           payloads=_assemble(report),
+                           payloads=payloads,
+                           draft_incomplete=bool(incomplete),
                            note_numbers=report_service.note_number_map(report),
                            for_pdf=False)
 
@@ -620,32 +635,40 @@ def export_word(report_id):
 
     report = db.session.get(AuditReport, report_id) or abort(404)
     financial_year = report.financial_year
+    payloads = _assemble(report)
+    incomplete = report_service.record_completeness(report, payloads)
 
     html = render_template("reports/preview.html",
                            report=report,
                            fy=financial_year,
                            customer=financial_year.customer,
-                           payloads=_assemble(report),
+                           payloads=payloads,
+                           draft_incomplete=bool(incomplete),
                            note_numbers=report_service.note_number_map(report),
                            for_pdf=True)
 
     try:
-        data = docx_export.build(html)
+        data = docx_export.build(html, draft=bool(incomplete))
     except Exception as exc:                        # noqa: BLE001
         flash(f"Word export failed: {exc}", "error")
         return redirect(url_for("reports.preview", report_id=report.id))
 
-    report.status = "final"
-    report.generated_at = datetime.utcnow()
-    report.generated_by = current_user.id
-    if financial_year.status in ("in_progress", "statements_shared", "approved"):
-        financial_year.status = "report_generated"
-
-    record("audit_report", report.id, "export_word")
-    db.session.commit()
+    if incomplete:
+        # A copy to review, stamped on every page. Not the final accounts.
+        record("audit_report", report.id, "export_word_draft",
+               after={"incomplete_notes": len(incomplete)}, commit=True)
+    else:
+        report.status = "final"
+        report.generated_at = datetime.utcnow()
+        report.generated_by = current_user.id
+        if financial_year.status in ("in_progress", "statements_shared", "approved"):
+            financial_year.status = "report_generated"
+        record("audit_report", report.id, "export_word")
+        db.session.commit()
 
     filename = (f"{financial_year.customer.name}_{financial_year.year_label}"
-                f"_Unaudited_Financial_Statements.docx").replace(" ", "_")
+                f"_Unaudited_Financial_Statements"
+                f"{'_DRAFT_INCOMPLETE' if incomplete else ''}.docx").replace(" ", "_")
 
     return send_file(
         io.BytesIO(data),
@@ -659,12 +682,15 @@ def export_word(report_id):
 def export(report_id):
     """Export to PDF, or fall back to the printable page."""
     report = db.session.get(AuditReport, report_id) or abort(404)
+    payloads = _assemble(report)
+    incomplete = report_service.record_completeness(report, payloads)
 
     html = render_template("reports/preview.html",
                            report=report,
                            fy=report.financial_year,
                            customer=report.financial_year.customer,
-                           payloads=_assemble(report),
+                           payloads=payloads,
+                           draft_incomplete=bool(incomplete),
                            note_numbers=report_service.note_number_map(report),
                            for_pdf=True)
 
@@ -682,23 +708,28 @@ def export(report_id):
         flash(f"PDF generation failed: {exc}", "error")
         return redirect(url_for("reports.preview", report_id=report.id))
 
-    report.status = "final"
-    report.generated_at = datetime.utcnow()
-    report.generated_by = current_user.id
-
     financial_year = report.financial_year
-    # Only move forward. A closed engagement stays closed, and an engagement
-    # still working through customer review is not dragged past that by an
-    # export - but one that has simply skipped the statements-version chain
-    # should not be stuck at "In Progress" forever either.
-    if financial_year.status in ("in_progress", "statements_shared", "approved"):
-        financial_year.status = "report_generated"
-
-    record("audit_report", report.id, "export_pdf")
-    db.session.commit()
+    if incomplete:
+        # A copy to review, stamped on every page. Not the final accounts.
+        record("audit_report", report.id, "export_pdf_draft",
+               after={"incomplete_notes": len(incomplete)}, commit=True)
+    else:
+        report.status = "final"
+        report.generated_at = datetime.utcnow()
+        report.generated_by = current_user.id
+        # Only move forward. A closed engagement stays closed, and an
+        # engagement still working through customer review is not dragged
+        # past that by an export - but one that has simply skipped the
+        # statements-version chain should not be stuck at "In Progress"
+        # forever either.
+        if financial_year.status in ("in_progress", "statements_shared", "approved"):
+            financial_year.status = "report_generated"
+        record("audit_report", report.id, "export_pdf")
+        db.session.commit()
 
     filename = (f"{financial_year.customer.name}_{financial_year.year_label}"
-                f"_Audit_Report.pdf").replace(" ", "_")
+                f"_Audit_Report{'_DRAFT_INCOMPLETE' if incomplete else ''}.pdf"
+                ).replace(" ", "_")
 
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
                      as_attachment=True, download_name=filename)

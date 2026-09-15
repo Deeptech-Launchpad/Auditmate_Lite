@@ -502,7 +502,7 @@ def build_table(spec, financial_year, statements=None):
                and any(isinstance(v, Decimal) and v for v in
                        (row["current"], row["previous"]))
                for row in shown):
-        return None
+        return _held_table(spec, table, rows, figures)
 
     for row in shown:
         row["ids"] = figures.account_ids(row["binding"]) if _is_figure(row["binding"]) else []
@@ -516,6 +516,37 @@ def build_table(spec, financial_year, statements=None):
 
     return {"heading": spec.get("heading"), "rows": shown,
             "columns": table.get("column_labels"),
+            "table_id": table.get("table_id")}
+
+
+def _held_table(spec, table, rows, figures):
+    """A table with no figure from the books yet: incomplete, or not needed.
+
+    Not needed when the note's own lines (the Statement lines sheet) carry no
+    balance in either year - a company with no plant and equipment is not
+    missing a fixed asset register. Otherwise, if any row waits on a document
+    or an answer, the table is shown as one incomplete line naming what it
+    needs, never as a grid of dashes and never silently dropped.
+    """
+    from . import conditions
+
+    note_code = spec.get("note_code")
+    if note_code:
+        subjects = conditions.subject_codes(figures, note_code)
+        if subjects and not any(conditions.carries_balance(figures, c)
+                                for c in subjects):
+            return None
+
+    reasons = []
+    for row in rows:
+        for column in ("current", "previous"):
+            value = row[column]
+            if _is_held(value) and value.reason not in reasons:
+                reasons.append(value.reason)
+    if not reasons:
+        return None
+    return {"heading": spec.get("heading"), "rows": [],
+            "held_table": reasons, "columns": table.get("column_labels"),
             "table_id": table.get("table_id")}
 
 

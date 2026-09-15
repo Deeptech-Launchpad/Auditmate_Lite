@@ -51,6 +51,13 @@
 </div>
 {% endif %}
 
+{% if draft_incomplete %}
+  {# On every printed page - a fixed element repeats per page in both
+     WeasyPrint and a browser's print. Something in these accounts is
+     incomplete, so this copy is for review only. #}
+  <div class="draft-stamp">DRAFT &mdash; INCOMPLETE</div>
+{% endif %}
+
 <div class="rpt-doc">
   {% include "reports/_document.html" %}
 </div>
