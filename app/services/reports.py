@@ -260,14 +260,22 @@ def render_bindings(text: str, customer, financial_year,
                         f'contenteditable="false" data-ph="{key}">{body}</span>')
             return f'<span class="{css}">{body}</span>'
 
-        # A blank in library 2.x wording the preparer fills - the holding
-        # company's name, an amount. Named in words, never as template code.
-        if key.startswith("input.") and key not in values:
-            body, css = f"[{key[6:].replace('_', ' ').lower()} not provided]", "missing-binding"
+        # A blank in library 2.x wording. An amount the Fields sheet ties to
+        # a mapped line is read from the books now, so it follows the trial
+        # balance; anything else - the holding company's name, an item the
+        # preparer describes - is named in words, never as template code.
+        if key.startswith("field.") and key not in values:
+            amount = _field_amount(key[6:], financial_year, customer)
+            words = key[6:].replace("_", " ").lower()
+            if amount is not None:
+                body, css = amount, ""
+            else:
+                body, css = f"[{words} not provided]", "missing-binding"
             if chips:
-                return (f'<span class="ph missing-binding" '
-                        f'contenteditable="false" data-ph="{key}">{body}</span>')
-            return f'<span class="{css}">{body}</span>'
+                classes = ("ph " + css).strip()
+                return (f'<span class="{classes}" contenteditable="false" '
+                        f'data-ph="{key}">{body}</span>')
+            return f'<span class="{css}">{body}</span>' if css else body
 
         if key not in values:
             # An unknown placeholder must never reach a client-facing report
@@ -287,6 +295,38 @@ def render_bindings(text: str, customer, financial_year,
         return f'<span class="{css}">{body}</span>' if css else body
 
     return re.sub(r"\{\{\s*([\w.]+)\s*\}\}", replace, text)
+
+
+def _field_amount(name, financial_year, customer):
+    """A library blank supplied by a mapped line, formatted - or None.
+
+    None when the Fields sheet does not tie the blank to a line, or the line's
+    figure cannot be stated (a held figure is never printed as a number).
+    `_PY` fields are last year's figure. Shown unsigned: the wording around
+    it already says whether it is a loss or a liability.
+    """
+    from decimal import Decimal
+
+    from . import bindings
+
+    figures = bindings.figures_for(financial_year)
+    version = bindings._version_for(financial_year)
+    rows = version.sheet("Fields") if version else []
+    row = next((r for r in rows or []
+                if str(r.get("Field") or "").lower() == name.lower()), None)
+    if not row or str(row.get("Supplied by") or "").lower() != "mapped line":
+        return None
+    code = row.get("Line code")
+    if not code or code == "-":
+        return None
+    offset = 1 if name.lower().endswith("_py") else 0
+    value = figures.resolve(code, offset)
+    if not isinstance(value, Decimal):
+        return None
+    if not value:
+        return "nil"
+    symbol = "S$" if (customer.books_currency or "SGD") == "SGD" else (customer.books_currency + " ")
+    return f"{symbol}{abs(value):,.0f}"
 
 
 def _template_section(spec, report_id, order) -> AuditReportSection:
@@ -385,7 +425,7 @@ def ensure_report(financial_year) -> AuditReport:
         db.session.add(_build_note_section(
             note, present, order, report.id,
             first_year=bool(financial_year.is_first_year), period=period,
-            previous_period=previous_period))
+            previous_period=previous_period, financial_year=financial_year))
         order += 1
 
     db.session.commit()
@@ -523,8 +563,83 @@ def _comparative_length_note(period, previous_period):
            f"not directly comparable.")
 
 
+def _assemble_v2_note(note, financial_year, first_year=False, period=None,
+                      previous_period=None):
+    """A library 2.x note, built from the library's own conditions.
+
+    Every paragraph is decided by services/conditions.py. What prints is the
+    library's approved wording; what is waiting on the preparer is kept on
+    the section - `awaiting` holds the note incomplete, `offered` stays out
+    unless someone adds it - and never printed as a guess.
+    """
+    from . import bindings, conditions
+
+    figures = bindings.figures_for(financial_year)
+    html_parts, table_specs, awaiting, offered = [], [], [], []
+    placed = set()
+    tables = {p["table_id"] for p in _all_pieces(note)
+              if p.get("table_id") and p.get("rows")}
+
+    def run(owner, heading=None):
+        parts = []
+        for piece in owner.get("pieces") or []:
+            if piece.get("table_id"):
+                continue                   # placed by its [table id] paragraph
+            action, reason = conditions.paragraph(
+                piece, owner.get("library_code"), figures)
+            if action == conditions.SKIP:
+                continue
+            if action in (conditions.HOLD, conditions.OMIT):
+                (awaiting if action == conditions.HOLD else offered).append({
+                    "para_id": piece.get("para_id"),
+                    "heading": heading,
+                    "question": piece.get("condition_text") or "",
+                    "reason": reason,
+                    "wording": piece.get("wording") or "",
+                    "tag": piece.get("tag"),
+                })
+                continue
+            wording = piece.get("wording") or ""
+            match = TABLE_PLACEHOLDER.match(wording)
+            if match:
+                table_id = match.group(1).strip()
+                if table_id in tables and table_id not in placed:
+                    placed.add(table_id)
+                    table_specs.append({"source": "bindings",
+                                        "version_id": note.get("library_version_id"),
+                                        "table_id": table_id})
+                continue
+            if wording.strip():
+                parts.append(f"<p>{wording}</p>")
+        return parts
+
+    html_parts.extend(run(note))
+
+    for sub in note.get("subsections") or []:
+        if sub.get("key") == "comparative_information" and first_year:
+            html_parts.append(f"<h4>{sub['heading']}</h4>")
+            html_parts.append(f"<p>{_first_period_wording(period)}</p>")
+            continue
+        on, _reason = conditions.note_applies(sub, figures, financial_year)
+        if not on:
+            continue
+        parts = run(sub, heading=sub.get("heading"))
+        if sub.get("key") == "comparative_information":
+            mismatch = _comparative_length_note(period, previous_period)
+            if mismatch:
+                parts.insert(0, f"<p>{mismatch}</p>")
+        if parts:
+            # Never an empty heading: a sub-section with nothing printing
+            # under it is left out whole, as the library says.
+            html_parts.append(f"<h4>{sub['heading']}</h4>")
+            html_parts.extend(parts)
+
+    return "\n".join(html_parts), table_specs, {"awaiting": awaiting,
+                                                "offered": offered}
+
+
 def _assemble_note_content(note, present, first_year=False, period=None,
-                           previous_period=None):
+                           previous_period=None, financial_year=None):
     """Build a note's starting text and figure tables from whichever of its
     pieces are triggered right now.
 
@@ -533,7 +648,18 @@ def _assemble_note_content(note, present, first_year=False, period=None,
     Like that content, what is produced here is then auditor-editable and
     frozen; it is not silently regenerated on every render, so an auditor's
     edit is never overwritten by a later trigger recalculation.
+
+    Returns (html, table specs, drafts). A library 2.x note, given the
+    engagement, is built by _assemble_v2_note instead.
     """
+    from . import conditions
+
+    if financial_year is not None and conditions.is_v2(note):
+        html, specs, _asked = _assemble_v2_note(
+            note, financial_year, first_year=first_year, period=period,
+            previous_period=previous_period)
+        return html, specs, []
+
     html_parts = []
     table_specs = []
     seen_table_keys = set()
@@ -706,12 +832,36 @@ def _assemble_note_content(note, present, first_year=False, period=None,
 
 
 def _build_note_section(note, present, sort_order, report_id,
-                        first_year=False, period=None, previous_period=None):
-    content_html, table_specs, drafts = _assemble_note_content(
-        note, present, first_year=first_year, period=period,
-        previous_period=previous_period)
+                        first_year=False, period=None, previous_period=None,
+                        financial_year=None):
+    from . import bindings, conditions
+
+    asked = None
+    if financial_year is not None and conditions.is_v2(note):
+        content_html, table_specs, asked = _assemble_v2_note(
+            note, financial_year, first_year=first_year, period=period,
+            previous_period=previous_period)
+        drafts = []
+        enabled, _reason = conditions.note_applies(
+            note, bindings.figures_for(financial_year), financial_year)
+        # On, but nothing in it applies and nothing is waiting: the library
+        # suppresses a note with no content rather than print its heading.
+        if enabled and not (content_html.strip() or table_specs
+                            or asked["awaiting"]):
+            enabled = False
+    else:
+        content_html, table_specs, drafts = _assemble_note_content(
+            note, present, first_year=first_year, period=period,
+            previous_period=previous_period)
+        enabled = _note_triggered(note, present)
 
     binding = {}
+    if asked and asked["awaiting"]:
+        # Held: the note is incomplete until the preparer answers these.
+        binding["awaiting_preparer"] = asked["awaiting"]
+    if asked and asked["offered"]:
+        # Left out unless the preparer says they apply.
+        binding["offered_to_preparer"] = asked["offered"]
     if table_specs:
         binding["note_table_specs"] = table_specs
     if drafts:
@@ -726,7 +876,7 @@ def _build_note_section(note, present, sort_order, report_id,
         title=note["heading"],
         section_type="free_text",
         sort_order=sort_order,
-        is_enabled=_note_triggered(note, present),
+        is_enabled=enabled,
         content_html=content_html,
         data_binding=binding or None,
     )
@@ -762,7 +912,7 @@ def rebuild_note_sections(report, financial_year):
         db.session.add(_build_note_section(
             note, present, order, report.id,
             first_year=bool(financial_year.is_first_year), period=period,
-            previous_period=previous_period))
+            previous_period=previous_period, financial_year=financial_year))
         order += 1
         added += 1
     db.session.commit()
@@ -828,7 +978,8 @@ def carry_forward_prior_wording(report, financial_year) -> int:
         default_html, _specs, _drafts = _assemble_note_content(
             note, present, first_year=bool(financial_year.is_first_year),
             period=(financial_year.start_date, financial_year.end_date),
-            previous_period=_previous_period_of(financial_year))
+            previous_period=_previous_period_of(financial_year),
+            financial_year=financial_year)
         current = (section.content_html or "").strip()
         if current and current != (default_html or "").strip():
             continue
@@ -915,7 +1066,17 @@ def prior_notes_dropped(report, financial_year):
         triggers = [k for k in (note.get("trigger_keys") or [])]
         tick_state = note.get("tick_state")
 
-        if tick_state == "tb_driven" and triggers:
+        from . import bindings, conditions
+
+        if conditions.is_v2(note):
+            on, why = conditions.note_applies(
+                note, bindings.figures_for(financial_year), financial_year)
+            reason = (f"The notes library leaves it out this year: {why}. "
+                      f"If that is wrong, the account is missing or unmapped, "
+                      f"or tick it by hand." if not on else
+                      "Someone switched it off by hand this year. Confirm "
+                      "that was intended before approving.")
+        elif tick_state == "tb_driven" and triggers:
             missing_keys = ", ".join(triggers)
             reason = (f"Switched off because this year's trial balance has "
                       f"no {missing_keys}. If that is right, the disclosure "
@@ -1123,9 +1284,12 @@ def content_gaps(report, financial_year):
             continue
         body = (section.content_html or "").strip()
         has_table = bool((section.data_binding or {}).get("note_table_specs"))
+        waiting = bool((section.data_binding or {}).get("awaiting_preparer"))
         still_a_prompt = body in UNWRITTEN_NOTE_FORMS
         if not (still_a_prompt or (not body and not has_table)):
             continue
+        if waiting and not still_a_prompt:
+            continue                 # reported below as waiting, not unwritten
         unwritten_section_ids.add(section.id)
         unwritten.append({
             "note": section.title,
@@ -1197,10 +1361,33 @@ def content_gaps(report, financial_year):
                       financial_year.customer)
                   if f"firm.{key}" in live]
 
+    # Library 2.x paragraphs no document or balance can decide. AWAITING
+    # holds its note incomplete until the preparer answers - the library's
+    # "Hold". OFFERED stays out unless the preparer says it applies - its
+    # "Omit" - and is listed so a paragraph never disappears unseen.
+    awaiting, offered = [], []
+    for section in ordered_sections(report):
+        if not section.is_enabled:
+            continue
+        binding = section.data_binding or {}
+        for kind, bucket in (("awaiting_preparer", awaiting),
+                             ("offered_to_preparer", offered)):
+            for item in binding.get(kind, []):
+                bucket.append({
+                    "note": section.title,
+                    "heading": item.get("heading") or "",
+                    "question": item.get("question") or "",
+                    "reason": item.get("reason") or "",
+                    "wording": render_bindings(item.get("wording") or "",
+                                               financial_year.customer,
+                                               financial_year),
+                })
+
     return {"missing": grouped_missing, "thin": thin, "unwritten": unwritten,
             "unreviewed": unreviewed, "unanswered": unanswered,
+            "awaiting": awaiting, "offered": offered,
             "has_gaps": bool(grouped_missing or thin or unwritten
-                             or unanswered)}
+                             or unanswered or awaiting)}
 
 
 def mapped_accounts(financial_year):

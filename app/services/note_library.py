@@ -953,8 +953,9 @@ _LIBRARY_BLANK = re.compile(r"\{([a-z][a-z0-9_]*)\}")
 
 
 # Library 2.x also writes blanks in capitals - {COMPANY_NAME}, {AMOUNT}. The
-# ones the client record answers become its bindings; the rest are questions
-# for the preparer, rendered in words until answered.
+# ones the client record answers become its bindings; the rest become
+# {{ field.name }}, resolved at render time from the version's Fields sheet:
+# an amount from its mapped line, anything else shown as not provided.
 _CLIENT_BLANK = re.compile(r"\{([A-Z][A-Z0-9_]*)\}")
 CLIENT_RECORD_BLANKS = {
     "COMPANY_NAME": "customer.legal_name",
@@ -978,7 +979,7 @@ def _bind_blanks(wording):
         return wording
     wording = _CLIENT_BLANK.sub(
         lambda m: "{{ %s }}" % CLIENT_RECORD_BLANKS.get(
-            m.group(1), "input." + m.group(1).lower()),
+            m.group(1), "field." + m.group(1).lower()),
         wording)
     return _LIBRARY_BLANK.sub(
         lambda m: ("{{ firm.%s }}" % m.group(1)
@@ -1268,6 +1269,10 @@ def _note_dict(row, code_map, non_figure, presence_texts, inherited,
         "trigger_text": row.trigger_text,
         "library_code": row.library_code,
         "library_version_id": row.library_version_id,
+        # The workbook's own tick state, before any carry-over from the flat
+        # catalogue. Library 2.x notes are decided from this - see
+        # services/conditions.py.
+        "tick_state_raw": row.tick_state,
         "tick_state_library": tick_from_library,
         "tick_preserved": preserved,
     }
