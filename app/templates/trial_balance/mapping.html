@@ -74,6 +74,14 @@
           {% if review.counts.manual %}
             <span class="pill pill-grey">{{ review.counts.manual }} you mapped</span>
           {% endif %}
+          {# Notes categories, counted apart from the mapping: a line can be
+             settled while the finer category under it is only a proposal. #}
+          {% if review.category_counts.choose %}
+            <span class="pill pill-red">{{ review.category_counts.choose }} notes {{ 'category' if review.category_counts.choose == 1 else 'categories' }} to choose</span>
+          {% endif %}
+          {% if review.category_counts.proposed %}
+            <span class="pill pill-amber">{{ review.category_counts.proposed }} notes {{ 'category' if review.category_counts.proposed == 1 else 'categories' }} proposed</span>
+          {% endif %}
         </div>
         {% if review.has_suggestions and not fy.tb_is_approved %}
           <form method="post"
@@ -110,6 +118,7 @@
             <th class="num">Balance</th>
             <th>Financial statement line</th>
             <th>Where this came from</th>
+            <th>Notes category</th>
           </tr>
         </thead>
         <tbody>
@@ -167,6 +176,39 @@
                   <div class="muted small">A generic guess. Worth a glance.</div>
                 {% endif %}
               </td>
+              {# The notes library's finer category: which note table rows this
+                 account's figure lands in - "Deposits", not just "Deposits &
+                 Other Receivables". Settled when only one fits or a person
+                 chose; proposed otherwise, and it says so. #}
+              <td class="small code-cell" data-account-id="{{ account.id }}">
+                {% if not account.standard_key %}
+                  <span class="muted">Map the account first</span>
+                {% elif fy.tb_is_approved or row.code_options|length <= 1 %}
+                  {{ review.code_labels.get(account.line_code, account.line_code) or '—' }}
+                {% else %}
+                  <select class="code-select" data-account-id="{{ account.id }}"
+                          style="max-width:240px">
+                    {% if not account.line_code %}<option value="">— choose —</option>{% endif %}
+                    {% for option in row.code_options %}
+                      <option value="{{ option.code }}"
+                        {% if account.line_code == option.code %}selected{% endif %}>
+                        {{ option.label }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                {% endif %}
+                <div class="code-state">
+                  {% if account.standard_key %}
+                    {% if row.code_state == 'proposed' %}
+                      <span class="pill pill-amber">Proposed</span>
+                    {% elif row.code_state == 'choose' %}
+                      <span class="pill pill-red">Choose one</span>
+                    {% elif account.line_code_source == 'manual' %}
+                      <span class="pill">You chose this</span>
+                    {% endif %}
+                  {% endif %}
+                </div>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
@@ -179,6 +221,67 @@
 {% block scripts %}
 {% if review and not fy.tb_is_approved %}
 <script>
+  function stateBadge(state, source) {
+    if (state === 'proposed') { return '<span class="pill pill-amber">Proposed</span>'; }
+    if (state === 'choose') { return '<span class="pill pill-red">Choose one</span>'; }
+    if (source === 'manual') { return '<span class="pill">You chose this</span>'; }
+    return '';
+  }
+
+  // Redraws one account's notes category cell from an API response.
+  function renderCategory(cell, data) {
+    var id = cell.dataset.accountId;
+    cell.textContent = '';
+    if (!data.code_options || !data.code_options.length) {
+      cell.innerHTML = '<span class="muted">Map the account first</span>';
+      return;
+    }
+    if (data.code_options.length === 1) {
+      cell.textContent = data.code_options[0].label;
+    } else {
+      var select = document.createElement('select');
+      select.className = 'code-select';
+      select.dataset.accountId = id;
+      select.style.maxWidth = '240px';
+      if (!data.line_code) { select.add(new Option('— choose —', '')); }
+      data.code_options.forEach(function (option) {
+        select.add(new Option(option.label, option.code, false,
+                              option.code === data.line_code));
+      });
+      cell.appendChild(select);
+      bindCategory(select);
+    }
+    var badge = document.createElement('div');
+    badge.className = 'code-state';
+    badge.innerHTML = stateBadge(data.line_code_state, data.line_code_source);
+    cell.appendChild(badge);
+  }
+
+  function bindCategory(select) {
+    select.dataset.previous = select.value;
+    select.addEventListener('change', function () {
+      var self = this;
+      if (!self.value) { return; }
+      fetch('/trial-balance/api/account/' + self.dataset.accountId, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json',
+                  'X-CSRFToken': window.CSRF_TOKEN},
+        body: JSON.stringify({ line_code: self.value })
+      }).then(function (response) {
+        return response.json().then(function (data) {
+          if (!response.ok) { throw new Error(data.error || 'save failed'); }
+          return data;
+        });
+      }).then(function (data) {
+        renderCategory(self.closest('.code-cell'), data);
+      }).catch(function (error) {
+        self.value = self.dataset.previous;
+        alert('That category could not be saved. ' + error.message);
+      });
+    });
+  }
+  document.querySelectorAll('.code-select').forEach(bindCategory);
+
   // Saves through the same endpoint the trial balance grid uses, so a
   // mapping made here is remembered against the customer exactly as one
   // made there is - and applies itself next year.
@@ -197,11 +300,13 @@
       }).then(function (response) {
         if (!response.ok) { throw new Error('save failed'); }
         return response.json();
-      }).then(function () {
+      }).then(function (data) {
         self.dataset.previous = self.value;
-        var cell = self.closest('tr').lastElementChild;
-        cell.innerHTML = '<span class="pill">You mapped this</span>';
-        self.closest('tr').classList.remove('row-warn');
+        var row = self.closest('tr');
+        row.children[3].innerHTML = '<span class="pill">You mapped this</span>';
+        row.classList.remove('row-warn');
+        // A new statement line brings its own notes categories.
+        renderCategory(row.querySelector('.code-cell'), data);
       }).catch(function () {
         self.value = previous;
         alert('That mapping could not be saved. Nothing was changed.');

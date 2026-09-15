@@ -71,6 +71,31 @@ def known_codes(financial_year=None):
             if r.get("Line code")}
 
 
+def code_labels(financial_year=None):
+    """{line code: the library's own label for it}."""
+    version = None
+    if financial_year is not None and financial_year.library_version_id:
+        version = db.session.get(NoteLibraryVersion,
+                                 financial_year.library_version_id)
+    if version is None or not version.sheet("Statement lines"):
+        version = next((v for v in NoteLibraryVersion.query
+                        .order_by(NoteLibraryVersion.imported_at.desc()).all()
+                        if v.sheet("Statement lines")), None)
+    if version is None:
+        return {}
+    return {r.get("Line code"): r.get("Line label")
+            for r in version.sheet("Statement lines") if r.get("Line code")}
+
+
+def state(account):
+    """'settled', 'proposed' or 'choose' - what the screen says about it."""
+    if account.line_code_source in SETTLED:
+        return "settled"
+    if account.line_code_source in PROPOSED:
+        return "proposed"
+    return "choose"
+
+
 def allowed_codes(standard_key, categories=None):
     """The line codes that may sit under one statement line, in file order."""
     categories = load_categories() if categories is None else categories

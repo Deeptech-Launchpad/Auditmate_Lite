@@ -12,6 +12,7 @@ from ..extensions import db
 from ..models import FinancialYear, TrialBalanceAccount
 from ..services import depreciation_check, mapping_review, outward, prior_year, reconcile
 from ..services import trial_balance as tb_service
+from ..services.audit import record
 from ..services.statements import line_keys_for, load_templates
 
 bp = Blueprint("trial_balance", __name__, url_prefix="/trial-balance")
@@ -215,6 +216,22 @@ def reopen(fy_id):
 # JSON API used by the grid
 # --------------------------------------------------------------------------
 
+def _code_state(account):
+    from ..services import line_codes
+    return line_codes.state(account) if account.standard_key else None
+
+
+def _code_options(account):
+    from ..services import line_codes
+    if not account.standard_key:
+        return []
+    known = line_codes.known_codes(account.financial_year)
+    labels = line_codes.code_labels(account.financial_year)
+    return [{"code": c, "label": labels.get(c, c)}
+            for c in line_codes.allowed_codes(account.standard_key)
+            if known is None or c in known]
+
+
 @bp.route("/api/account/<int:account_id>", methods=["PATCH"])
 @login_required
 def update_account(account_id):
@@ -226,6 +243,24 @@ def update_account(account_id):
                                         user_id=current_user.id)
         if not result.get("ok"):
             return jsonify(result), 400
+
+    if "line_code" in payload:
+        # A person's choice of notes category. Refused once the trial balance
+        # is approved, like every other change to it.
+        if account.financial_year.tb_is_approved:
+            return jsonify({"ok": False, "error": "The trial balance is "
+                            "approved. Reopen it to change categories."}), 400
+        from ..services import line_codes
+        before = account.line_code
+        try:
+            line_codes.choose(account, payload["line_code"],
+                              codes=line_codes.known_codes(account.financial_year))
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        record("trial_balance_account", account.id, "categorise",
+               before={"line_code": before},
+               after={"line_code": account.line_code})
+        db.session.commit()
 
     if "debit" in payload or "credit" in payload:
         result = tb_service.update_amounts(
@@ -248,6 +283,11 @@ def update_account(account_id):
         # against the new line until the page was reloaded.
         "category": account.category_label,
         "fs": account.fs_label,
+        # The notes category follows the mapping too: a remap offers a new set.
+        "line_code": account.line_code,
+        "line_code_state": _code_state(account),
+        "line_code_source": account.line_code_source,
+        "code_options": _code_options(account),
         "totals": {
             "debit": float(totals["debit"]),
             "credit": float(totals["credit"]),

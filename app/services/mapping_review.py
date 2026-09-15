@@ -112,6 +112,14 @@ def review(financial_year):
         for r in AccountMapping.query
         .filter_by(customer_id=financial_year.customer_id).all()}
 
+    # Notes library categories. Labels come from the engagement's library
+    # version, so the screen names each code the way the library does.
+    from . import line_codes
+    categories = line_codes.load_categories()
+    known = line_codes.known_codes(financial_year)
+    code_labels = line_codes.code_labels(financial_year)
+    category_counts = {"settled": 0, "proposed": 0, "choose": 0}
+
     rows = []
     for account in accounts:
         origin, _ = _origin(account, last_year, learned_patterns)
@@ -149,7 +157,15 @@ def review(financial_year):
             "suggestion_from": suggestion_from,
             "last_year": last_year.get(
                 (account.account_name or "").strip().lower()),
+            "code_options": [
+                {"code": c, "label": code_labels.get(c, c)}
+                for c in line_codes.allowed_codes(account.standard_key,
+                                                  categories)
+                if known is None or c in known] if account.standard_key else [],
+            "code_state": line_codes.state(account),
         })
+        if account.standard_key:
+            category_counts[rows[-1]["code_state"]] += 1
 
     # Unmapped first, then rule guesses, then what is already settled. The
     # work is at the top of the page and the auditor stops scrolling when it
@@ -173,6 +189,8 @@ def review(financial_year):
         # account or a new liability would simply be absent from the accounts
         # with nothing announcing it.
         "unmapped": counts["unmapped"],
+        "category_counts": category_counts,
+        "code_labels": code_labels,
     }
 
 
