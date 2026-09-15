@@ -28,6 +28,7 @@ def register_cli(app):
     app.cli.add_command(seed_note_library)
     app.cli.add_command(import_note_library)
     app.cli.add_command(note_library)
+    app.cli.add_command(load_test_engagement)
     app.cli.add_command(setup_production)
     app.cli.add_command(fix_report_layout)
 
@@ -1314,3 +1315,51 @@ def note_library():
     click.echo(f"Engagements with no library version: {unpinned}")
     click.echo(f"Auditor-added notes (all versions):  "
                f"{NoteLibraryEntry.query.filter_by(source='auditor_added').count()}")
+
+
+@click.command("load-test-engagement")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--replace", is_flag=True,
+              help="Rebuild the engagement if this loader created it before.")
+@with_appcontext
+def load_test_engagement(path, replace):
+    """Load a real client's figures as a test engagement, without the AI.
+
+    Reads a JSON engagement file - kept under instance/, which git ignores,
+    because a real client's accounts do not belong in the repository - and
+    builds the customer, its years and their trial balances. Accounts are
+    mapped by AuditMate's own rules; the AI is never called, so no figure or
+    name leaves this machine. See services/test_engagement.py.
+    """
+    from .services import test_engagement
+
+    try:
+        report = test_engagement.load(path, replace=replace)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+
+    click.echo("")
+    click.echo(f"Loaded {report['customer']} (customer {report['customer_id']})")
+    for year in report["years"]:
+        click.echo("")
+        click.echo(f"  {year['label']}  (financial year {year['id']})"
+                   f"{'  - approved' if year['approved'] else ''}")
+        click.echo(f"    {year['accounts']} accounts, balanced at "
+                   f"{year['debit']:,.2f} each way")
+        click.echo(f"    Notes library: {year['library'] or 'none covers this year end'}")
+        by_rules = year["accounts"] - len(year["unmapped"]) - year["from_file"]
+        if year["from_file"]:
+            click.echo(f"    {year['from_file']} mapped as the file states "
+                       f"(a settled year)")
+        click.echo(f"    {by_rules} mapped by AuditMate's rules, "
+                   f"{len(year['unmapped'])} left for the mapping screen")
+        for name in year["unmapped"]:
+            click.echo(f"      ? {name}")
+    if report["known_disagreements"]:
+        click.echo("")
+        click.echo("  Known disagreements in the source files (loaded as found):")
+        for item in report["known_disagreements"]:
+            click.echo(f"    - {item}")
+    click.echo("")
+    click.echo("  AI was not used.")
+
