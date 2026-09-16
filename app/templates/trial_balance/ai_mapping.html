@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Ask a model · Mapping · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('trial_balance.mapping', fy_id=fy.id) }}">Mapping</a>
+  <span class="sep">/</span>
+  <span class="current">Ask a model</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Ask a model</h1>
+    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('trial_balance.mapping', fy_id=fy.id) }}" class="btn">
+      ← Mapping</a>
+  </div>
+</div>
+
+<p class="muted" style="max-width:66ch">
+  For the accounts last year and the category rules could not place. A
+  model is asked what they look like; everything it says is a suggestion
+  until you take it.
+</p>
+
+{#
+  The consent gate. Deliberately the first thing on the page and
+  deliberately not a preference buried in settings: it decides whether a
+  real client's chart of accounts goes to somebody else's machine, and
+  that is a decision with a name and a date against it.
+#}
+{% if not permitted %}
+  <div class="card" style="margin-bottom:16px;border-left:3px solid #c47f0a">
+    <div class="card-head"><h2>Nothing has been sent</h2></div>
+    <div class="card-body">
+      <p style="margin-top:0;max-width:64ch">
+        {{ customer.name }} has not been cleared for anything to go to a
+        model. Read the list below first &mdash; it is exactly what would
+        be sent, in full. If any of it is something this client would not
+        want leaving your office, do not clear them; map those accounts by
+        hand instead.
+      </p>
+      {% if outgoing %}
+        <table class="table" style="max-width:60ch">
+          <thead><tr><th>Account name</th><th style="width:22%">Side</th></tr></thead>
+          <tbody>
+            {% for row in outgoing %}
+              <tr>
+                <td class="small">{{ row.name }}
+                  {% if row.looks_personal %}
+                    <span class="pill pill-amber">may name someone</span>
+                  {% endif %}
+                </td>
+                <td class="small muted">{{ row.side }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="muted small" style="max-width:64ch">
+          That is the whole of it. No figures, no company name, no
+          registration number, no year &mdash; naming a line does not need
+          them, so they do not go.
+        </p>
+        <form method="post" style="margin-top:12px">
+          <input type="hidden" name="action" value="allow">
+          <input type="text" class="input" name="note" style="max-width:46ch"
+                 placeholder="Why this client is cleared (optional)">
+          <button type="submit" class="btn btn-primary" style="margin-top:8px">
+            Clear {{ customer.name }} for this</button>
+        </form>
+      {% else %}
+        <p class="muted">Every account is already mapped. There is nothing
+          to ask about.</p>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-head">
+      <h2>Cleared</h2>
+      <span class="hint">
+        {% if customer.ai_allowed_at %}
+          since {{ customer.ai_allowed_at.strftime('%d %b %Y') }}
+        {% endif %}</span>
+    </div>
+    <div class="card-body" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+      <span class="small">
+        {{ outgoing|length }} account{{ '' if outgoing|length == 1 else 's' }}
+        would be sent &mdash; names and debit/credit only.</span>
+      <form method="post" style="margin-left:auto">
+        <input type="hidden" name="action" value="ask">
+        <button type="submit" class="btn btn-primary"
+                {% if not outgoing %}disabled{% endif %}>Ask</button>
+      </form>
+      <form method="post">
+        <input type="hidden" name="action" value="revoke">
+        <button type="submit" class="btn">Withdraw clearance</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+{% if rows %}
+  <div class="card">
+    <div class="card-head">
+      <h2>Accounts nothing could place</h2>
+      <span class="hint">{{ rows|length }}</span>
+    </div>
+    <div class="card-body">
+      <table class="table">
+        <thead><tr>
+          <th style="width:26%">Account</th>
+          <th style="width:20%">Suggested</th>
+          <th style="width:34%">Why</th>
+          <th style="width:20%"></th>
+        </tr></thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td class="small"><span class="strong">{{ row.name }}</span>
+                <div class="muted small">{{ row.side }}</div></td>
+              <td class="small">
+                {% if row.suggestion and row.suggestion.code %}
+                  <span class="strong">{{ row.suggestion.code }}</span>
+                  {% if row.label %}<div class="muted small">{{ row.label }}</div>{% endif %}
+                {% elif row.suggestion %}
+                  <span class="muted">Declined to say</span>
+                {% else %}
+                  <span class="muted">&mdash;</span>
+                {% endif %}
+              </td>
+              <td class="small muted">
+                {{ row.suggestion.reason if row.suggestion else '' }}
+                {% if row.suggestion and row.suggestion.model %}
+                  <div class="muted small">{{ row.suggestion.model }}</div>
+                {% endif %}
+              </td>
+              <td>
+                {% if row.suggestion and row.suggestion.code
+                      and not row.suggestion.decision %}
+                  <form method="post" style="display:inline">
+                    <input type="hidden" name="action" value="accept">
+                    <input type="hidden" name="suggestion_id"
+                           value="{{ row.suggestion.id }}">
+                    <button type="submit" class="btn btn-sm">Take it</button>
+                  </form>
+                  <form method="post" style="display:inline">
+                    <input type="hidden" name="action" value="reject">
+                    <input type="hidden" name="suggestion_id"
+                           value="{{ row.suggestion.id }}">
+                    <button type="submit" class="btn btn-sm">No</button>
+                  </form>
+                {% elif row.suggestion and row.suggestion.decision %}
+                  <span class="pill">{{ row.suggestion.decision }}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted small" style="max-width:64ch">
+        Taking one maps the account and records it as your decision, with
+        what the model said kept beside it. A year from now a reviewer can
+        still see which of these came from a model.
+      </p>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

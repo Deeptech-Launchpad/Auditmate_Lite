@@ -21,6 +21,11 @@
     </p>
   </div>
   <div class="page-actions">
+    {# For the handful nothing could place. Off the main path on purpose:
+       it sends account names to somebody else's machine, and that is a
+       decision rather than a button on the way to somewhere else. #}
+    <a href="{{ url_for('trial_balance.ai_mapping_view', fy_id=fy.id) }}"
+       class="btn">Ask a model</a>
     <a href="{{ url_for('trial_balance.index', fy_id=fy.id) }}" class="btn">← Extracted Financials</a>
   </div>
 </div>

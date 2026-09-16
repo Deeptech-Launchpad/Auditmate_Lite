@@ -4,6 +4,9 @@ This sits between Documents and Statements: every input merges here, the
 auditor gets it balancing and fully mapped, and approving it is what releases
 the financial statements and, in turn, the audit report.
 """
+import logging
+from datetime import datetime
+
 from flask import (Blueprint, abort, flash, jsonify, redirect,
                    render_template, request, session, url_for)
 from flask_login import current_user, login_required
@@ -14,6 +17,8 @@ from ..services import depreciation_check, mapping_review, outward, prior_year, 
 from ..services import trial_balance as tb_service
 from ..services.audit import record
 from ..services.statements import line_keys_for, load_templates
+
+log = logging.getLogger(__name__)
 
 bp = Blueprint("trial_balance", __name__, url_prefix="/trial-balance")
 
@@ -113,6 +118,77 @@ def apply_mapping_suggestions(fy_id):
         flash("Nothing to apply: every unmapped account needs a person.",
               "info")
     return redirect(url_for("trial_balance.mapping", fy_id=fy_id))
+
+
+@bp.route("/fy/<int:fy_id>/mapping/ai", methods=["GET", "POST"])
+@login_required
+def ai_mapping_view(fy_id):
+    """Ask a model about the accounts nothing else could place.
+
+    The page shows the exact list that would be sent before anything is
+    sent, because a screen that says "account names will be shared" asks
+    to be believed and one that prints them can be checked.
+
+    Nothing leaves unless this client has been cleared for it, one client
+    at a time, and turning that on is its own deliberate act on this page.
+    A suggestion that comes back is a suggestion: it is recorded with the
+    model that gave it and the reason it gave, and a person accepts it or
+    does not.
+    """
+    from ..services import ai_mapping as ai
+
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+    customer = financial_year.customer
+
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "allow":
+            customer.ai_allowed = True
+            customer.ai_allowed_by = current_user.id
+            customer.ai_allowed_at = datetime.utcnow()
+            customer.ai_allowed_note = (request.form.get("note") or "").strip()
+            db.session.commit()
+            flash(f"{customer.name} is now cleared for account names to be "
+                  f"sent to a model. Nothing has been sent yet.", "success")
+        elif action == "revoke":
+            customer.ai_allowed = False
+            customer.ai_allowed_by = current_user.id
+            customer.ai_allowed_at = datetime.utcnow()
+            db.session.commit()
+            flash(f"{customer.name} is no longer cleared. Nothing further "
+                  f"will be sent.", "success")
+        elif action == "ask":
+            try:
+                made = ai.suggest(financial_year, user_id=current_user.id)
+                flash(f"{len(made)} account(s) came back. Every one still "
+                      f"needs a person.", "success")
+            except ai.NotPermitted as exc:
+                flash(str(exc), "error")
+            except ai.NotAvailable as exc:
+                flash(str(exc), "error")
+            except Exception:
+                log.exception("AI mapping failed for fy %s", fy_id)
+                flash("The model could not be reached. Nothing was recorded.",
+                      "error")
+        elif action in ("accept", "reject"):
+            row = db.session.get(ai.AiMappingSuggestion,
+                                 int(request.form.get("suggestion_id", 0)))
+            if row is not None and row.financial_year_id == financial_year.id:
+                if action == "accept":
+                    ai.accept(row, user_id=current_user.id)
+                    flash("Mapped, and recorded as your decision.", "success")
+                else:
+                    ai.reject(row, user_id=current_user.id)
+                    flash("Turned down. It will not be offered again.",
+                          "success")
+        return redirect(url_for("trial_balance.ai_mapping_view", fy_id=fy_id))
+
+    return render_template("trial_balance/ai_mapping.html",
+                           fy=financial_year, customer=customer,
+                           permitted=ai.permitted(customer),
+                           outgoing=ai.outgoing(financial_year),
+                           rows=ai.state(financial_year))
 
 
 @bp.route("/fy/<int:fy_id>/build", methods=["POST"])

@@ -323,6 +323,24 @@ class Customer(db.Model):
     engagement_partner_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     notes = db.Column(db.Text)
 
+    # WHETHER THIS CLIENT'S DATA MAY LEAVE THE MACHINE.
+    #
+    # Off unless somebody turns it on, for this client, deliberately. A
+    # model that helps map a chart of accounts is a model somebody else
+    # runs, and an account name is the client's business, not ours: "Loan
+    # - K Tan" names a director, "Retention - Sembcorp" names a customer
+    # and the contract they are on.
+    #
+    # Default-off rather than default-on with an opt-out, because the cost
+    # of the two mistakes is not symmetric. Forgetting to switch it on
+    # means somebody maps a few accounts by hand. Forgetting to switch it
+    # off means a real client's books went to a third party, and there is
+    # no taking that back.
+    ai_allowed = db.Column(db.Boolean, default=False, nullable=False)
+    ai_allowed_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    ai_allowed_at = db.Column(db.DateTime)
+    ai_allowed_note = db.Column(db.String(255))
+
 
     # Archived, not deleted: hidden from the customer list, every document
     # and figure kept. Reusing this existing flag rather than adding a new
@@ -1817,6 +1835,68 @@ class PreparerInput(db.Model):
 
     def __repr__(self):
         return f"<PreparerInput {self.item} decided={self.decided}>"
+
+
+class AiMappingSuggestion(db.Model):
+    """What a model said about one account, and what a person did with it.
+
+    Kept rather than applied. The mapping itself is written only when
+    somebody accepts, through the same path a dropdown uses, so an
+    accepted suggestion is a person's decision with a record of where the
+    idea came from - not a mapping of unknown parentage that a reviewer a
+    year later cannot tell from the firm's own work.
+
+    A rejection is kept too. Asking the same model the same question next
+    week and re-offering an answer somebody has already turned down is how
+    a reviewer learns to click through the list without reading it.
+
+    The model's own words are kept verbatim. "Read from 'Retention' - this
+    is money held back on a construction contract" is checkable; a bare
+    code is not, and a suggestion nobody can check is one nobody should
+    accept.
+    """
+
+    __tablename__ = "ai_mapping_suggestions"
+    __table_args__ = (
+        db.UniqueConstraint("financial_year_id", "account_id",
+                            name="uq_ai_mapping_suggestion"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    financial_year_id = db.Column(db.Integer,
+                                  db.ForeignKey("financial_years.id"),
+                                  nullable=False, index=True)
+    account_id = db.Column(db.Integer,
+                           db.ForeignKey("trial_balance_accounts.id"),
+                           nullable=False, index=True)
+
+    # Empty where the model declined, which it is told it may do. An
+    # honest "I do not know" for "Sundry 2" is worth more than a confident
+    # guess, because the confident guess is the one that gets accepted
+    # without being read.
+    code = db.Column(db.String(40))
+    reason = db.Column(db.Text)
+
+    # Which model, so that a suggestion can be judged by where it came
+    # from and so a change of provider is visible in the record.
+    model = db.Column(db.String(80))
+
+    decision = db.Column(db.String(12))          # accepted / rejected / None
+    requested_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    decided_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    decided_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    financial_year = db.relationship("FinancialYear")
+    account = db.relationship("TrialBalanceAccount")
+    decider = db.relationship("User", foreign_keys=[decided_by])
+
+    @property
+    def is_settled(self):
+        return self.decision is not None
+
+    def __repr__(self):
+        return f"<AiMappingSuggestion {self.account_id} -> {self.code!r}>"
 
 
 # table_index for a paragraph override: no table has index -1.
