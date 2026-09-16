@@ -181,16 +181,26 @@ def figures(fy_id):
     financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
 
     if request.method == "POST":
+        # Listing the classes of asset a note is presented in comes first
+        # and on its own: adding a column changes what the grid below is
+        # asking for, so the page is redrawn rather than saved through.
+        handled = _handle_classes(financial_year, request.form,
+                                  document_fields)
+        if handled:
+            flash(handled, "success")
+            return redirect(url_for("documents.figures", fy_id=fy_id))
+
         saved = cleared = 0
         errors = []
-        for token, field, scope, raw, found_at in _posted_figures(request.form):
+        for token, field, scope, member, raw, found_at in _posted_figures(
+                request.form):
             amount, error = _figure(raw)
             if error:
                 errors.append(f"{token}:{field} - {error}")
                 continue
             row = document_fields.save(financial_year, token, field,
-                                       scope=scope, amount=amount,
-                                       found_at=found_at)
+                                       scope=scope, member=member,
+                                       amount=amount, found_at=found_at)
             if row is None:
                 cleared += 1
             else:
@@ -213,12 +223,43 @@ def figures(fy_id):
                            documents=document_fields.documents(financial_year))
 
 
+def _handle_classes(financial_year, form, document_fields):
+    """Add or drop a class of asset. Returns what to tell the preparer.
+
+    Three ways in, all on the same form: a suggestion the trial balance
+    made, a name typed by hand, and the cross beside a class already
+    listed. A class carries every figure entered against it, so dropping
+    one drops those too - which is why the button asks first.
+    """
+    if form.get("drop_class"):
+        scope, _, name = form["drop_class"].partition("||")
+        if scope and name:
+            document_fields.remove_class(financial_year, scope, name)
+            return f"Removed the class \u201c{name}\u201d and its figures."
+
+    name = None
+    if form.get("add_class"):
+        scope, _, name = form["add_class"].partition("||")
+    elif form.get("add_typed"):
+        scope = form["add_typed"]
+        name = form.get(f"new_class__{scope}")
+    else:
+        return None
+
+    added = document_fields.add_class(financial_year, scope, name)
+    if added:
+        return f"Added the class \u201c{added}\u201d."
+    return None
+
+
 def _posted_figures(form):
-    """(token, field, note, amount, where it was found) for each box.
+    """(token, field, note, class, amount, where it was found) per box.
 
     The note is part of the key because one field name can mean different
     figures in different notes - PRIORFS:cost_open_py is the opening cost
-    of plant and equipment in one and of intangibles in another.
+    of plant and equipment in one and of intangibles in another. The class
+    is part of it because a movement table presented by class of asset
+    states every figure once per class.
     """
     for key in form:
         if not key.startswith("amount__"):
@@ -228,7 +269,9 @@ def _posted_figures(form):
             continue
         token, field = parts[0], parts[1]
         scope = parts[2] if len(parts) > 2 else ""
-        yield token, field, scope, form.get(key), form.get(f"found__{key[8:]}")
+        member = parts[3] if len(parts) > 3 else ""
+        yield (token, field, scope, member, form.get(key),
+               form.get(f"found__{key[8:]}"))
 
 
 def _figure(raw):

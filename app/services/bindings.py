@@ -98,6 +98,18 @@ PERSON_TOKENS = {
 
 SINGLE_COLUMN = ("single amount column", "amount per period")
 
+# A movement table presented one column per class of asset, with a Total
+# column beside them. The library says so in the table's own column
+# labels: "By class of asset, as mapped. A Total column is always
+# presented."
+BY_CLASS_COLUMNS = "by class"
+
+# The Total column of a by-class table is an ordinary column, filled from
+# a source like every other. It is NOT the classes added up: the engine
+# performs no arithmetic, and the register prints its own total row for a
+# person to take.
+TOTAL_COLUMN = "Total"
+
 
 class Held:
     """A figure that cannot be stated yet, and why."""
@@ -675,6 +687,125 @@ def library_table(version_id, table_id):
     return cache[version_id].get(table_id)
 
 
+def by_class_table(spec, financial_year):
+    """A movement table laid out one column per class of asset.
+
+    The fixed asset, investment property and intangibles notes are
+    presented this way, and until now the engine held them whole - "several
+    columns per year, which is not laid out yet". This is that layout.
+
+    WHERE EACH CELL COMES FROM. A row bound to a register field or to last
+    year's signed accounts is stated per class, because both documents are
+    kept that way, and its Total column is stated too - the register prints
+    its own total row and a person takes it. Nothing is added up here.
+
+    A row bound to a line code - the net carrying amount at each year end -
+    is a different case. The trial balance carries one figure for the whole
+    line and the library gives no per-class field for it, so those rows
+    fill the Total column and leave the class columns EMPTY rather than
+    holding them. An empty cell where the library never promised a figure
+    is honest; "Incomplete" there would hold the note for ever. (Raised
+    with the firm: should the register supply the carrying amount by class,
+    or do those rows belong in the Total column alone?)
+
+    Returns None when the note has no classes yet, so the caller can hold
+    the table and say what it needs.
+    """
+    from . import document_fields
+
+    table = library_table(spec.get("version_id"), spec.get("table_id")) or {}
+    library_rows = table.get("rows") or []
+    scope = table.get("table_id") or ""
+    classes = document_fields.classes(financial_year, scope)
+    if not library_rows or not classes:
+        return None
+
+    figures = figures_for(financial_year)
+    # The Total column is always presented and is never one of the
+    # declared classes, however a preparer happened to type the list.
+    columns = [name for name in classes
+               if name.strip().lower() != TOTAL_COLUMN.lower()]
+    columns.append(TOTAL_COLUMN)
+
+    rows = []
+    for library_row in library_rows:
+        binding = (library_row.get("binding") or "").strip()
+        row = {"label": library_row.get("label"), "cells": [],
+               "bold": False, "rule": False}
+
+        if binding == "STATIC" or not binding:
+            row["cells"] = [None] * len(columns)
+            row["bold"] = True
+            rows.append(row)
+            continue
+
+        token = binding.split(":", 1)[0]
+        field = binding.split(":", 1)[-1]
+        # In a by-class table every document field is stated per class;
+        # a row bound to a line code is not, because the trial balance
+        # carries one figure for the whole line.
+        per_class = token in document_fields.SCOPED
+
+        for column in columns:
+            if per_class:
+                entered = document_fields.value(
+                    financial_year, token, field, scope, member=column)
+                if entered is not None:
+                    row["cells"].append(entered.amount
+                                        if entered.amount is not None else ZERO)
+                else:
+                    row["cells"].append(Held(
+                        f"{DOCUMENT_TOKENS.get(token, 'A document')} has not "
+                        f"given {field} for {column}",
+                        blocking=document_fields.is_blocking(
+                            financial_year, token, field, scope)))
+            elif column == TOTAL_COLUMN:
+                row["cells"].append(figures.resolve(binding, 0, scope))
+            else:
+                # The library states no per-class figure for this row.
+                row["cells"].append(None)
+
+        # The carrying amount rows: the ones bound to a line code rather
+        # than to a document. They close each year's movement, so they
+        # carry the rule above them the way a total does. Decided by what
+        # the row is bound to, not by naming the codes - this library has
+        # three such notes and a later one may have four.
+        if not per_class and binding != "STATIC":
+            row["bold"] = row["rule"] = True
+        rows.append(row)
+
+    shown = [row for row in rows
+             if not _all_nil(row) and not _all_optional(row)]
+    if not shown:
+        return None
+
+    for row in shown:
+        for index, value in enumerate(row["cells"]):
+            if _is_held(value):
+                row.setdefault("held", {})[index] = value.reason
+                row["cells"][index] = None
+
+    return {"heading": spec.get("heading"), "table_id": table.get("table_id"),
+            "by_class": True, "classes": columns, "rows": shown,
+            "columns": table.get("column_labels")}
+
+
+def _all_nil(row):
+    """A movement line with nothing in any column - suppressed, as ever."""
+    values = [v for v in row["cells"] if v is not None]
+    if not values or any(_is_held(v) for v in values):
+        return False
+    return not any(values)
+
+
+def _all_optional(row):
+    """Every column waiting on a figure the library does not require."""
+    held = [v for v in row["cells"] if _is_held(v)]
+    if not held or any(isinstance(v, Decimal) for v in row["cells"]):
+        return False
+    return all(not v.blocking for v in held)
+
+
 def build_table(spec, financial_year, statements=None):
     """A renderable table for one library table, or None if nothing to show.
 
@@ -686,6 +817,14 @@ def build_table(spec, financial_year, statements=None):
     library_rows = table.get("rows") or []
     if not library_rows:
         return None
+
+    # Presented one column per class of asset - the fixed asset,
+    # investment property and intangibles movement tables.
+    if str(table.get("column_labels") or "").strip().lower().startswith(
+            BY_CLASS_COLUMNS):
+        laid_out = by_class_table(spec, financial_year)
+        if laid_out is not None:
+            return laid_out
 
     figures = figures_for(financial_year)
     first_year = bool(financial_year.is_first_year)
@@ -743,8 +882,13 @@ def build_table(spec, financial_year, statements=None):
         if binding == "DOC:total":
             row["bold"] = row["rule"] = True
         elif not single_column and binding != "STATIC":
-            row["current"] = Held("This table has several columns per year, "
-                                  "which is not laid out yet")
+            row["current"] = Held(
+                "Nobody has listed the classes of asset this note is "
+                "presented in"
+                if str(table.get("column_labels") or "").strip().lower()
+                .startswith(BY_CLASS_COLUMNS)
+                else "This table has several columns per year, which is "
+                     "not laid out yet")
             row["previous"] = None if first_year else row["current"]
         elif counts.get(binding, 0) > 1:
             row["current"] = Held("The library binds more than one row of this "

@@ -248,6 +248,15 @@
 {{ S }} tr.chk-total td { border-top: .5pt solid #333; font-weight: 700; }
 {{ S }} .chk-foot { margin-top: 18px; }
 
+/* A movement table presented by class of asset. Narrower than the two
+   comparative columns a note usually carries, because a company with four
+   classes needs five columns on the same page width. */
+{{ S }} table.by-class { font-size: .92em; }
+{{ S }} table.by-class th.num, {{ S }} table.by-class td.num {
+  padding-left: 6px; white-space: nowrap;
+}
+{{ S }} table.by-class .total-col { font-weight: 600; }
+
 {{ S }} .draft-stamp {
   position: fixed; top: 6mm; left: 0; right: 0; text-align: center;
   font-family: Arial, sans-serif; font-weight: 700; font-size: 11pt;

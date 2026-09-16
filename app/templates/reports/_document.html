@@ -377,7 +377,49 @@
       {% for table in payload.tables %}
         {% set loop_table = loop.index0 %}
         {% if table.heading %}<p class="tbl-head">{{ table.heading }}</p>{% endif %}
-        {% if table.held_table %}
+        {#
+          A movement table presented one column per class of asset.
+
+          The Total column is a column like any other, taken from the
+          register's own total row - not the classes added up. Where the
+          library binds a row to a line code instead of a register field,
+          the trial balance carries one figure for the whole line and the
+          class cells are left empty: the library never promised a figure
+          there, and "Incomplete" would hold the note for ever.
+        #}
+        {% if table.by_class %}
+        <table class="fin note-table by-class">
+          <thead>
+            <tr class="hdr-dates">
+              <th class="lbl"></th>
+              {% for name in table.classes %}
+                <th class="num{{ ' total-col' if loop.last }}">{{ name }}</th>
+              {% endfor %}
+            </tr>
+            <tr class="hdr-ccy">
+              <th class="lbl"></th>
+              {% for name in table.classes %}<th class="num">{{ ccy_sym }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in table.rows %}
+              <tr class="{% if row.bold %}subtotal{% endif %}{% if row.rule %} ruled-above{% endif %}">
+                <td class="lbl">{{ row.label }}</td>
+                {% for cell in row.cells %}
+                  {% set why = (row.held or {}).get(loop.index0) %}
+                  {% if why %}
+                    <td class="num held" title="{{ why }}">Incomplete</td>
+                  {% elif cell is none %}
+                    <td class="num"></td>
+                  {% else %}
+                    <td class="num{{ ' total-col' if loop.last }}">{{ cell|stmt }}</td>
+                  {% endif %}
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% elif table.held_table %}
           {# Every figure in it waits on a document or an answer. One line
              naming what it needs - never a grid of dashes, which would read
              as nil. #}

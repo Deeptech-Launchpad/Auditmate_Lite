@@ -1649,7 +1649,7 @@ class DocumentFigure(db.Model):
     __tablename__ = "document_figures"
     __table_args__ = (
         db.UniqueConstraint("financial_year_id", "token", "field", "scope",
-                            name="uq_document_figure"),
+                            "member", name="uq_document_figure"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -1668,6 +1668,13 @@ class DocumentFigure(db.Model):
     # rather than NULL: a unique constraint does not constrain NULLs, so a
     # scopeless field could otherwise be entered twice.
     scope = db.Column(db.String(60), default="", nullable=False)
+
+    # Which column within that table. A fixed asset note is presented by
+    # class of asset - computers, motor vehicles, renovation - and the
+    # register states every movement per class, so "additions during the
+    # year" is not one figure but one per class. Empty string for a field
+    # that is not presented by class.
+    member = db.Column(db.String(80), default="", nullable=False)
 
     amount = db.Column(Numeric(18, 2))
     text = db.Column(db.Text)                  # for a field that is not a figure
@@ -1691,8 +1698,9 @@ class DocumentFigure(db.Model):
 
     @property
     def where(self):
-        """The binding with the note it belongs to, for a reviewer."""
-        return f"{self.scope}/{self.binding}" if self.scope else self.binding
+        """The binding with the note and column it belongs to."""
+        at = f"{self.scope}/{self.binding}" if self.scope else self.binding
+        return f"{at} [{self.member}]" if self.member else at
 
     @property
     def is_answered(self):

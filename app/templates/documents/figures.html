@@ -75,6 +75,92 @@
             {%- if group.scope %}<span class="df-scope">{{ group.scope }}</span>{% endif %}</div>
           {% if group.hint %}<p class="df-hint">{{ group.hint }}</p>{% endif %}
         {% endif %}
+
+        {#
+          A movement table presented by class of asset is a grid, not a
+          list: every figure is stated once per class and once for the
+          Total column the library always presents.
+
+          The Total column is typed like every other. It is NOT the classes
+          added up - the engine performs no arithmetic, the register prints
+          its own total row, and a person takes it from there. If the two
+          disagree that is a finding, and finding it is what the Preparer
+          checks page is for.
+        #}
+        {% if group.by_class %}
+          <p class="df-hint">
+            Presented one column per class of asset.
+            {% if group.classes|length < 2 %}
+              <strong>No classes listed yet</strong> &mdash; the note stays
+              Incomplete until there is at least one.
+            {% endif %}
+          </p>
+
+          <div class="df-classes">
+            {% for name in group.classes %}
+              {% if name != 'Total' %}
+                <span class="df-class">{{ name }}
+                  <button type="submit" name="drop_class"
+                          value="{{ group.scope }}||{{ name }}"
+                          formnovalidate
+                          title="Remove this class and every figure entered against it"
+                          data-confirm="Remove the class &quot;{{ name }}&quot; and every figure entered against it?">&times;</button>
+                </span>
+              {% endif %}
+            {% endfor %}
+            {% for name in group.suggested %}
+              <button type="submit" name="add_class"
+                      value="{{ group.scope }}||{{ name }}" formnovalidate
+                      class="df-suggest"
+                      title="The trial balance keeps a separate account for this">
+                + {{ name }}</button>
+            {% endfor %}
+            <span class="df-add">
+              <input type="text" name="new_class__{{ group.scope }}"
+                     placeholder="add a class" maxlength="80"
+                     aria-label="Add a class of asset">
+              <button type="submit" name="add_typed" value="{{ group.scope }}"
+                      formnovalidate class="btn btn-sm">Add</button>
+            </span>
+          </div>
+
+          {% if group.classes|length > 1 %}
+          <div class="df-grid-wrap">
+            <table class="table doc-figures df-grid">
+              <thead>
+                <tr>
+                  <th style="width:30%">Figure</th>
+                  {% for name in group.classes %}
+                    <th class="num {{ 'df-total-col' if name == 'Total' }}">{{ name }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for field in group.grid %}
+                  <tr>
+                    <td>
+                      <div class="df-name">{{ field.meaning }}</div>
+                      <div class="df-binding">{{ field.binding }}
+                        {%- if not field.blocking %}
+                          <span class="df-optional">not required</span>
+                        {%- endif %}</div>
+                    </td>
+                    {% for cell in field.cells %}
+                      <td class="{{ 'df-total-col' if cell.member == 'Total' }}">
+                        <input type="text" inputmode="decimal" class="df-amount"
+                               name="amount__{{ field.token }}__{{ field.field }}__{{ group.scope }}__{{ cell.member }}"
+                               value="{{ cell.answer.amount if cell.answer else '' }}"
+                               placeholder="&mdash;"
+                               aria-label="{{ field.meaning }}, {{ cell.member }}">
+                      </td>
+                    {% endfor %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        {% else %}
         <table class="table doc-figures">
           <thead>
             <tr>
@@ -121,6 +207,7 @@
             {% endfor %}
           </tbody>
         </table>
+        {% endif %}
       {% endfor %}
 
       <div class="form-actions">
@@ -148,6 +235,24 @@
               font-size: 11px; font-weight: 400; color: #9ca3af;
               margin-left: 8px; }
   .df-hint { font-size: 12px; color: #6b7280; margin: 0 0 6px; }
+  .df-classes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+                margin: 0 0 10px; }
+  .df-class { display: inline-flex; align-items: center; gap: 4px;
+              font-size: 12px; padding: 2px 4px 2px 8px; border-radius: 12px;
+              background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; }
+  .df-class button { border: none; background: none; cursor: pointer;
+                     color: #6366f1; font-size: 14px; line-height: 1;
+                     padding: 0 3px; }
+  .df-suggest { font-size: 12px; padding: 2px 8px; border-radius: 12px;
+                background: #fdf1dc; border: 1px dashed #e8c88a;
+                color: #7c4a03; cursor: pointer; }
+  .df-add { display: inline-flex; gap: 4px; align-items: center; }
+  .df-add input { font: inherit; font-size: 12px; padding: 3px 8px;
+                  border: 1px solid #d1d5db; border-radius: 12px; width: 150px; }
+  .df-grid-wrap { overflow-x: auto; }
+  .df-grid td, .df-grid th { padding: 3px 5px; }
+  .df-grid .df-amount { min-width: 92px; }
+  .df-total-col { background: #fafafa; font-weight: 600; }
   .df-name { font-weight: 600; }
   .df-binding { font-family: ui-monospace, Menlo, Consolas, monospace;
                 font-size: 11px; color: #9ca3af; margin-top: 2px; }

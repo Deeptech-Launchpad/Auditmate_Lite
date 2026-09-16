@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 # a parser may or may not read correctly. Where it does, the figures come
 # through services/prior_year.py; where it does not, a person reads the
 # statement and types the figure, and what they typed outranks the parser.
-ENTERED = ("TAX", "PRIORFS")
+ENTERED = ("TAX", "PRIORFS", "FAR")
 
 # Fields whose name means a different figure in each note that uses it.
 # PRIORFS:cost_open_py is the opening cost of plant and equipment in one
@@ -59,6 +59,28 @@ SCOPED = ("PRIORFS", "FAR")
 # document under PRIOR:. Mapped here rather than guessed at each use, and
 # raised with the firm rather than silently accommodated.
 DOCUMENT_ALIASES = {"PRIORFS": "PRIOR"}
+
+# How a table says it is presented one column per class. The library
+# writes it into the table's own column labels - "By class of asset",
+# "By class of property", "By class of underlying asset" - and that is
+# the only place that knows. The same field is per class in the movement
+# table and a single figure in the note above it: FAR:rou_additions is
+# one column in the right-of-use additions table and one figure per class
+# in the depreciation table, and nothing but the table tells them apart.
+BY_CLASS_COLUMNS = "by class"
+
+# The field that names a class rather than measuring one.
+CLASS_FIELDS = {"FAR": ("class", "rou_class")}
+
+
+def by_class(financial_year, scope):
+    """Whether this table is presented one column per class."""
+    from .bindings import library_table
+
+    version = _version(financial_year)
+    table = library_table(version.id if version else None, scope) or {}
+    return str(table.get("column_labels") or "").strip().lower().startswith(
+        BY_CLASS_COLUMNS)
 
 
 def scope_of(token, scope):
@@ -161,6 +183,132 @@ def scopes_for(financial_year, token):
                                   if str(row.get("binding") or "").startswith(
                                       token + ":")]})
     return found
+
+
+def classes(financial_year, scope, field="class"):
+    """The asset classes a note is presented in, in the order entered.
+
+    The library's FAR:class - "asset class label, one row per class". They
+    are a per-engagement fact, not a library one: one company keeps motor
+    vehicles and renovation, the next keeps plant, tooling and moulds, and
+    only the register says which.
+    """
+    rows = DocumentFigure.query.filter_by(
+        financial_year_id=financial_year.id, token="FAR", field=field,
+        scope=scope or "").order_by(DocumentFigure.id).all()
+    return [row.member for row in rows if row.member]
+
+
+def add_class(financial_year, scope, name, field="class"):
+    """Declare a class of asset. Returns the name, or None if it is a repeat."""
+    from .audit import record
+
+    name = " ".join(str(name or "").split())
+    if not name:
+        return None
+    # The Total column is always presented and is not a class of asset.
+    # Accepting it as one would print it twice and invite somebody to
+    # treat it as a fourth kind of equipment.
+    if name.lower() == "total":
+        return None
+    if name in classes(financial_year, scope, field):
+        return None
+
+    row = DocumentFigure(financial_year_id=financial_year.id, token="FAR",
+                         field=field, scope=scope or "", member=name,
+                         text=name)
+    db.session.add(row)
+    db.session.flush()
+    record("document_figure", row.id, "add_class",
+           after={"scope": scope, "class": name})
+    db.session.commit()
+    return name
+
+
+def remove_class(financial_year, scope, name, field="class"):
+    """Drop a class and every figure entered against it.
+
+    Deliberate: a figure belongs to the column it was entered in, and a
+    column that no longer exists has nowhere to print. The audit trail
+    keeps what went.
+    """
+    from .audit import record
+
+    rows = DocumentFigure.query.filter_by(
+        financial_year_id=financial_year.id, token="FAR",
+        scope=scope or "", member=name).all()
+    rows += DocumentFigure.query.filter_by(
+        financial_year_id=financial_year.id, token="PRIORFS",
+        scope=scope or "", member=name).all()
+    record("document_figure", 0, "remove_class",
+           before={"scope": scope, "class": name, "figures": len(rows)})
+    for row in rows:
+        db.session.delete(row)
+    db.session.commit()
+
+
+# Where an accumulated depreciation account lands. Its caption names the
+# class it belongs to - "Accum Dep - Office Equip" - so reading it as a
+# class of its own would offer the preparer the same class twice, once as
+# an asset and once as its own contra.
+CONTRA_KEYS = {"accumulated_depreciation", "accumulated_amortisation",
+               "accumulated_impairment"}
+
+# Bookkeeping words wrapped around a class name in a chart of accounts.
+CAPTION_NOISE = ("fixed asset", "fixed assets", "property plant and equipment",
+                 "ppe", "intangible asset", "intangible assets",
+                 "right of use", "right-of-use")
+
+
+def suggest_classes(financial_year, note_code):
+    """Classes the trial balance already implies, for a preparer to accept.
+
+    A company that keeps separate accounts for computers and motor
+    vehicles has already said what its classes are; making somebody retype
+    them from the register is work the books have done. Suggestions only -
+    the register is what decides, and a class the books never named is
+    perfectly normal.
+
+    The accumulated depreciation account is skipped rather than read as a
+    class. It maps to the same line as the asset it depreciates and its
+    caption names that same class, so taking it at face value would offer
+    "Office Equipment" and "Accum Dep - Office Equip" as two classes of
+    asset, which is one class and its contra.
+    """
+    from ..models import TrialBalanceAccount
+    from . import bindings, conditions
+
+    figures = bindings.figures_for(financial_year)
+    wanted = set(conditions.subject_codes(figures, note_code) or [])
+    if not wanted:
+        return []
+
+    found = []
+    for account in TrialBalanceAccount.query.filter_by(
+            financial_year_id=financial_year.id).all():
+        if (account.line_code or "") not in wanted:
+            continue
+        if (account.standard_key or "") in CONTRA_KEYS:
+            continue
+        name = _class_name(account.account_name)
+        if name and name not in found:
+            found.append(name)
+    return found
+
+
+def _class_name(caption):
+    """A chart of accounts caption with its bookkeeping words removed."""
+    name = " ".join(str(caption or "").split())
+    lowered = name.lower()
+    for noise in CAPTION_NOISE:
+        if lowered.startswith(noise + " "):
+            name = name[len(noise):].strip(" -,")
+            break
+    for noise in ("at cost", "- cost", "cost"):
+        if name.lower().endswith(noise):
+            name = name[:-len(noise)].strip(" -,")
+            break
+    return name
 
 
 def _note_applies(financial_year, note_code):
@@ -297,14 +445,39 @@ def documents(financial_year):
                 wanted = [field for field in fields
                           if field["field"] in set(entry["fields"])]
                 answers = stored(financial_year, token, entry["scope"])
-                document["groups"].append({
+                group = {
                     "scope": entry["scope"],
                     "heading": entry["note"],
+                    "note_code": entry["note_code"],
                     "fields": [dict(field, scope=entry["scope"],
                                     answer=answers.get(field["field"]))
                                for field in wanted],
                     "missing": missing(financial_year, token, entry["scope"]),
-                })
+                }
+
+                # A movement table presented by class of asset is a grid,
+                # not a list: every field is asked once per class and once
+                # for the Total column the library always presents. The
+                # Total is typed from the register's own total row, not
+                # added up here - the engine performs no arithmetic.
+                if by_class(financial_year, entry["scope"]):
+                    names = classes(financial_year, entry["scope"])
+                    group["by_class"] = True
+                    group["classes"] = [name for name in names
+                                        if name.lower() != "total"] + ["Total"]
+                    group["suggested"] = [
+                        name for name in suggest_classes(
+                            financial_year, entry["note_code"])
+                        if name not in names]
+                    group["grid"] = [
+                        dict(field, cells=[
+                            {"member": name,
+                             "answer": answers.get((field["field"], name))}
+                            for name in group["classes"]])
+                        for field in wanted]
+                    group["flat"] = []
+
+                document["groups"].append(group)
         else:
             answers = stored(financial_year, token)
             document["groups"].append({
@@ -330,18 +503,18 @@ def stored(financial_year, token=None, scope=""):
     """
     query = DocumentFigure.query.filter_by(financial_year_id=financial_year.id)
     if token:
-        return {row.field: row
+        return {(row.field if not row.member else (row.field, row.member)): row
                 for row in query.filter_by(
                     token=token, scope=scope_of(token, scope)).all()
                 if row.is_answered}
     return {row.where: row for row in query.all() if row.is_answered}
 
 
-def value(financial_year, token, field, scope=""):
+def value(financial_year, token, field, scope="", member=""):
     """The entered figure, or None if nobody has answered."""
     row = DocumentFigure.query.filter_by(
         financial_year_id=financial_year.id, token=token, field=field,
-        scope=scope_of(token, scope)).first()
+        scope=scope_of(token, scope), member=member or "").first()
     if row is None or not row.is_answered:
         return None
     return row
@@ -360,8 +533,25 @@ def missing(financial_year, token, scope=""):
         allowed = {name for entry in scopes_for(financial_year, token)
                    if entry["scope"] == scope for name in entry["fields"]}
         wanted = [field for field in wanted if field["field"] in allowed]
-    return [field for field in wanted
-            if field["blocking"] and field["field"] not in answered]
+
+    # A field presented by class is answered once per column, so it is
+    # outstanding until every column has one - and outstanding for certain
+    # while nobody has said what the classes are.
+    grid = bool(scope) and by_class(financial_year, scope)
+    columns = ([name for name in classes(financial_year, scope)
+                if name.lower() != "total"] + ["Total"]) if grid else []
+
+    short = []
+    for field in wanted:
+        if not field["blocking"]:
+            continue
+        if grid:
+            if len(columns) < 2 or any(
+                    (field["field"], name) not in answered for name in columns):
+                short.append(field)
+        elif field["field"] not in answered:
+            short.append(field)
+    return short
 
 
 def is_blocking(financial_year, token, field, scope=""):
@@ -374,8 +564,8 @@ def is_blocking(financial_year, token, field, scope=""):
     return True
 
 
-def save(financial_year, token, field, *, scope="", amount=None, text=None,
-         found_at=None, clear=False):
+def save(financial_year, token, field, *, scope="", member="", amount=None,
+         text=None, found_at=None, clear=False):
     """Record one figure from a document. Returns the row, or None if cleared.
 
     Clearing removes the answer, which puts the row back to Incomplete. It
@@ -387,9 +577,10 @@ def save(financial_year, token, field, *, scope="", amount=None, text=None,
     from .audit import record
 
     scope = scope_of(token, scope)
+    member = member or ""
     row = DocumentFigure.query.filter_by(
         financial_year_id=financial_year.id, token=token, field=field,
-        scope=scope).first()
+        scope=scope, member=member).first()
     before = None if row is None else {"amount": str(row.amount),
                                        "text": row.text}
 
@@ -403,7 +594,8 @@ def save(financial_year, token, field, *, scope="", amount=None, text=None,
 
     if row is None:
         row = DocumentFigure(financial_year_id=financial_year.id,
-                             token=token, field=field, scope=scope)
+                             token=token, field=field, scope=scope,
+                             member=member)
         db.session.add(row)
     row.amount = amount
     row.text = (text or "").strip() or None
