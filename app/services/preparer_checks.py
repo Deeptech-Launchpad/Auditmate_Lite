@@ -66,11 +66,9 @@ AWAITING = {
 
 
 def _sheet(financial_year, name):
-    version = None
-    if getattr(financial_year, "library_version_id", None):
-        version = NoteLibraryVersion.query.get(financial_year.library_version_id)
-    if version is None:
-        version = NoteLibraryVersion.query.filter_by(status="active").first()
+    from .note_library import version_in_force
+
+    version = version_in_force(financial_year)
     if version is None:
         return None, []
     return version, (version.sheet(name) or [])

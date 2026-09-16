@@ -2,6 +2,7 @@
 import io
 import re
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from flask import (Blueprint, abort, current_app, flash, jsonify, redirect,
                    render_template, request, send_file, url_for)
@@ -115,6 +116,118 @@ def builder(fy_id):
                            checks=checks_service.build(
                                report, financial_year, payloads),
                            pdf_available=report_service.weasyprint_available())
+
+
+@bp.route("/fy/<int:fy_id>/inputs", methods=["GET", "POST"])
+@login_required
+def preparer_inputs(fy_id):
+    """The library's own questions, put to the person who can answer them.
+
+    Twenty-nine of them on the Preparer inputs sheet, plus the twelve
+    blanks the Fields sheet ties to a paragraph and which until now
+    nothing offered - an unanswered one printed "[contingent liability
+    nature not provided]" in the preview with no way to provide it.
+
+    Narrowed before it is shown: a company with no borrowings is not
+    asked whether a loan payment was missed. What is left is grouped by
+    who decides - what the engine concluded, what it proposes, and what
+    only a person knows.
+
+    Answering "no" is an answer and is recorded as one. Clearing puts the
+    question back to unanswered, which is a different statement about the
+    company and reads differently in the accounts.
+    """
+    from ..services import preparer_inputs as input_service
+
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+
+    if request.method == "POST":
+        if request.form.get("action") == "carry":
+            moved = input_service.carry_forward(
+                _previous_year(financial_year), financial_year,
+                user_id=current_user.id)
+            flash(f"{moved} answer(s) carried from last year."
+                  if moved else "Nothing to carry forward.", "success")
+            return redirect(url_for("reports.preparer_inputs", fy_id=fy_id))
+
+        saved = cleared = 0
+        for item, values in _posted_inputs(request.form).items():
+            if values["clear"]:
+                input_service.save(financial_year, item, clear=True,
+                                   commit=False)
+                cleared += 1
+                continue
+            if not values["decided"]:
+                continue
+            input_service.save(
+                financial_year, item, mode=values["mode"],
+                answer=values["answer"], amount=values["amount"],
+                source=values["source"], proposed=values["proposed"],
+                accepted_proposal=values["accepted"],
+                user_id=current_user.id, commit=False)
+            saved += 1
+        db.session.commit()
+        parts = []
+        if saved:
+            parts.append(f"{saved} answer(s) recorded")
+        if cleared:
+            parts.append(f"{cleared} put back to unanswered")
+        flash(", ".join(parts) + "." if parts else "Nothing changed.",
+              "success" if parts else "info")
+        return redirect(url_for("reports.preparer_inputs", fy_id=fy_id))
+
+    rows = input_service.state(financial_year)
+    return render_template(
+        "reports/preparer_inputs.html",
+        fy=financial_year, customer=financial_year.customer,
+        summary=input_service.summary(financial_year),
+        derived=[r for r in rows if r["mode"] == input_service.DERIVE],
+        proposed=[r for r in rows if r["mode"] == input_service.PROPOSE],
+        asked=[r for r in rows if r["mode"] == input_service.ASK
+               and not r["item"].startswith("field.")],
+        blanks=[r for r in rows if r["item"].startswith("field.")],
+        has_previous=_previous_year(financial_year) is not None)
+
+
+def _previous_year(financial_year):
+    """The engagement for the year before this one, where there is one."""
+    return (FinancialYear.query
+            .filter(FinancialYear.customer_id == financial_year.customer_id)
+            .filter(FinancialYear.end_date < financial_year.end_date)
+            .order_by(FinancialYear.end_date.desc()).first())
+
+
+def _posted_inputs(form):
+    """Answers off the form, one entry per question.
+
+    A question is only recorded as answered when its own "decided" box is
+    set. Nothing is inferred from an empty text box: a preparer who typed
+    nothing has not said "none", and a note that reads either way must
+    not be told otherwise.
+    """
+    out = {}
+    for key in form:
+        if not key.startswith("decided__"):
+            continue
+        item = key[len("decided__"):]
+        raw = (form.get(f"amount__{item}") or "").strip()
+        amount = None
+        if raw:
+            try:
+                amount = Decimal(raw.replace(",", "").replace("$", ""))
+            except (InvalidOperation, ValueError):
+                amount = None
+        out[item] = {
+            "mode": form.get(f"mode__{item}") or "Ask",
+            "decided": form.get(key) == "on" or form.get(key) == "1",
+            "clear": form.get(f"clear__{item}") in ("on", "1"),
+            "answer": form.get(f"answer__{item}"),
+            "amount": amount,
+            "source": form.get(f"source__{item}"),
+            "proposed": form.get(f"proposed__{item}"),
+            "accepted": form.get(f"accepted__{item}") in ("on", "1"),
+        }
+    return out
 
 
 @bp.route("/fy/<int:fy_id>/related-parties", methods=["GET", "POST"])

@@ -98,11 +98,9 @@ def scope_of(token, scope):
 
 
 def _version(financial_year):
-    if getattr(financial_year, "library_version_id", None):
-        version = NoteLibraryVersion.query.get(financial_year.library_version_id)
-        if version is not None:
-            return version
-    return NoteLibraryVersion.query.filter_by(status="active").first()
+    from .note_library import version_in_force
+
+    return version_in_force(financial_year)
 
 
 def _blocking(raw):

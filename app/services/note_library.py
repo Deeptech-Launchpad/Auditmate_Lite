@@ -99,6 +99,27 @@ def version_for(year_end):
             .first())
 
 
+def version_in_force(financial_year):
+    """The library this engagement reads from, pinned or not.
+
+    Its pin where it has one - that is the whole point of pinning, and a
+    later library must not reach backwards into a period already reported
+    on. Where it has none, the version in force for its year end, which is
+    the version `pin_version` would give it at generation.
+
+    NOT "whichever version is active". An engagement whose year end no
+    loaded version covers gets None, and the page that asked says it has
+    no library rather than quietly dressing a 2022 period in wording that
+    came into force in 2023.
+    """
+    if getattr(financial_year, "library_version_id", None):
+        version = NoteLibraryVersion.query.get(
+            financial_year.library_version_id)
+        if version is not None:
+            return version
+    return version_for(getattr(financial_year, "end_date", None))
+
+
 def pin_version(financial_year, commit=False):
     """Attach an engagement to its library version, once.
 

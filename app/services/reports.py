@@ -256,6 +256,16 @@ def render_bindings(text: str, customer, financial_year,
     # the rest are on the register but this engagement's figures cannot
     # point at them. Left out entirely when there are none, so the binding
     # prints as unfilled rather than as a confident blank.
+    # The Fields sheet's twelve preparer blanks - the nature of a
+    # contingent liability, what an asset held for sale is. Each names the
+    # exact paragraph it sits in, and until the preparer inputs page
+    # existed nothing offered them: the paragraph printed "[contingent
+    # liability nature not provided]" with no way to provide it. An
+    # unanswered one is still left out, so it keeps saying so.
+    from . import preparer_inputs as input_service
+
+    values.update(input_service.values_for_bindings(financial_year))
+
     from . import related_parties as related_service
 
     confirmed = related_service.parties_in_play(financial_year)
@@ -1596,6 +1606,18 @@ def incomplete_reasons(section, payload, financial_year=None):
 
         specs = (section.data_binding or {}).get("note_table_specs") or []
         for reason in bindings.uncovered_lines(specs, financial_year):
+            if reason not in reasons:
+                reasons.append(reason)
+
+    # A question off the library's Preparer inputs sheet that nobody has
+    # answered, where the sheet says an unanswered one holds the note.
+    # Matched by the note's own library code, because the sheet names its
+    # note in words and a section knows itself by code.
+    if financial_year is not None:
+        from . import preparer_inputs as input_service
+
+        for reason in input_service.holds_for_section(section,
+                                                      financial_year):
             if reason not in reasons:
                 reasons.append(reason)
 

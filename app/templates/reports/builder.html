@@ -464,6 +464,11 @@
            class="btn btn-sm" style="width:100%">Related parties</a>
         <a href="{{ url_for('documents.figures', fy_id=fy.id) }}"
            class="btn btn-sm" style="width:100%">Figures from documents</a>
+        {# The library's own questions. Same reason as the two above: an
+           unanswered one that the sheet says holds its note keeps that
+           note incomplete, so the answer has to be reachable from here. #}
+        <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id) }}"
+           class="btn btn-sm" style="width:100%">Preparer inputs</a>
       </div>
 
       <button type="button" id="open-add-note" class="btn btn-sm" style="width:100%">

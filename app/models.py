@@ -323,6 +323,7 @@ class Customer(db.Model):
     engagement_partner_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     notes = db.Column(db.Text)
 
+
     # Archived, not deleted: hidden from the customer list, every document
     # and figure kept. Reusing this existing flag rather than adding a new
     # one - it was already here, already meant "on the list or not", and
@@ -1715,6 +1716,107 @@ class DocumentFigure(db.Model):
 
     def __repr__(self):
         return f"<DocumentFigure {self.binding}>"
+
+
+# How the library asks each of its 29 preparer inputs to be handled, and
+# what happens to the note when nobody answers. Both columns of the
+# Preparer inputs sheet, kept here because the same words appear on the
+# form, in the service and in the checks.
+INPUT_MODES = (
+    ("Derive", "Concluded from what is already held"),
+    ("Propose", "Worked out and put up for confirmation"),
+    ("Ask", "Only a person knows"),
+)
+INPUT_HOLD = "Hold"       # the note prints Incomplete until it is answered
+INPUT_OMIT = "Omit"       # the rows drop out, and the note prints without them
+
+
+class PreparerInput(db.Model):
+    """One of the library's 29 questions, answered for this engagement.
+
+    The Preparer inputs sheet is the library's own account of everything a
+    set of accounts needs that no trial balance holds: whether anything is
+    pledged, what the directors were paid, whether an invoice was factored.
+    Twenty-nine of them, each naming the note it feeds, when it is worth
+    asking, and what becomes of the note if nobody answers.
+
+    ANSWERED AND NIL ARE DIFFERENT, the same way they are for a figure
+    typed off a document. A preparer who answers "no, nothing is pledged"
+    has told the reader something, and the note says so. A preparer who
+    has not reached the question yet has told them nothing, and a note
+    that would print either way must not pretend otherwise. So `decided`
+    is what separates the two, not whether the text is empty: "no" is an
+    answer with no text.
+
+    WHY THE MODE IS STORED ON THE ANSWER as well as on the sheet. A later
+    version of the library can change its mind about whether something is
+    derived or asked - and if it does, an answer given under the old mode
+    should still say which question was being answered. Copied at the time
+    the answer is given, not looked up afterwards.
+    """
+
+    __tablename__ = "preparer_inputs"
+    __table_args__ = (
+        db.UniqueConstraint("financial_year_id", "item",
+                            name="uq_preparer_input"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    financial_year_id = db.Column(db.Integer,
+                                  db.ForeignKey("financial_years.id"),
+                                  nullable=False, index=True)
+
+    # The sheet's own key - PLEDGED, KMP_SPLIT, FACTORING - or, for one of
+    # the twelve blanks the Fields sheet ties to a paragraph rather than to
+    # a note, "field.CONTINGENT_LIABILITY_NATURE".
+    item = db.Column(db.String(80), nullable=False)
+    mode = db.Column(db.String(12), default="Ask", nullable=False)
+
+    # The answer itself. `decided` is the tri-state the note reads: unset
+    # means nobody has answered, which is not the same as answering no.
+    decided = db.Column(db.Boolean, default=False, nullable=False)
+    answer = db.Column(db.Text)                 # what the preparer wrote
+    amount = db.Column(Numeric(18, 2))          # where the answer is a figure
+
+    # What was put in front of them when they answered. A proposal the
+    # preparer accepted unchanged and a figure they typed from scratch are
+    # different acts, and a reviewer a year later needs to tell them apart.
+    proposed = db.Column(db.Text)
+    accepted_proposal = db.Column(db.Boolean, default=False, nullable=False)
+
+    # Where the answer came from, in the preparer's words - "confirmed with
+    # the director, 14 March". Optional, and the first thing a reviewer
+    # looks for.
+    source = db.Column(db.String(255))
+
+    carried_from_id = db.Column(db.Integer,
+                                db.ForeignKey("preparer_inputs.id"))
+
+    decided_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    decided_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    financial_year = db.relationship("FinancialYear")
+    author = db.relationship("User", foreign_keys=[decided_by])
+    carried_from = db.relationship("PreparerInput", remote_side=[id])
+
+    @property
+    def is_answered(self):
+        """Answered at all - including answered "no"."""
+        return bool(self.decided)
+
+    @property
+    def is_paragraph_blank(self):
+        """One of the Fields sheet's blanks rather than a note question."""
+        return self.item.startswith("field.")
+
+    @property
+    def who(self):
+        return self.author.name if self.author else "Unknown"
+
+    def __repr__(self):
+        return f"<PreparerInput {self.item} decided={self.decided}>"
 
 
 # table_index for a paragraph override: no table has index -1.
