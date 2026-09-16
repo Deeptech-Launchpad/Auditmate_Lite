@@ -181,11 +181,8 @@ def requests_list(fy_id):
     return render_template(
         "documents/requests.html",
         fy=financial_year, customer=financial_year.customer,
-        groups=document_requests.by_owner(financial_year),
-        summary=document_requests.summary(financial_year),
-        IN_HAND=document_requests.IN_HAND,
-        UNTRACKED=document_requests.UNTRACKED,
-        OUTSTANDING=document_requests.OUTSTANDING)
+        groups=document_requests.by_action(financial_year),
+        summary=document_requests.summary(financial_year))
 
 
 @bp.route("/fy/<int:fy_id>/figures", methods=["GET", "POST"])

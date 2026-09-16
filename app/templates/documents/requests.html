@@ -13,7 +13,7 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Document requests</h1>
+    <h1>What this engagement still needs</h1>
     <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
   </div>
   <div class="page-actions">
@@ -23,52 +23,63 @@
 </div>
 
 {#
-  The list is narrowed before it is shown. Every document here is one a
-  note this company actually needs depends on - a company with no
-  borrowings is not asked for loan agreements, because a list that asks
-  for everything teaches the reader to skim it.
+  GROUPED BY WHAT YOU DO, not by who owes it.
+
+  The page used to group by owner while the count at the top counted by
+  state, so one screen sorted by two different things: "5 outstanding"
+  above, and the five scattered across three boxes below. Nothing lined
+  up, and the reader had to hold both systems in their head.
+
+  Now the count is the table of contents. The owner is a label on the row
+  - still there, because the tax computation goes to a different address
+  than the ledger, but no longer the thing that splits the page.
+
+  The balance sheet already balances without any of this. These documents
+  are what the NOTES need: the breakdowns, the ages, the movements and
+  the facts that a trial balance cannot hold.
 #}
-<p class="muted" style="max-width:64ch">
-  Everything the notes for this engagement draw on, and who it comes from.
+<p class="muted" style="max-width:66ch">
+  The trial balance gives the figures. These give the notes &mdash; the
+  breakdowns, the ageing, the movements and the facts behind them.
   Documents nothing in these accounts depends on are not listed.
 </p>
 
-<div class="card" style="margin-bottom:16px">
-  <div class="card-body" style="display:flex;gap:28px;flex-wrap:wrap">
-    <div><span class="strong" style="font-size:1.4em">{{ summary.outstanding }}</span>
-      <span class="muted small">outstanding</span></div>
-    {% if summary.partly %}
-      <div><span class="strong" style="font-size:1.4em">{{ summary.partly }}</span>
-        <span class="muted small">partly in hand</span></div>
-    {% endif %}
-    <div><span class="strong" style="font-size:1.4em">{{ summary.untracked }}</span>
-      <span class="muted small">not recorded either way</span></div>
-    <div><span class="strong" style="font-size:1.4em">{{ summary.in_hand }}</span>
-      <span class="muted small">in hand</span></div>
-    <div class="muted small" style="align-self:center;max-width:34ch">
-      {{ summary.total }} documents in all. &ldquo;Not recorded&rdquo; means
-      AuditMate has no way of knowing whether it arrived &mdash; not that
-      it is missing.
-    </div>
+{% if groups %}
+  <div class="req-summary">
+    {% for group in groups %}
+      <a href="#g-{{ group.key }}" class="req-tile req-{{ group.key }}">
+        <span class="req-count">{{ group.count }}</span>
+        <span class="req-label">{{ group.label }}</span>
+      </a>
+    {% endfor %}
   </div>
-</div>
+{% endif %}
 
 {% for group in groups %}
-  <div class="card" style="margin-bottom:16px">
+  <div class="card req-group" id="g-{{ group.key }}"
+       style="margin-bottom:16px">
     <div class="card-head">
-      <h2>{{ group.label }}</h2>
-      <span class="hint">
-        {% if group.outstanding %}{{ group.outstanding }} still to settle
-        {% else %}all in hand{% endif %}</span>
+      <h2>{{ group.label }} <span class="req-n">{{ group.count }}</span></h2>
+      {% if group.key == 'answer' %}
+        <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id) }}"
+           class="btn btn-sm">Answer them →</a>
+      {% elif group.key == 'finish' %}
+        <a href="{{ url_for('customers.detail', customer_id=customer.id) }}"
+           class="btn btn-sm">Open the record →</a>
+      {% elif group.key == 'have' %}
+        <a href="{{ url_for('documents.upload', fy_id=fy.id) }}"
+           class="btn btn-sm">Upload →</a>
+      {% endif %}
     </div>
     <div class="card-body" style="padding-top:0">
+      <p class="muted small" style="margin:0 0 10px">{{ group.hint }}</p>
       <table class="table">
         <thead>
           <tr>
-            <th style="width:30%">Document</th>
-            <th style="width:38%">What it supplies</th>
-            <th style="width:16%">Needed</th>
-            <th style="width:16%">State</th>
+            <th style="width:34%">Document</th>
+            <th style="width:20%">From</th>
+            <th style="width:30%">What it gives the notes</th>
+            <th style="width:16%">Still wanted</th>
           </tr>
         </thead>
         <tbody>
@@ -77,37 +88,30 @@
               <td>
                 <div class="strong">{{ row.name }}</div>
                 <div class="muted small">
-                  {{ row.token }}{% if row.notes %} ·
-                    {{ row.notes|length }} note{{ '' if row.notes|length == 1 else 's' }}
-                    depend{{ 's' if row.notes|length == 1 else '' }} on it
-                  {% endif %}
+                  {% if row.mandatory %}Mandatory{% else %}{{ row.required }}{% endif %}
                 </div>
               </td>
-              <td class="small">{{ row.supplies }}</td>
-              <td class="small">
-                {% if row.mandatory %}
-                  <span class="pill">Mandatory</span>
-                {% else %}
-                  {{ row.required }}
-                {% endif %}
+              <td class="small">{{ row.owner_label }}</td>
+              {# The library's own sentence, kept in full on hover: it is
+                 accurate and long, and nobody reads a paragraph inside a
+                 table cell. #}
+              <td class="small muted" title="{{ row.supplies }}">
+                {{ row.supplies|truncate(72, True) }}
               </td>
               <td class="small">
-                {% if row.state == IN_HAND %}
-                  <span class="pill pill-green">In hand</span>
-                {% elif row.state == UNTRACKED %}
-                  <span class="pill">Not recorded</span>
-                {% elif row.state == OUTSTANDING %}
-                  <span class="pill pill-amber">Outstanding</span>
-                {% else %}
-                  <span class="pill pill-amber">Partly in hand</span>
-                {% endif %}
                 {% if row.total %}
-                  <div class="muted small">{{ row.have }} of {{ row.total }}
-                    {{ row.measured }}</div>
-                {% endif %}
-                {% if row.outstanding_parts %}
-                  <div class="muted small">still wanted:
-                    {{ row.outstanding_parts|join(', ') }}</div>
+                  {% if row.have %}
+                    {{ row.total - row.have }} of {{ row.total }}
+                    {{ row.measured.split(' ')[0] }}
+                  {% else %}
+                    all {{ row.total }} {{ row.measured.split(' ')[0] }}
+                  {% endif %}
+                {% elif row.outstanding_parts %}
+                  {{ row.outstanding_parts|join(', ') }}
+                {% elif group.key == 'done' %}
+                  <span class="muted">&mdash;</span>
+                {% else %}
+                  <span class="muted">the document</span>
                 {% endif %}
               </td>
             </tr>
@@ -118,8 +122,25 @@
   </div>
 {% else %}
   <div class="alert alert-success">
-    This engagement is not pinned to a notes library version yet, so there
-    is nothing to ask for. Generate the accounts once and the list appears.
+    This engagement is not pinned to a notes library version, so there is
+    nothing to ask for. A period no loaded library covers reads from none.
   </div>
 {% endfor %}
+
+<style>
+  .req-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+  .req-tile { flex:1 1 150px; display:flex; flex-direction:column; gap:2px;
+              padding:12px 14px; border:1px solid var(--line, #e5e5e5);
+              border-radius:8px; text-decoration:none; color:inherit;
+              border-left-width:3px; }
+  .req-tile:hover { background:var(--hover, #fafafa); }
+  .req-count { font-size:1.6em; font-weight:600; line-height:1; }
+  .req-label { font-size:.82em; color:var(--muted, #666); }
+  .req-ask { border-left-color:#c47f0a; }
+  .req-finish { border-left-color:#c47f0a; }
+  .req-have { border-left-color:#8a8a8a; }
+  .req-answer { border-left-color:#5a6fa0; }
+  .req-done { border-left-color:#2e7d54; }
+  .req-n { font-size:.7em; color:var(--muted, #666); font-weight:400; }
+</style>
 {% endblock %}

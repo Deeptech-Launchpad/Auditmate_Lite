@@ -264,6 +264,69 @@ def _entered_token(token):
     return None
 
 
+# WHAT TO DO ABOUT IT, which is not the same question as who owes it.
+#
+# The page used to group by owner while the summary counted by state, so
+# the two halves of one screen sorted by different things: "5 outstanding"
+# at the top, and the five scattered across three boxes below. Grouped by
+# the action instead, the count at the top is the table of contents for
+# the list underneath, and the owner becomes a label on the row.
+#
+# The distinction the old layout lost: three of these need completely
+# different acts - send an email, search your own inbox, answer a
+# question no file can answer - and all three wore the same grey badge.
+ASK = "ask"
+FINISH = "finish"
+HAVE = "have"
+ANSWER = "answer"
+DONE = "done"
+
+ACTIONS = [
+    (ASK, "Ask for these",
+     "Nothing is filed and no figures are entered. This is the email."),
+    (FINISH, "Finish this",
+     "Someone started and stopped. Nobody is holding it up but you."),
+    (HAVE, "Do you already have these?",
+     "AuditMate cannot see either way. Check your own files before you "
+     "chase the client for something that is already in your inbox."),
+    (ANSWER, "Only you can answer these",
+     "Not a document. No file anywhere holds the answer."),
+    (DONE, "Done", "Filed, or entered. Nothing to do."),
+]
+
+
+def action_of(row):
+    """Which pile a request belongs in, and so what is done about it."""
+    if row["state"] == IN_HAND:
+        return DONE
+    if row["state"] == PART:
+        return FINISH
+    if row["state"] == OUTSTANDING:
+        return ASK
+    # Not recorded. Whether that means "go and look" or "go and answer"
+    # depends on whether the thing is a document at all: nobody can search
+    # their files for a disclosure questionnaire, because none exists until
+    # a person writes one.
+    if row["owner"] == "preparer":
+        return ANSWER
+    if row["owner"] == "firm":
+        return FINISH
+    return HAVE
+
+
+def by_action(financial_year):
+    """The same list, grouped by what the preparer does about each one."""
+    rows = [dict(row, action=action_of(row))
+            for row in requests(financial_year)]
+    groups = []
+    for key, label, hint in ACTIONS:
+        mine = [row for row in rows if row["action"] == key]
+        if mine:
+            groups.append({"key": key, "label": label, "hint": hint,
+                           "rows": mine, "count": len(mine)})
+    return groups
+
+
 def by_owner(financial_year):
     """The same list, grouped by who has to produce each thing."""
     rows = requests(financial_year)
