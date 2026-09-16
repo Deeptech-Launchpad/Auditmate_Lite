@@ -1476,6 +1476,79 @@ class NoteLibraryEntry(db.Model):
     added_reason = db.Column(db.Text)
 
 
+class DocumentFigure(db.Model):
+    """One figure taken from a document the engine does not read.
+
+    Most figures in a set of accounts come from the trial balance, and
+    AuditMate reads that. A dozen do not: the tax computation, the fixed
+    asset register, the aged listing, last year's signed accounts. The
+    notes library names each of them as a token and a field - TAX:current,
+    FAR:closing_nbv - and until somebody supplies one, the row that binds
+    to it prints "Incomplete" rather than nil.
+
+    This is where a supplied one lives. Entered rather than parsed, which
+    for the tax computation is the firm's own instruction: five figures
+    for a company this size, and writing a parser for a document that
+    arrives as a PDF in a different layout every year would cost more than
+    it saves.
+
+    What is kept is what makes the figure reviewable a year later: the
+    value, where in the document it was found, who entered it and when. It
+    is not an override - nothing was assembled for it to sit on top of -
+    so it carries no reason. Changing one later is recorded in the audit
+    trail like any other edit.
+    """
+
+    __tablename__ = "document_figures"
+    __table_args__ = (
+        db.UniqueConstraint("financial_year_id", "token", "field",
+                            name="uq_document_figure"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    financial_year_id = db.Column(db.Integer,
+                                  db.ForeignKey("financial_years.id"),
+                                  nullable=False, index=True)
+
+    # The library's own binding, split: "TAX" + "current" is TAX:current.
+    token = db.Column(db.String(20), nullable=False)
+    field = db.Column(db.String(60), nullable=False)
+
+    amount = db.Column(Numeric(18, 2))
+    text = db.Column(db.Text)                  # for a field that is not a figure
+
+    # Where in the document it was found - "YA2024 computation, line 14".
+    # Optional, and worth having: a figure with no page reference is one
+    # the next person has to find again from scratch.
+    found_at = db.Column(db.String(255))
+
+    entered_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    entered_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    financial_year = db.relationship("FinancialYear")
+    author = db.relationship("User")
+
+    @property
+    def binding(self):
+        return f"{self.token}:{self.field}"
+
+    @property
+    def is_answered(self):
+        """Nil is an answer. Nothing typed at all is not.
+
+        The distinction the whole engine turns on: a preparer who enters
+        zero has said the figure is zero, and the row prints a dash. A
+        preparer who has not reached this field yet has said nothing, and
+        the row prints Incomplete.
+        """
+        return self.amount is not None or bool((self.text or "").strip())
+
+    def __repr__(self):
+        return f"<DocumentFigure {self.binding}>"
+
+
 # table_index for a paragraph override: no table has index -1.
 PARAGRAPH_TABLE_INDEX = -1
 

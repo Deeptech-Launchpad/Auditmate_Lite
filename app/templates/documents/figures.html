@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Figures from documents · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('documents.index', fy_id=fy.id) }}">Documents</a>
+  <span class="sep">/</span>
+  <span class="current">Figures</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Figures from documents</h1>
+    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('reports.builder', fy_id=fy.id) }}" class="btn">
+      Financial Statements →</a>
+  </div>
+</div>
+
+{#
+  Why this page exists at all.
+
+  Almost every figure in a set of accounts comes from the trial balance,
+  and AuditMate reads that. A handful do not, and the tax computation is
+  the clearest case: five figures for a company this size, arriving as a
+  PDF laid out differently every year. The firm's own decision was to type
+  them rather than parse them.
+
+  The one rule the form keeps, and the reason it has no zeros pre-filled:
+  an empty box means nobody has answered, not that the figure is nil.
+#}
+<p class="muted" style="max-width:62ch">
+  These figures are not in the trial balance. Until one is entered, the row
+  that needs it prints <strong>Incomplete</strong> in the accounts rather
+  than a dash &mdash; a dash would tell the reader the amount is nil.
+  Leave a box empty if you have not looked yet; type <strong>0</strong> if
+  the figure really is nil.
+</p>
+
+{% for document in documents %}
+<div class="card">
+  <div class="card-head">
+    <h2>{{ document.name }}</h2>
+    <span class="hint">
+      {% if document.missing %}
+        {{ document.missing|length }} still needed
+      {% else %}
+        everything needed is in
+      {% endif %}
+    </span>
+  </div>
+  <div class="card-body">
+    <p class="muted small" style="margin-top:0">
+      Supplies {{ document.supplies|lower }}.
+      {% if document.notes %}Used by {{ document.notes }}.{% endif %}
+      {% if document.required %}{{ document.required }} under the notes library.{% endif %}
+    </p>
+
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <table class="table doc-figures">
+        <thead>
+          <tr>
+            <th style="width:38%">Figure</th>
+            <th style="width:16%">Amount</th>
+            <th style="width:26%">Where you found it</th>
+            <th>How to work it out</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for field in document.fields %}
+            <tr class="{{ 'needed' if field.blocking and not field.answer }}">
+              <td>
+                <div class="df-name">{{ field.meaning }}</div>
+                <div class="df-binding">{{ field.binding }}
+                  {%- if not field.blocking %}
+                    <span class="df-optional">not required</span>
+                  {%- endif %}</div>
+              </td>
+              <td>
+                <input type="text" inputmode="decimal" class="df-amount"
+                       name="amount__{{ field.token }}__{{ field.field }}"
+                       value="{{ field.answer.amount if field.answer else '' }}"
+                       placeholder="not answered"
+                       aria-label="{{ field.meaning }}">
+              </td>
+              <td>
+                <input type="text" class="df-found"
+                       name="found__{{ field.token }}__{{ field.field }}"
+                       value="{{ field.answer.found_at if field.answer and field.answer.found_at else '' }}"
+                       placeholder="e.g. YA2024 computation, page 2"
+                       aria-label="Where {{ field.meaning|lower }} was found">
+              </td>
+              <td class="small muted">{{ field.how }}
+                {%- if field.blocking_note and not field.blocking_note.lower() == 'yes'
+                       and not field.blocking_note.lower() == 'no' %}
+                  <span class="df-optional">{{ field.blocking_note }}</span>
+                {%- endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save these figures</button>
+        <span class="muted small">
+          Clearing a box puts its row back to Incomplete. It does not print nil.
+        </span>
+      </div>
+    </form>
+  </div>
+</div>
+{% else %}
+  <div class="card"><div class="card-body">
+    <p class="muted">No notes library is loaded for this engagement, so there
+      is nothing to enter yet.</p>
+  </div></div>
+{% endfor %}
+
+<style>
+  .doc-figures td { vertical-align: top; }
+  .doc-figures tr.needed .df-amount { border-color: #e8b4ad; background: #fffafa; }
+  .df-name { font-weight: 600; }
+  .df-binding { font-family: ui-monospace, Menlo, Consolas, monospace;
+                font-size: 11px; color: #9ca3af; margin-top: 2px; }
+  .df-optional { font-style: italic; color: #6b7280; font-family: inherit; }
+  .df-amount, .df-found {
+    width: 100%; box-sizing: border-box; font: inherit; font-size: 13px;
+    padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 5px;
+  }
+  .df-amount { text-align: right; font-variant-numeric: tabular-nums; }
+  .form-actions { display: flex; align-items: center; gap: 12px;
+                  margin-top: 12px; }
+</style>
+{% endblock %}

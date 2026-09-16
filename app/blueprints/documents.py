@@ -135,8 +135,14 @@ def index(fy_id):
 
     from ..services import xero as xero_service
 
+    from ..services import document_fields
+
     return render_template("documents/index.html",
                            fy=financial_year, customer=financial_year.customer,
+                           # What is still wanted from a document nobody
+                           # parses, so the count is visible before a
+                           # preparer reaches the income tax note.
+                           entered_figures=document_fields.summary(financial_year),
                            documents=documents,
                            total_documents=total_documents,
                            category=category, status=status,
@@ -152,6 +158,81 @@ def index(fy_id):
                            xero_demo=xero_service.demo_mode(),
                            xero_conn=xero_service.get_connection(
                                financial_year.customer_id))
+
+
+@bp.route("/fy/<int:fy_id>/figures", methods=["GET", "POST"])
+@login_required
+def figures(fy_id):
+    """Figures from a document AuditMate does not read, typed in.
+
+    The tax computation is the firm's own instruction: five figures for a
+    company this size, and a PDF that arrives in a different layout every
+    year is not worth a parser. Until these are entered the income tax and
+    deferred tax notes print Incomplete, naming the field they want.
+
+    Nothing on this form defaults to nil. An empty box means nobody has
+    answered, and clearing one puts its row back to Incomplete rather than
+    printing a zero - a company with no prior year adjustment and a
+    preparer who has not looked yet are different statements about the
+    company, and only one of them belongs in a set of accounts.
+    """
+    from ..services import document_fields
+
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+
+    if request.method == "POST":
+        saved = cleared = 0
+        errors = []
+        for token, field, raw, found_at in _posted_figures(request.form):
+            amount, error = _figure(raw)
+            if error:
+                errors.append(f"{token}:{field} - {error}")
+                continue
+            row = document_fields.save(financial_year, token, field,
+                                       amount=amount, found_at=found_at)
+            if row is None:
+                cleared += 1
+            else:
+                saved += 1
+
+        for message in errors:
+            flash(message, "error")
+        if saved or cleared:
+            told = []
+            if saved:
+                told.append(f"{saved} figure(s) recorded")
+            if cleared:
+                told.append(f"{cleared} put back to Incomplete")
+            flash(" and ".join(told) + ".", "success")
+        return redirect(url_for("documents.figures", fy_id=fy_id))
+
+    return render_template("documents/figures.html",
+                           fy=financial_year,
+                           customer=financial_year.customer,
+                           documents=document_fields.documents(financial_year))
+
+
+def _posted_figures(form):
+    """(token, field, amount, where it was found) for each box on the form."""
+    for key in form:
+        if not key.startswith("amount__"):
+            continue
+        token, _, field = key[len("amount__"):].partition("__")
+        if token and field:
+            yield token, field, form.get(key), form.get(f"found__{token}__{field}")
+
+
+def _figure(raw):
+    """Parse one typed figure. Returns (value, error); empty means unanswered."""
+    if raw is None or str(raw).strip() == "":
+        return None, None
+    cleaned = str(raw).replace(",", "").replace("\u2212", "-").strip()
+    if cleaned.startswith("(") and cleaned.endswith(")"):
+        cleaned = "-" + cleaned[1:-1].strip()
+    try:
+        return Decimal(cleaned), None
+    except InvalidOperation:
+        return None, f"{raw!r} is not a number."
 
 
 @bp.route("/fy/<int:fy_id>/analyse", methods=["POST"])

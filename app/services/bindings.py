@@ -102,13 +102,19 @@ SINGLE_COLUMN = ("single amount column", "amount per period")
 class Held:
     """A figure that cannot be stated yet, and why."""
 
-    __slots__ = ("reason", "whole_year")
+    __slots__ = ("reason", "whole_year", "blocking")
 
-    def __init__(self, reason, whole_year=False):
+    def __init__(self, reason, whole_year=False, blocking=True):
         self.reason = reason
         # True when nothing at all is known about that year - not one
         # figure, but the whole column.
         self.whole_year = whole_year
+        # False for a figure the library says a note can be issued
+        # without: the unutilised tax losses carried forward, the
+        # unabsorbed capital allowances. A company with none of those is
+        # not missing a disclosure, so the row is left out rather than
+        # printed as Incomplete, which would hold finished accounts.
+        self.blocking = blocking
 
     def __repr__(self):
         return f"<Held {self.reason}>"
@@ -446,9 +452,40 @@ class Figures:
 
         prefix = token.split(":", 1)[0]
         if prefix in DOCUMENT_TOKENS:
-            return Held(f"Needs {DOCUMENT_TOKENS[prefix]} ({token.split(':', 1)[-1]})")
+            return self._document(prefix, token.split(":", 1)[-1], offset)
 
         return self._line_code(token, offset)
+
+    def _document(self, token, field, offset):
+        """A figure from a document: the one supplied, or why it is missing.
+
+        Supplied means a person entered it for this engagement - see
+        services/document_fields.py. Nothing is inferred and nothing
+        defaults to nil: a field nobody has answered is held, because the
+        company having no tax losses and nobody having looked yet are
+        different statements and only the preparer knows which is true.
+
+        The comparative column is not carried across from this year. Last
+        year's tax computation is last year's document; if it is wanted
+        it is entered against last year's engagement, where it belongs.
+        """
+        from . import document_fields
+
+        if offset:
+            year = self.year(offset)
+            if year is None:
+                return Held(f"There is no earlier engagement to take "
+                            f"{token.lower()} figures from", whole_year=True)
+        else:
+            year = self.financial_year
+
+        row = document_fields.value(year, token, field)
+        if row is not None:
+            return row.amount if row.amount is not None else ZERO
+
+        blocking = document_fields.is_blocking(year, token, field)
+        return Held(f"Needs {DOCUMENT_TOKENS[token]} ({field})",
+                    blocking=blocking)
 
     def _line_code(self, code, offset):
         period = self.period(offset)
@@ -625,7 +662,7 @@ def build_table(spec, financial_year, statements=None):
                    named=table.get("totals_agree_with")
                    if index == totals[-1] else None)
 
-    shown = [row for row in rows if not _nil(row)]
+    shown = [row for row in rows if not _nil(row) and not _optional_gap(row)]
 
     # Shown only once something in it is a figure from the books. A table
     # made entirely of document fields and preparer answers waits for those.
@@ -691,6 +728,22 @@ def _held_table(spec, table, rows, figures):
 def _fill(row, binding, figures, first_year):
     row["current"] = figures.resolve(binding, 0)
     row["previous"] = None if first_year else figures.resolve(binding, 1)
+
+
+def _optional_gap(row):
+    """A row waiting only on a figure the library says is not required.
+
+    Left out rather than printed as Incomplete. The library marks the
+    unutilised tax losses and the unabsorbed capital allowances
+    non-blocking because a company with none of them is not missing a
+    disclosure - and a row that prints Incomplete holds the whole note,
+    which would stop accounts that are finished.
+    """
+    values = [row.get("current"), row.get("previous")]
+    held = [v for v in values if _is_held(v)]
+    if not held or any(isinstance(v, Decimal) for v in values):
+        return False
+    return all(not v.blocking for v in held)
 
 
 def _nil(row):

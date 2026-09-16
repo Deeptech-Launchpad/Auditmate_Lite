@@ -1343,3 +1343,13 @@ tr.row-doc-total input.cell { font-weight: 600; }
 }
 .ov-tag.cleared { border-color: #d1d5db; background: #f3f4f6; color: #6b7280; }
 .ov-tag.carried { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+
+/* How many figures a document still owes, on the button that leads to
+   them. A number, not a warning colour: it is work outstanding, not a
+   fault. */
+.pill-count {
+  display: inline-block; min-width: 16px; padding: 0 5px; margin-left: 4px;
+  font-size: 11px; font-weight: 600; line-height: 16px; text-align: center;
+  color: #7c4a03; background: #fdf1dc; border: 1px solid #e8c88a;
+  border-radius: 8px;
+}

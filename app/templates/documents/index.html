@@ -15,6 +15,12 @@
     <p class="subtitle">{{ customer.name }} · {{ fy.year_label }} · {{ total_documents }} file(s)</p>
   </div>
   <div class="page-actions">
+    {# Figures that arrive in a document nobody parses - the tax
+       computation above all. Reached from here because this is where a
+       preparer already comes to answer "how do I get the figures in". #}
+    <a href="{{ url_for('documents.figures', fy_id=fy.id) }}" class="btn">
+      Figures from documents{% set _short = entered_figures|sum(attribute='missing') %}
+      {%- if _short %} <span class="pill-count">{{ _short }}</span>{% endif %}</a>
     <a href="{{ url_for('statements.index', fy_id=fy.id) }}" class="btn">Statements →</a>
     <a href="{{ url_for('documents.upload', fy_id=fy.id) }}" class="btn">+ Upload</a>
     {% set pending = documents|selectattr('extraction_status', 'in', ['queued', 'failed'])|list %}
