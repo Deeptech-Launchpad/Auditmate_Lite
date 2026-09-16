@@ -632,15 +632,23 @@ def save(financial_year, token, field, *, scope="", member="", amount=None,
 
 
 def summary(financial_year):
-    """One line per enterable document, for a screen that lists engagements."""
+    """One line per enterable document, for a screen that lists engagements.
+
+    Counted across the groups, not off the document. A scoped document has
+    no single list of fields - it has one list per note that uses it, and
+    the same twelve field names describe three different asset notes. This
+    read a `fields` key that stopped existing when the register grew its
+    groups, and took the Documents page down with it for every engagement.
+    """
     out = []
     for document in documents(financial_year):
-        answered = sum(1 for field in document["fields"] if field["answer"])
+        fields = [field for group in document["groups"]
+                  for field in group["fields"]]
         out.append({
             "token": document["token"],
             "name": document["name"],
-            "answered": answered,
-            "total": len(document["fields"]),
+            "answered": sum(1 for field in fields if field["answer"]),
+            "total": len(fields),
             "missing": len(document["missing"]),
         })
     return out
