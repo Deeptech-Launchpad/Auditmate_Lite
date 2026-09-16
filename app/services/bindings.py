@@ -220,6 +220,61 @@ class Figures:
             ids.setdefault(code, []).append(account.id)
         return totals, held, ids
 
+    def _signed_corrections(self, result):
+        """Lay a preparer's reading of the signed set over last year.
+
+        The library's PRIORFS wildcard, one line at a time: somebody opens
+        last year's filed accounts, sees that depreciation was 286 where the
+        books say 230, and types the 286.
+
+        An overlay, never a replacement. A person who retypes one line has
+        said nothing about the other seventy-nine, and swapping the whole
+        period for their handful of figures would read every line they did
+        not mention as absent - which this engine turns into nil, stating
+        that last year's revenue was nought. So the period keeps whatever
+        detail it had and only the lines actually typed move.
+
+        A line the categories split between several codes is held rather
+        than assigned: the signed accounts printed one figure for deposits
+        and prepayments together, and nobody knows how it divided.
+
+        The figure is typed AS PRINTED - 487,419 read off last year's
+        income statement, not minus 487,419 - because asking anyone to
+        negate a revenue figure before typing it invites the one mistake
+        nobody would catch. The statement values share that convention and
+        take it unchanged; the account totals are debit-positive, so they
+        get the same flip present() applies on the way back out, which
+        leaves the printed figure exactly where it started.
+        """
+        typed = {row.field: row.amount for row in
+                 self._entered_rows() if row.amount is not None}
+        if not typed:
+            return
+
+        for key, amount in typed.items():
+            amount = Decimal(str(amount))
+            result["statement"][key] = amount
+            options = (self.categories.get(key) or {}).get("codes") or []
+            if len(options) == 1:
+                code = options[0]
+                result["totals"][code] = self.present(code, amount)
+                result["held"].pop(code, None)
+                result["ids"].pop(code, None)
+            else:
+                reason = ("Last year's signed accounts give this line in "
+                          "total, and it is not split into notes categories")
+                for code in options:
+                    result["held"][code] = Held(reason)
+                    result["totals"].pop(code, None)
+                    result["ids"].pop(code, None)
+
+    def _entered_rows(self):
+        from ..models import DocumentFigure
+
+        return DocumentFigure.query.filter_by(
+            financial_year_id=self.financial_year.id, token="PRIORFS",
+            scope="").all()
+
     def period(self, offset):
         """{"totals", "held", "ids", "statement", "missing"} for one year."""
         if offset in self._periods:
@@ -237,6 +292,12 @@ class Figures:
             result["statement"] = self._statement(this_year, previous=False)
         else:
             self._load_earlier(offset, result)
+            # Whatever last year came from, a preparer's reading of the
+            # signed accounts sits on top of it. Applied here rather than
+            # inside _load_earlier because that function returns from four
+            # different branches and every one of them can be corrected.
+            if offset == 1 and not result.get("nil"):
+                self._signed_corrections(result)
 
         self._periods[offset] = result
         return result
@@ -248,6 +309,32 @@ class Figures:
             year = self.year(step)
             if year is not None and year.is_first_year:
                 result["nil"] = True
+                return
+
+        # LAST YEAR'S SIGNED ACCOUNTS FIRST, from library 3.5.
+        #
+        # The comparative column is not what the books say about last year.
+        # It is what was reported and filed, and the two are allowed to
+        # differ - on the test client depreciation is 286 in the signed set
+        # and 230 in the trial balance. So a whole signed set outranks every
+        # trial balance, including our own previous engagement.
+        #
+        # The price is detail: a signed set gives line totals and no account
+        # names, so a row that splits a line by account (PERACCOUNT)
+        # correctly reports last year as known only in total rather than
+        # inventing a split the signed accounts never made. That price is
+        # worth paying for a whole signed set and is NOT worth paying for a
+        # correction to one line - see _signed_corrections below.
+        if offset == 1:
+            from . import prior_year
+
+            available = prior_year.sources(self.financial_year)
+            if "signed_accounts" in available:
+                self._from_key_totals(
+                    available["signed_accounts"],
+                    prior_year.SOURCE_LABELS["signed_accounts"], result)
+                result["statement"] = self._statement(
+                    self.financial_year, previous=True)
                 return
 
         engagement = self.year(offset)
@@ -413,8 +500,14 @@ class Figures:
                 names[key] = names.get(key, ZERO) + self.present(code, net)
         return names
 
-    def resolve(self, token, offset):
-        """A Decimal, a Held, or None for a label row with no figure."""
+    def resolve(self, token, offset, scope=""):
+        """A Decimal, a Held, or None for a label row with no figure.
+
+        `scope` is the table the row sits in. It matters only for a
+        document field whose name repeats across notes - the same
+        PRIORFS:cost_open_py is three different balances - and is ignored
+        by every other token.
+        """
         token = (token or "").strip()
 
         if token == "STATIC" or not token:
@@ -427,15 +520,15 @@ class Figures:
 
         # One row per class in a register the engine cannot read yet.
         if token.startswith("PERCLASS:"):
-            return self.resolve(token[len("PERCLASS:"):], offset)
+            return self.resolve(token[len("PERCLASS:"):], offset, scope)
 
         if token.startswith("PRIOR:"):
-            return self.resolve(token[len("PRIOR:"):], offset + 1)
+            return self.resolve(token[len("PRIOR:"):], offset + 1, scope)
 
         if token.startswith("SUM:"):
             total = ZERO
             for part in token[len("SUM:"):].split("+"):
-                value = self.resolve(part, offset)
+                value = self.resolve(part, offset, scope)
                 if _is_held(value):
                     return value
                 total += value or ZERO
@@ -448,15 +541,16 @@ class Figures:
                      and (self._credit_positive(code) == (side == "liabilities"))]
             if side not in ("assets", "liabilities"):
                 return Held(f"{token} is not a known financial instrument group")
-            return self.resolve("SUM:" + "+".join(codes), offset)
+            return self.resolve("SUM:" + "+".join(codes), offset, scope)
 
         prefix = token.split(":", 1)[0]
         if prefix in DOCUMENT_TOKENS:
-            return self._document(prefix, token.split(":", 1)[-1], offset)
+            return self._document(prefix, token.split(":", 1)[-1], offset,
+                                  scope)
 
         return self._line_code(token, offset)
 
-    def _document(self, token, field, offset):
+    def _document(self, token, field, offset, scope=""):
         """A figure from a document: the one supplied, or why it is missing.
 
         Supplied means a person entered it for this engagement - see
@@ -479,11 +573,11 @@ class Figures:
         else:
             year = self.financial_year
 
-        row = document_fields.value(year, token, field)
+        row = document_fields.value(year, token, field, scope)
         if row is not None:
             return row.amount if row.amount is not None else ZERO
 
-        blocking = document_fields.is_blocking(year, token, field)
+        blocking = document_fields.is_blocking(year, token, field, scope)
         return Held(f"Needs {DOCUMENT_TOKENS[token]} ({field})",
                     blocking=blocking)
 
@@ -595,6 +689,10 @@ def build_table(spec, financial_year, statements=None):
 
     figures = figures_for(financial_year)
     first_year = bool(financial_year.is_first_year)
+    # Which table these rows belong to. A document field whose name
+    # repeats across notes is answered per note, so the row has to say
+    # which note it is in before it can be resolved.
+    scope = table.get("table_id") or ""
     single_column = str(table.get("column_labels") or "").strip().lower() \
         .startswith(SINGLE_COLUMN)
 
@@ -611,7 +709,7 @@ def build_table(spec, financial_year, statements=None):
         if binding.startswith("EACH:"):
             for code in binding[len("EACH:"):].split("+"):
                 row = _row(figures.label(code), code)
-                _fill(row, code, figures, first_year)
+                _fill(row, code, figures, first_year, scope)
                 rows.append(row)
             continue
 
@@ -637,7 +735,7 @@ def build_table(spec, financial_year, statements=None):
                 rows.append(row)
             if not any(r["binding"] == binding for r in rows):
                 row = _row(label, binding)
-                _fill(row, code, figures, first_year)
+                _fill(row, code, figures, first_year, scope)
                 rows.append(row)
             continue
 
@@ -653,7 +751,7 @@ def build_table(spec, financial_year, statements=None):
                                   "table to the same figure")
             row["previous"] = None if first_year else row["current"]
         else:
-            _fill(row, binding, figures, first_year)
+            _fill(row, binding, figures, first_year, scope)
         rows.append(row)
 
     totals = [i for i, row in enumerate(rows) if row["binding"] == "DOC:total"]
@@ -725,9 +823,10 @@ def _held_table(spec, table, rows, figures):
             "table_id": table.get("table_id")}
 
 
-def _fill(row, binding, figures, first_year):
-    row["current"] = figures.resolve(binding, 0)
-    row["previous"] = None if first_year else figures.resolve(binding, 1)
+def _fill(row, binding, figures, first_year, scope=""):
+    row["current"] = figures.resolve(binding, 0, scope)
+    row["previous"] = (None if first_year
+                       else figures.resolve(binding, 1, scope))
 
 
 def _optional_gap(row):

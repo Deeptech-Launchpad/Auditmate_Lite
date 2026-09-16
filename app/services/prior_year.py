@@ -50,12 +50,28 @@ ZERO = Decimal("0.00")
 TOLERANCE = Decimal("1.00")
 
 # Best first, for the jobs that need figures rather than a comparison.
-# Auditmate's own previous engagement outranks everything: it was mapped and
-# approved here, so it needs no interpretation at all.
-SOURCE_ORDER = ["auditmate", "signed_accounts", "tb_comparative", "xero",
-                "prior_trial_balance"]
+#
+# THE SIGNED ACCOUNTS COME FIRST. This changed with the firm's third
+# decision under notes library 3.5: last year's signed accounts are a
+# primary source, not a check against one. The comparative column of a set
+# of accounts is not "what the books say about last year" - it is what was
+# reported and filed, and the two are allowed to differ. On the test client
+# they do: depreciation is 286 in the signed set, 230 in the trial balance
+# and 250 in the unaudited draft, and only one of those three belongs in
+# the 2022 column of the 2023 accounts.
+#
+# Auditmate's own previous engagement now ranks below it. It was mapped and
+# approved here, which makes it exact - but exact about the books, which is
+# the wrong question. It stays ahead of every other trial balance source
+# because it needs no interpretation.
+#
+# "entered" is a person reading the signed set and typing the figure, which
+# outranks a parser reading the same PDF.
+SOURCE_ORDER = ["entered", "signed_accounts", "auditmate", "tb_comparative",
+                "xero", "prior_trial_balance"]
 
 SOURCE_LABELS = {
+    "entered": "last year's signed accounts, entered by the preparer",
     "auditmate": "last year's engagement in Auditmate",
     "signed_accounts": "last year's signed accounts",
     "tb_comparative": "the prior-year column of this year's trial balance",
@@ -63,6 +79,10 @@ SOURCE_LABELS = {
     "prior_trial_balance": "last year's trial balance, uploaded and marked "
                            "as the previous year",
 }
+
+# Sources that are last year's SIGNED accounts rather than its books. These
+# are what the comparative column is supposed to repeat.
+SIGNED_SOURCES = {"entered", "signed_accounts"}
 
 
 def _net(account) -> Decimal:
@@ -182,6 +202,38 @@ def _from_tb_comparative(financial_year):
     return totals
 
 
+def _entered(financial_year):
+    """Figures a person read out of the signed set and typed in.
+
+    The library's own PRIORFS wildcard - "any figure printed in the prior
+    year's signed financial statements" - reached by naming the statement
+    line it belongs to. A parser reading a filed PDF is fallible, and this
+    is how the preparer corrects or supplies it without touching the books.
+
+    These are corrections, line by line. See sources() for how they are
+    laid over whatever the comparative column would otherwise print.
+
+    TYPED AS PRINTED, STORED AS PRINTED, RETURNED DEBIT-POSITIVE. The
+    preparer reads "487,419" off last year's income statement and types
+    that, because asking anyone to negate a revenue figure before typing
+    it is asking for the one mistake nobody would catch. Every other
+    source in this module is debit-positive, so the conversion happens
+    here, once, where the two conventions meet.
+    """
+    from ..models import DocumentFigure
+
+    figures = {}
+    for row in DocumentFigure.query.filter_by(
+            financial_year_id=financial_year.id, token="PRIORFS",
+            scope="").all():
+        if row.amount is None:
+            continue
+        amount = Decimal(str(row.amount))
+        figures[row.field] = (-amount if is_credit_balance(row.field)
+                              else amount)
+    return figures
+
+
 def sources(financial_year):
     """Every prior-year source available, as {name: {key: amount}}.
 
@@ -226,6 +278,23 @@ def sources(financial_year):
         figures = _from_document(uploaded, financial_year.customer_id)
         if figures:
             found["prior_trial_balance"] = figures
+
+    # Figures a person read out of the signed set are a CORRECTION LAYER,
+    # not a source of their own. Somebody who retypes one line because the
+    # signed accounts disagree with the books has said nothing about the
+    # other seventy-nine, and treating their one figure as the whole prior
+    # year would read every other line as absent - which this engine turns
+    # into nil, stating that last year's revenue was nought. So the typed
+    # figures are laid over the best source underneath them, and only the
+    # lines actually typed change.
+    typed = _entered(financial_year)
+    if typed:
+        beneath = {}
+        for name in SOURCE_ORDER:
+            if name != "entered" and name in found:
+                beneath = found[name]
+                break
+        found["entered"] = {**beneath, **typed}
 
     return found
 

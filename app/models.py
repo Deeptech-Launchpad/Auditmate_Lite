@@ -1648,7 +1648,7 @@ class DocumentFigure(db.Model):
 
     __tablename__ = "document_figures"
     __table_args__ = (
-        db.UniqueConstraint("financial_year_id", "token", "field",
+        db.UniqueConstraint("financial_year_id", "token", "field", "scope",
                             name="uq_document_figure"),
     )
 
@@ -1660,6 +1660,14 @@ class DocumentFigure(db.Model):
     # The library's own binding, split: "TAX" + "current" is TAX:current.
     token = db.Column(db.String(20), nullable=False)
     field = db.Column(db.String(60), nullable=False)
+
+    # Which table the figure belongs to, where the same field name means
+    # different figures in different notes. PRIORFS:cost_open_py appears in
+    # the plant and equipment note, the investment property note and the
+    # intangibles note, and they are three different balances. Empty string
+    # rather than NULL: a unique constraint does not constrain NULLs, so a
+    # scopeless field could otherwise be entered twice.
+    scope = db.Column(db.String(60), default="", nullable=False)
 
     amount = db.Column(Numeric(18, 2))
     text = db.Column(db.Text)                  # for a field that is not a figure
@@ -1680,6 +1688,11 @@ class DocumentFigure(db.Model):
     @property
     def binding(self):
         return f"{self.token}:{self.field}"
+
+    @property
+    def where(self):
+        """The binding with the note it belongs to, for a reviewer."""
+        return f"{self.scope}/{self.binding}" if self.scope else self.binding
 
     @property
     def is_answered(self):

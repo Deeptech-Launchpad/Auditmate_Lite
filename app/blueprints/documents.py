@@ -183,13 +183,14 @@ def figures(fy_id):
     if request.method == "POST":
         saved = cleared = 0
         errors = []
-        for token, field, raw, found_at in _posted_figures(request.form):
+        for token, field, scope, raw, found_at in _posted_figures(request.form):
             amount, error = _figure(raw)
             if error:
                 errors.append(f"{token}:{field} - {error}")
                 continue
             row = document_fields.save(financial_year, token, field,
-                                       amount=amount, found_at=found_at)
+                                       scope=scope, amount=amount,
+                                       found_at=found_at)
             if row is None:
                 cleared += 1
             else:
@@ -213,13 +214,21 @@ def figures(fy_id):
 
 
 def _posted_figures(form):
-    """(token, field, amount, where it was found) for each box on the form."""
+    """(token, field, note, amount, where it was found) for each box.
+
+    The note is part of the key because one field name can mean different
+    figures in different notes - PRIORFS:cost_open_py is the opening cost
+    of plant and equipment in one and of intangibles in another.
+    """
     for key in form:
         if not key.startswith("amount__"):
             continue
-        token, _, field = key[len("amount__"):].partition("__")
-        if token and field:
-            yield token, field, form.get(key), form.get(f"found__{token}__{field}")
+        parts = key[len("amount__"):].split("__")
+        if len(parts) < 2 or not parts[0] or not parts[1]:
+            continue
+        token, field = parts[0], parts[1]
+        scope = parts[2] if len(parts) > 2 else ""
+        yield token, field, scope, form.get(key), form.get(f"found__{key[8:]}")
 
 
 def _figure(raw):
