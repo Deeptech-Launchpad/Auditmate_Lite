@@ -756,7 +756,7 @@ def _pieces_for(note):
             "table_id": table["table_id"],
             "row_labels": table["row_labels"],
             "row_bindings": table.get("row_bindings") or [],
-            "rows": table.get("rows") or [],
+            "rows": _bind_row_labels(table.get("rows") or []),
             "column_labels": table["column_labels"],
             "periods": table["periods"],
             "total_row": table["total_row"],
@@ -1043,6 +1043,21 @@ def _bind_blanks(wording):
         lambda m: ("{{ firm.%s }}" % m.group(1)
                    if m.group(1) in DISCLOSURE_SETTING_KEYS else m.group(0)),
         wording)
+
+
+def _bind_row_labels(rows):
+    """The same rewrite, for the labels on a table's rows.
+
+    A row label is wording too. The credit risk gradings table names a
+    category as "more than {sicr_days} days past due", and until this ran
+    over labels as well as paragraphs that placeholder printed as itself -
+    which the library's own display conventions call the most visible
+    failure available.
+    """
+    for row in rows or []:
+        if row.get("label"):
+            row["label"] = _bind_blanks(row["label"])
+    return rows
 
 
 def _codes_of(piece):

@@ -306,6 +306,7 @@ def render_bindings(text: str, customer, financial_year,
         else:
             # Several directors are stored one per line; render them so.
             body, css = str(values[key]).replace(chr(10), "<br>"), ""
+            body = _without_repeated_unit(body, match.string[match.end():])
 
         if chips:
             classes = ("ph " + css).strip()
@@ -314,6 +315,37 @@ def render_bindings(text: str, customer, financial_year,
         return f'<span class="{css}">{body}</span>' if css else body
 
     return re.sub(r"\{\{\s*([\w.]+)\s*\}\}", replace, text)
+
+
+# A firm setting whose value carries its own unit, dropped into a sentence
+# that supplies the unit as well.
+_TRAILING_UNIT = re.compile(r"\s+([A-Za-z]+)\s*$")
+
+
+def _without_repeated_unit(body, rest):
+    """Drop a unit from a substituted value when the sentence repeats it.
+
+    The firm settings are stored the way a person would say them - "30
+    days", "30 to 60 days" - because most of the library's sentences want
+    them whole: "credit terms of 30 to 60 days". Four sentences do not.
+    They write "more than {sicr_days} days past due", supplying the unit
+    themselves, and the two conventions met in the accounts as "more than
+    30 days days past due".
+
+    Rather than keeping two copies of every setting, one with the unit and
+    one without, the word is dropped where the sentence is about to say it
+    again. It only ever removes a word the reader is about to read anyway.
+    """
+    unit = _TRAILING_UNIT.search(body or "")
+    if not unit:
+        return body
+    following = (rest or "").lstrip()
+    word = unit.group(1)
+    if following[:len(word)].lower() == word.lower() and (
+            len(following) == len(word)
+            or not following[len(word)].isalnum()):
+        return body[:unit.start()]
+    return body
 
 
 def _field_amount(name, financial_year, customer):
@@ -1511,6 +1543,16 @@ def section_payload(section, customer, financial_year, chips: bool = False):
             note_table_spec = section.data_binding.get("note_table_specs")
         payload["tables"] = notes_service.build_tables(
             note_table_spec, financial_year)
+        # A row label is wording, and one of them carries a firm setting:
+        # the credit risk gradings table names a category as "more than 30
+        # days past due". Substituted here, where every other piece of
+        # wording on the page is, so a placeholder can never reach a
+        # client's accounts looking like template code.
+        for table in payload["tables"]:
+            for row in table.get("rows") or []:
+                if row.get("label") and "{{" in row["label"]:
+                    row["label"] = render_bindings(row["label"], customer,
+                                                   financial_year)
         apply_note_overrides(section, payload["tables"])
         payload["incomplete"] = incomplete_reasons(section, payload,
                                                    financial_year)

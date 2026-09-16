@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 # a parser may or may not read correctly. Where it does, the figures come
 # through services/prior_year.py; where it does not, a person reads the
 # statement and types the figure, and what they typed outranks the parser.
-ENTERED = ("TAX", "PRIORFS", "FAR")
+ENTERED = ("TAX", "PRIORFS", "FAR", "AGED")
 
 # Fields whose name means a different figure in each note that uses it.
 # PRIORFS:cost_open_py is the opening cost of plant and equipment in one
@@ -398,6 +398,22 @@ def _signed_set_group(financial_year):
             "fields": fields, "missing": []}
 
 
+def _settled(text, financial_year):
+    """A library instruction with its firm settings filled in.
+
+    "Sum of every band beyond {sicr_days} days past due" is guidance for a
+    person, and the number is the whole point of it. Substituted the same
+    way the wording in a note is, so the preparer reads "beyond 30 days"
+    rather than the name of a setting.
+    """
+    if not text or "{" not in str(text):
+        return text
+    from . import note_library, reports
+
+    return reports.render_bindings(note_library._bind_blanks(str(text)),
+                                   financial_year.customer, financial_year)
+
+
 def documents(financial_year):
     """Every document whose figures can be typed in, with its fields.
 
@@ -418,6 +434,8 @@ def documents(financial_year):
         fields = catalogue(financial_year, token)
         if not fields:
             continue
+        for field in fields:
+            field["how"] = _settled(field["how"], financial_year)
         row = described.get(token) or described.get(
             DOCUMENT_ALIASES.get(token, "")) or {}
         document = {
