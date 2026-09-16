@@ -1491,7 +1491,8 @@ def section_payload(section, customer, financial_year, chips: bool = False):
         payload["tables"] = notes_service.build_tables(
             note_table_spec, financial_year)
         apply_note_overrides(section, payload["tables"])
-        payload["incomplete"] = incomplete_reasons(section, payload)
+        payload["incomplete"] = incomplete_reasons(section, payload,
+                                                   financial_year)
 
     return payload
 
@@ -1499,7 +1500,7 @@ def section_payload(section, customer, financial_year, chips: bool = False):
 _MISSING_BLANK = re.compile(r'class="[^"]*missing-binding[^"]*"[^>]*>([^<]+)<')
 
 
-def incomplete_reasons(section, payload):
+def incomplete_reasons(section, payload, financial_year=None):
     """Why a section cannot be issued yet, in words. Empty when it can.
 
     Three things hold a note incomplete, all from the library's own rules:
@@ -1523,6 +1524,17 @@ def incomplete_reasons(section, payload):
                 reason = row.get(column)
                 if reason and reason not in reasons:
                     reasons.append(reason)
+
+    # A balance with nowhere to print in this note. The library's own
+    # completeness rule, and the one check the engine still performs -
+    # it asks whether a line has a row, not whether figures add up.
+    if financial_year is not None:
+        from . import bindings
+
+        specs = (section.data_binding or {}).get("note_table_specs") or []
+        for reason in bindings.uncovered_lines(specs, financial_year):
+            if reason not in reasons:
+                reasons.append(reason)
 
     for blank in _MISSING_BLANK.findall(payload.get("html") or ""):
         text = f"Not filled in: {blank.strip('[]')}"

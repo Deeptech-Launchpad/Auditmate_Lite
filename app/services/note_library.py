@@ -356,6 +356,12 @@ def read_workbook(path):
                 "rows": ([{"label": label, "binding": binding}
                           for label, binding in zip(labels, bindings)]
                          if len(labels) == len(bindings) else []),
+                # Library 3.x: the line, or lines, this table's total must
+                # agree with. "no total" means the table has no tie at all
+                # and applying one would be the error - profit before tax is
+                # the example. The engine does not add rows to check it; the
+                # comparison is check PC-01 on the Preparer checks sheet.
+                "totals_agree_with": _cell(row, ti, "Totals agree with"),
                 "column_labels": _cell(row, ti, "Column labels"),
                 "periods": _cell(row, ti, "Periods presented"),
                 "comparative": _cell(row, ti, "Comparative"),
@@ -432,7 +438,20 @@ LITERAL_TOKENS = {"CALC", "CLIENT", "FIRM", "MANUAL", "MEMO", "STATIC",
                   "FI:assets", "FI:liabilities"}
 LINE_PREFIXES = ("BS-", "PL-", "CF-", "EQ-")
 COMPOSED_PREFIXES = ("PRIOR:", "SUM:", "EACH:")
-FIELD_PREFIXES = ("FAR:", "AGED:", "TAX:", "REG:", "LOAN:", "GL:", "BANK:")
+
+# DOC: a total, subtotal or derived figure as the source document states it.
+# From library 3.0 the engine performs no arithmetic - it does not add rows
+# to produce a total, and does not add them to check one - so every row that
+# used to say CALC now says DOC:total. PRIORFS: is last year's signed
+# accounts, which from 3.4 supply every movement table's opening position
+# rather than a re-run of last year's register.
+FIELD_PREFIXES = ("FAR:", "AGED:", "TAX:", "REG:", "LOAN:", "GL:", "BANK:",
+                  "DOC:", "PRIORFS:")
+
+# Wrappers that repeat a row for each thing in the source: one row per asset
+# class actually in the register, one row per trial balance account mapped to
+# a line. What they wrap is an ordinary token and is checked as one.
+ROW_PER_PREFIXES = ("PERCLASS:", "PERACCOUNT:")
 
 _PLACEHOLDER = re.compile(r"\{([A-Za-z][A-Za-z0-9_]*)\}")
 
@@ -450,6 +469,9 @@ def _problems_in_token(token, line_codes, fields):
     # this is read as composition, not flagged as a malformed token.
     if token.startswith("PRIOR:"):
         return _problems_in_token(token[len("PRIOR:"):], line_codes, fields)
+    for prefix in ROW_PER_PREFIXES:
+        if token.startswith(prefix):
+            return _problems_in_token(token[len(prefix):], line_codes, fields)
     for prefix in COMPOSED_PREFIXES:
         if token.startswith(prefix):
             codes = [c for c in token[len(prefix):].split("+") if c]
@@ -703,6 +725,12 @@ def plan(path):
         "row_bindings": sum(len(t["row_bindings"]) for n in data["notes"]
                             for t in n["tables"]),
         "statement_lines": len(reference.get("Statement lines", [])),
+        "tables_with_a_tie": sum(
+            1 for n in data["notes"] for t in n["tables"]
+            if (t.get("totals_agree_with") or "no total").strip().lower()
+            not in ("no total", "-")),
+        "preparer_checks": len(reference.get("Preparer checks", [])),
+        "known_issues": len(reference.get("Known issues", [])),
         "firm_settings": len(reference.get("Firm settings", [])),
         "preparer_inputs": len(reference.get("Preparer inputs", [])),
         "integrity_errors": errors,
@@ -732,6 +760,7 @@ def _pieces_for(note):
             "column_labels": table["column_labels"],
             "periods": table["periods"],
             "total_row": table["total_row"],
+            "totals_agree_with": table.get("totals_agree_with"),
             "line_codes": table["line_codes"],
             "cross_references": table["cross_references"],
             "review_status": "from_index",

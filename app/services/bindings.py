@@ -17,12 +17,24 @@ a set of accounts tells the reader the balance is zero.
     SUM:a+b                    the sum; held if any part is held
     PRIOR:x                    x, one year earlier
     FI:assets / FI:liabilities the financial instrument lines on that side
-    CALC                       a total of the rows above it (see _calc)
+    DOC:total                  the total as its source states it (see _doc_total)
     EACH:a+b                   one row per line code carrying a balance
+    PERACCOUNT:code            one row per trial balance account on that line
+    PERCLASS:FAR:field         one row per class in the register (held for now)
     STATIC                     a label row, no figure
     MANUAL, CLIENT, FIRM, MEMO held: a person or record supplies it
     FAR:, AGED:, TAX:, REG:,   held: the source document is not read yet
-    LOAN:, GL:, BANK:
+    LOAN:, GL:, BANK:, PRIORFS:
+
+THE ENGINE PERFORMS NO ARITHMETIC. From library 3.0 every printed figure is
+taken from a source exactly as that source states it, totals included: the
+engine does not add rows to produce a total, and does not add them to check
+one. So there is no CALC here. A total row (DOC:total) is read from the
+figure its own source already states - for rows drawn from the trial balance
+that is the line on the face of the statements, which AuditMate built from
+the same approved trial balance, added once, outside the notes. Where no
+source states it, the row is held for the preparer rather than computed. The
+arithmetic checks live on the Preparer checks sheet and are run by a person.
 
 Figures are presented the way the statement shows them: assets and expenses
 debit-positive, liabilities, equity and income credit-positive. A contra
@@ -32,7 +44,6 @@ in brackets, so a "net" row adds up.
 Nothing here calls the AI.
 """
 import logging
-import re
 from decimal import Decimal
 
 from flask import g
@@ -68,6 +79,7 @@ CREDIT_SECTIONS = {
 }
 
 DOCUMENT_TOKENS = {
+    "PRIORFS": "last year's signed accounts",
     "FAR": "the fixed asset register",
     "AGED": "the aged receivables listing",
     "TAX": "the tax computation",
@@ -237,8 +249,8 @@ class Figures:
             accounts = TrialBalanceAccount.query.filter_by(
                 financial_year_id=engagement.id).all()
             if accounts:
-                totals, held, _ids = self._from_accounts(accounts)
-                result["totals"], result["held"] = totals, held
+                totals, held, ids = self._from_accounts(accounts)
+                result["totals"], result["held"], result["ids"] = totals, held, ids
                 result["statement"] = self._statement(engagement, previous=False)
                 return
 
@@ -248,9 +260,9 @@ class Figures:
                 financial_year_id=self.financial_year.id).all()
             if any(a.prior_debit is not None or a.prior_credit is not None
                    for a in accounts):
-                totals, held, _ids = self._from_accounts(accounts,
-                                                         prior_columns=True)
-                result["totals"], result["held"] = totals, held
+                totals, held, ids = self._from_accounts(accounts,
+                                                        prior_columns=True)
+                result["totals"], result["held"], result["ids"] = totals, held, ids
                 result["statement"] = self._statement(self.financial_year,
                                                       previous=True)
                 return
@@ -302,6 +314,99 @@ class Figures:
 
     # -- one token ----------------------------------------------------------
 
+    def keys_for_code(self, code):
+        """The statement lines an account on this line code rolls up to."""
+        return {key for key, spec in self.categories.items()
+                if code in ((spec.get("codes") or []))}
+
+    def statement_total(self, codes, offset):
+        """What the statements already show for a set of line codes.
+
+        This is where a total row on a trial balance table gets its figure:
+        not by adding the rows of the note, but by reading the line the
+        balance sheet or profit and loss prints - the same trial balance,
+        added once, where it is already added. Held rather than guessed when
+        the lines do not line up:
+
+        A LINE THAT COVERS MORE THAN THE ROWS. If the statement line also
+        carries a code the table has no row for, its figure is bigger than
+        the rows beneath it, and printing it would state a total the note
+        does not support. That is exactly the staff loans fault, and it is
+        the library's own completeness rule - see uncovered_lines().
+        """
+        keys = set()
+        for code in codes:
+            found = self.keys_for_code(code)
+            if not found:
+                return Held(f"{self.label(code)} does not belong to a "
+                            f"statement line, so no total can be read")
+            keys |= found
+
+        for key in sorted(keys):
+            for other in (self.categories.get(key) or {}).get("codes") or []:
+                if other in codes:
+                    continue
+                if any(self._carries(other, o) for o in (0, 1)):
+                    return Held(f"Not in this table but on the same statement "
+                                f"line: {self.label(other)} ({other})")
+
+        period = self.period(offset)
+        if period.get("nil"):
+            return ZERO
+        if period["missing"]:
+            return Held(period["missing"], whole_year=True)
+        total = ZERO
+        for key in sorted(keys):
+            if key not in period["statement"]:
+                return Held(f"The statements do not show a figure for "
+                            f"{key.replace('_', ' ')}")
+            total += period["statement"][key]
+        return total
+
+    def _carries(self, code, offset):
+        period = self.period(offset)
+        if period.get("nil") or period["missing"]:
+            return False
+        return bool(period["totals"].get(code)) or code in period["held"]
+
+    def accounts_on(self, code, offset=0):
+        """(account id, name, balance) for each account on one line code."""
+        from ..models import TrialBalanceAccount
+
+        period = self.period(offset)
+        ids = period["ids"].get(code) or []
+        out = []
+        for account in (TrialBalanceAccount.query
+                        .filter(TrialBalanceAccount.id.in_(ids)).all()
+                        if ids else []):
+            net = (Decimal(str(account.debit or 0))
+                   - Decimal(str(account.credit or 0)))
+            out.append((account.id, account.account_name or "",
+                        self.present(code, net)))
+        return sorted(out, key=lambda row: abs(row[2]), reverse=True)
+
+    def named_totals(self, offset=0):
+        """{comparable account name: figure} for the period, or None.
+
+        Only where the period is known account by account. A period read from
+        a signed set gives line totals and no names, and a row cannot be
+        matched to a name that is not there.
+        """
+        from ..models import TrialBalanceAccount
+
+        period = self.period(offset)
+        if period.get("nil") or period["missing"] or not period["ids"]:
+            return None
+        names = {}
+        for code, ids in period["ids"].items():
+            for account in (TrialBalanceAccount.query
+                            .filter(TrialBalanceAccount.id.in_(ids)).all()):
+                net = (Decimal(str(account.debit or 0))
+                       - Decimal(str(account.credit or 0)))
+                key = " ".join((account.account_name or "").split()).lower()
+                names[key] = names.get(key, ZERO) + self.present(code, net)
+        return names
+
     def resolve(self, token, offset):
         """A Decimal, a Held, or None for a label row with no figure."""
         token = (token or "").strip()
@@ -310,8 +415,13 @@ class Figures:
             return None
         if token in PERSON_TOKENS:
             return Held(PERSON_TOKENS[token])
-        if token == "CALC" or token.startswith("EACH:"):
+        if (token == "DOC:total" or token.startswith("EACH:")
+                or token.startswith("PERACCOUNT:")):
             raise ValueError(f"{token} is resolved by the table, not alone")
+
+        # One row per class in a register the engine cannot read yet.
+        if token.startswith("PERCLASS:"):
+            return self.resolve(token[len("PERCLASS:"):], offset)
 
         if token.startswith("PRIOR:"):
             return self.resolve(token[len("PRIOR:"):], offset + 1)
@@ -402,15 +512,8 @@ def figures_for(financial_year):
 # One table
 # --------------------------------------------------------------------------
 
-FIGURE_PREFIXES = ("BS-", "PL-", "CF-", "EQ-", "SUM:", "PRIOR:", "FI:", "EACH:")
-
-# CALC rows the table itself makes plain are a total of the rows above.
-# Anything else - "Tax at the statutory rate of 17%", "Effect of transition",
-# "Other customers" - the library does not say how to compute, so it is held.
-_TOTAL_LABEL = re.compile(
-    r"^(total\b|.*\btotal\b|.*\s-\s*net$|gross carrying amount$|"
-    r"cash and cash equivalents in the statement of cash flows$)",
-    re.IGNORECASE)
+FIGURE_PREFIXES = ("BS-", "PL-", "CF-", "EQ-", "SUM:", "PRIOR:", "FI:",
+                   "EACH:", "PERACCOUNT:", "DOC:")
 
 
 def _is_figure(binding):
@@ -475,8 +578,34 @@ def build_table(spec, financial_year, statements=None):
                 rows.append(row)
             continue
 
+        # One row per trial balance account on the line, under the account's
+        # own caption. The library used to bind this to the whole line, which
+        # printed the line total once as a row and again as the total.
+        if binding.startswith("PERACCOUNT:"):
+            code = binding[len("PERACCOUNT:"):].strip()
+            last_year = figures.named_totals(1) if not first_year else None
+            for account_id, name, amount in figures.accounts_on(code):
+                row = _row(name or figures.label(code), binding)
+                row["current"] = amount
+                if first_year:
+                    row["previous"] = None
+                elif last_year is None:
+                    row["previous"] = Held(
+                        "Last year is known only in total, so it cannot be "
+                        "split by account")
+                else:
+                    row["previous"] = last_year.get(
+                        " ".join(name.split()).lower(), ZERO)
+                row["ids"] = [account_id]
+                rows.append(row)
+            if not any(r["binding"] == binding for r in rows):
+                row = _row(label, binding)
+                _fill(row, code, figures, first_year)
+                rows.append(row)
+            continue
+
         row = _row(label, binding)
-        if binding == "CALC":
+        if binding == "DOC:total":
             row["bold"] = row["rule"] = True
         elif not single_column and binding != "STATIC":
             row["current"] = Held("This table has several columns per year, "
@@ -490,9 +619,11 @@ def build_table(spec, financial_year, statements=None):
             _fill(row, binding, figures, first_year)
         rows.append(row)
 
-    for index, row in enumerate(rows):
-        if row["binding"] == "CALC":
-            _calc(rows, index, figures, first_year)
+    totals = [i for i, row in enumerate(rows) if row["binding"] == "DOC:total"]
+    for index in totals:
+        _doc_total(rows, index, figures, first_year,
+                   named=table.get("totals_agree_with")
+                   if index == totals[-1] else None)
 
     shown = [row for row in rows if not _nil(row)]
 
@@ -505,7 +636,9 @@ def build_table(spec, financial_year, statements=None):
         return _held_table(spec, table, rows, figures)
 
     for row in shown:
-        row["ids"] = figures.account_ids(row["binding"]) if _is_figure(row["binding"]) else []
+        if not row.get("ids"):
+            row["ids"] = (figures.account_ids(row["binding"])
+                          if _is_figure(row["binding"]) else [])
         if len(row["ids"]) == 1:
             row["ref"] = f"tb:{row['ids'][0]}"
         for column in ("current", "previous"):
@@ -557,7 +690,7 @@ def _fill(row, binding, figures, first_year):
 
 def _nil(row):
     """A figure row with nothing in either year - suppressed, per the library."""
-    if not _is_figure(row["binding"]) and row["binding"] != "CALC":
+    if not _is_figure(row["binding"]):
         return False
     current, previous = row["current"], row["previous"]
     # Nil this year, and last year not loaded at all: nothing to say about
@@ -571,65 +704,97 @@ def _nil(row):
     return not any((current, previous))
 
 
-def _calc(rows, index, figures, first_year):
-    """A CALC row: the total of the non-CALC figure rows above it.
+def _doc_total(rows, index, figures, first_year, named=None):
+    """A total row: read from the source, never added up here.
 
-    Held, not guessed, when the label does not say it is a total, when any row
-    it adds is held, and when an account on a line the table draws on carries
-    a balance under a line code the table has no row for - a total that left
-    out staff loans would not agree to the statement, and would look as if
-    it did.
+    Where the rows above it come from the trial balance, the source that
+    already states their total is the face of the statements - built once
+    from the same approved trial balance. `named` is the library's own
+    "Totals agree with" column, which says which lines the table's final
+    total must equal; a subtotal partway down a table is read from the rows
+    since the last total instead.
+
+    Held, not guessed, when no source states it: when a row above comes from
+    a document or a person rather than the books, and when the statement line
+    covers a balance this table has no row for.
     """
     row = rows[index]
-    if not _TOTAL_LABEL.match(row["label"] or ""):
-        reason = "The library does not say how this row is calculated"
-        row["current"] = Held(reason)
-        row["previous"] = None if first_year else Held(reason)
+    previous = max([i for i in range(index) if rows[i]["binding"] == "DOC:total"],
+                   default=-1)
+    group = [r for r in rows[previous + 1:index]
+             if r["binding"] not in ("STATIC", "DOC:total")]
+
+    # The library names the lines a table's own total must equal. Some
+    # entries are a sentence rather than a list - "every line flagged as a
+    # financial asset" - and those fall back to the lines the rows above
+    # actually draw on, which is the same set said another way.
+    # A total the face of the statements does not show, because the face
+    # does not split financial instruments out: trade payables there include
+    # GST, which is not one. The library composes it instead - the same
+    # FI:liabilities token its own by-category table uses.
+    spoken = str(named or "").strip().lower()
+    if "financial asset" in spoken or "financial liabilit" in spoken:
+        side = "assets" if "financial asset" in spoken else "liabilities"
+        for column, offset in (("current", 0), ("previous", 1)):
+            if column == "previous" and first_year:
+                continue
+            row[column] = figures.resolve(f"FI:{side}", offset)
         return
 
-    feeding = [r for r in rows[:index]
-               if r["binding"] not in ("CALC", "STATIC")]
-    if not feeding:
-        reason = "Nothing above this total to add"
-        row["current"] = Held(reason)
-        row["previous"] = None if first_year else Held(reason)
-        return
+    codes = []
+    if named and str(named).strip().lower() not in ("no total", "-"):
+        codes = [c.strip() for c in str(named).replace("+", " ").split()
+                 if c.strip() in figures.lines]
+    if not codes:
+        for member in group:
+            found = figures.codes_in(member["binding"])
+            if not found:
+                codes = []
+                break
+            codes.extend(found)
 
-    missing = _uncovered_codes(feeding, figures,
-                               instruments_only="financial" in row["label"].lower())
-    for column in ("current", "previous"):
+    for column, offset in (("current", 0), ("previous", 1)):
         if column == "previous" and first_year:
             continue
-        if missing:
-            row[column] = Held("Not in this table but carries a balance: "
-                               + ", ".join(missing))
+        if not codes:
+            row[column] = Held("No document states this total; enter it")
             continue
-        values = [r[column] for r in feeding]
-        held = next((v for v in values if _is_held(v)), None)
-        row[column] = held if held else sum((v or ZERO for v in values), ZERO)
+        row[column] = figures.statement_total(codes, offset)
 
 
-def _uncovered_codes(feeding, figures, instruments_only=False):
-    """Line codes sharing a statement line with the table's rows, carrying a
-    balance this year, and with no row of their own.
+def uncovered_lines(specs, financial_year):
+    """Balances a note should show and has no row for.
 
-    A total of financial assets or liabilities leaves out GST and prepayments
-    by definition, so there only financial instrument lines count as missing.
+    The library's own completeness rule from version 3.5: a mapped account
+    whose line has no row, no combined row and no total to belong to holds
+    its note incomplete. It needs no arithmetic - it only asks whether a line
+    has somewhere to print - which is why it stays the engine's job now that
+    the checks have moved to the preparer.
     """
-    used = {code for r in feeding for code in figures.codes_in(r["binding"])}
-    if not used:
-        return []
-    siblings = set()
-    for spec in figures.categories.values():
-        codes = spec.get("codes") or []
-        if used & set(codes):
-            siblings.update(codes)
-    missing = []
-    current = figures.period(0)
-    for code in sorted(siblings - used):
-        if instruments_only and str((figures.lines.get(code) or {})
-                                    .get("Financial instrument")).lower() != "yes":
+    from . import conditions
+
+    figures = figures_for(financial_year)
+    printed, note_codes = set(), set()
+    for spec in specs or []:
+        if spec.get("source") != "bindings":
             continue
-        if current["totals"].get(code) or code in current["held"]:
-            missing.append(f"{figures.label(code)} ({code})")
+        if spec.get("note_code"):
+            note_codes.add(spec["note_code"])
+        table = library_table(spec.get("version_id"), spec.get("table_id")) or {}
+        for binding in table.get("row_bindings") or []:
+            printed.update(figures.codes_in(binding))
+            printed.update(c for c in str(binding).replace("+", " ").split()
+                           if c in figures.lines)
+        named = str(table.get("totals_agree_with") or "")
+        printed.update(c for c in named.replace("+", " ").split()
+                       if c in figures.lines)
+
+    missing = []
+    for note_code in sorted(note_codes):
+        for code in conditions.subject_codes(figures, note_code):
+            if code in printed or code not in figures.account_codes:
+                continue
+            if conditions.carries_balance(figures, code):
+                missing.append(f"{figures.label(code)} ({code}) has a balance "
+                               f"and no row in this note")
     return missing

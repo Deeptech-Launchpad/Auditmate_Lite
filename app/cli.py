@@ -1161,6 +1161,8 @@ def import_note_library(path, do_apply, activate, force):
     if report["row_bindings"]:
         click.echo(f"  {report['table_rows']:>4} table rows, "
                    f"{report['row_bindings']} carrying a binding")
+        click.echo(f"  {report['tables_with_a_tie']:>4} tables whose total ties "
+                   f"to a statement line; the rest state no total")
     if report["statement_lines"]:
         click.echo(f"  {report['statement_lines']:>4} statement line codes")
         click.echo(f"  {report['firm_settings']:>4} firm settings")

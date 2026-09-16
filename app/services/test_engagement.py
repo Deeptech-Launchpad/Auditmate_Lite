@@ -180,9 +180,10 @@ def load(path, replace=False, user_id=None):
             status=year.get("status") or "in_progress",
             previous_year_id=(by_label[year["previous"]].id
                               if year.get("previous") else None))
-        if year.get("approved"):
-            financial_year.tb_approved_at = datetime.utcnow()
-            financial_year.tb_approved_by_name = "Test data"
+        # Approval itself is applied after the accounts exist - see below.
+        # Setting the timestamp alone left tb_status unapproved, so the
+        # statements were never built and every note total, which is read
+        # from the face of the statements, had nothing to read.
         db.session.add(financial_year)
         db.session.flush()
         by_label[year["year_label"]] = financial_year
@@ -256,14 +257,20 @@ def load(path, replace=False, user_id=None):
             if version is None:
                 raise ValueError(f"{year['year_label']}: library version "
                                  f"{year['library_version']} is not loaded")
-            if not year.get("library_exception"):
+            # Only a pin the library's own rule would refuse needs a
+            # reason. Library 3.5 widened its years to cover the test year,
+            # so naming the version is no longer an exception at all.
+            outside = not version.covers(financial_year.end_date)
+            if outside and not year.get("library_exception"):
                 raise ValueError(
                     f"{year['year_label']}: pinning library "
                     f"{version.version_label} by hand needs a "
-                    f"library_exception saying why")
+                    f"library_exception saying why - that version covers "
+                    f"{version.period_label}")
             financial_year.library_version_id = version.id
-            exception = year["library_exception"]
-            record("financial_year", financial_year.id, "library_exception",
+            exception = year.get("library_exception") if outside else None
+            record("financial_year", financial_year.id,
+                   "library_exception" if outside else "library_pinned",
                    after={"library_version": version.version_label,
                           "version_status": version.status,
                           "valid_from": version.valid_from.isoformat(),
@@ -286,6 +293,21 @@ def load(path, replace=False, user_id=None):
         })
 
     db.session.flush()
+
+    # An approved year is approved the way the application approves one:
+    # the trial balance is checked, locked, and the statements are built from
+    # it. The notes read their totals off those statements.
+    from .trial_balance import approve
+    for entry, year in zip(report_years, data["years"]):
+        if not year.get("approved"):
+            continue
+        result = approve(entry["id"], approved_by="Test data")
+        entry["approved"] = bool(result.get("ok"))
+        if not result.get("ok"):
+            raise ValueError(f"{entry['label']} is marked approved in the "
+                             f"file but could not be approved: "
+                             f"{result.get('error')}")
+
     # Finer categories after every year exists, oldest first, so an open year
     # can carry a category its prior year settled.
     from . import line_codes
