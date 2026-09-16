@@ -211,6 +211,43 @@
 {{ S }} .ov-show p[data-override] {
   border-left: 2px solid #e8c88a; padding-left: 8px; margin-left: -10px;
 }
+/* The Preparer checks page. Set apart from the accounts on purpose -
+   narrower type, a rule under each check - because a reader must never
+   mistake a working paper for a page of the financial statements. */
+{{ S }} .checks-page { font-size: .92em; }
+{{ S }} .chk-intro {
+  font-style: italic; margin: 0 0 14px; line-height: 1.5;
+}
+{{ S }} .chk { margin: 0 0 14px; padding: 0 0 10px;
+               border-bottom: .5pt solid #ccc; }
+{{ S }} .chk-head { margin-bottom: 2px; }
+{{ S }} .chk-ref { font-weight: 700; margin-right: 8px; }
+{{ S }} .chk-name { font-weight: 700; }
+{{ S }} .chk-compare { margin: 0 0 6px; }
+{{ S }} .chk-waiting { margin: 0 0 6px; font-style: italic; color: #8a1c10; }
+{{ S }} .chk-none { margin: 0 0 6px; font-style: italic; color: #555; }
+{{ S }} .chk-means { margin: 6px 0 0; }
+{{ S }} .chk-means-lbl { font-variant: small-caps; letter-spacing: .04em;
+                        margin-right: 6px; color: #555; }
+{{ S }} table.chk-table { width: 100%; border-collapse: collapse;
+                          margin: 4px 0 8px; }
+{{ S }} table.chk-table th { text-align: left; font-weight: 700;
+                             border-bottom: .5pt solid #999; padding: 2px 4px; }
+{{ S }} table.chk-table th.num, {{ S }} table.chk-table td.num {
+  text-align: right; }
+{{ S }} table.chk-table td { padding: 2px 4px; vertical-align: top; }
+{{ S }} .chk-where { font-weight: 600; }
+{{ S }} .chk-what { color: #333; }
+{{ S }} .chk-words { font-weight: 400; text-align: left; display: block; }
+{{ S }} .chk-why { font-style: italic; }
+{{ S }} .chk-who { display: block; font-style: normal; color: #777;
+                   font-size: .9em; }
+{{ S }} .chk-held { color: #8a1c10; font-style: italic; }
+{{ S }} .chk-sum { margin: 0 0 8px; }
+{{ S }} .chk-sum-head { font-weight: 600; margin-top: 6px; }
+{{ S }} tr.chk-total td { border-top: .5pt solid #333; font-weight: 700; }
+{{ S }} .chk-foot { margin-top: 18px; }
+
 {{ S }} .draft-stamp {
   position: fixed; top: 6mm; left: 0; right: 0; text-align: center;
   font-family: Arial, sans-serif; font-weight: 700; font-size: 11pt;

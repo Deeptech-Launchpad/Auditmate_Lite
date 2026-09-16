@@ -11,6 +11,7 @@ from ..extensions import db
 from ..models import (AuditReport, AuditReportSection, FinancialStatement,
                       FinancialYear, ReportFigureOverride, StatementLine)
 from ..services import overrides as overrides_service
+from ..services import preparer_checks as checks_service
 from ..services import provenance as provenance_service, readiness
 from ..services import reports as report_service
 from ..services import statements as statement_service
@@ -111,6 +112,8 @@ def builder(fy_id):
                            readiness=readiness.check(financial_year),
                            overrides=overrides_service.for_report(report),
                            overrides_in_force=overrides_service.count_live(report),
+                           checks=checks_service.build(
+                               report, financial_year, payloads),
                            pdf_available=report_service.weasyprint_available())
 
 
@@ -760,6 +763,8 @@ def preview(report_id):
                            payloads=payloads,
                            draft_incomplete=bool(incomplete),
                            note_numbers=report_service.note_number_map(report),
+                           checks=checks_service.build(
+                               report, report.financial_year, payloads),
                            for_pdf=False)
 
 
@@ -789,6 +794,8 @@ def export_word(report_id):
                            payloads=payloads,
                            draft_incomplete=bool(incomplete),
                            note_numbers=report_service.note_number_map(report),
+                           checks=checks_service.build(
+                               report, financial_year, payloads),
                            for_pdf=True)
 
     try:
@@ -836,6 +843,8 @@ def export(report_id):
                            payloads=payloads,
                            draft_incomplete=bool(incomplete),
                            note_numbers=report_service.note_number_map(report),
+                           checks=checks_service.build(
+                               report, report.financial_year, payloads),
                            for_pdf=True)
 
     if not report_service.weasyprint_available():

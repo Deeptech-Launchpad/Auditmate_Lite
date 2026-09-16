@@ -60,6 +60,12 @@
 
 <div class="rpt-doc">
   {% include "reports/_document.html" %}
+  {# The last page of a draft, and only of a draft. The clean copy the
+     client receives is the accounts; the checks a person ran to get there
+     belong in the file, not in the accounts. #}
+  {% if checks and (not for_pdf or draft_incomplete) %}
+    {% include "reports/_preparer_checks.html" %}
+  {% endif %}
 </div>
 
 </body>

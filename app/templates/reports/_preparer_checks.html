@@ -1,0 +1,199 @@
+{#
+  Preparer checks - the last page of a draft.
+
+  Library 3.5 moved the arithmetic out of the engine and onto this page.
+  AuditMate prints every figure as its source states it and never adds rows
+  to make a total or to test one, so the checks that used to be silent and
+  automatic are now explicit and human: named, printed beside the accounts,
+  and run by the person who signs.
+
+  Nothing on this page passes or fails. It gathers the figures each check
+  names, quotes them from where they already print, and puts them side by
+  side; comparing them is the reader's job. Where a check needs a document
+  the engine does not read yet, it still prints and says which document -
+  a check quietly dropped for want of its input reads as if it passed.
+
+  It belongs to the working copy and is left out of the clean copy the
+  client receives, which is the accounts and not the working papers.
+#}
+{% if checks %}
+<div class="rpt-page page-break checks-page">
+
+  <div class="rpt-head">
+    <div class="rpt-co">{{ customer.legal_name or customer.name }}</div>
+    <div class="rpt-uen">(Registration No: {{ customer.uen or '—' }})</div>
+    <div class="rpt-sect">Preparer Checks
+      - {{ fy.end_date|datefmt('%d %B %Y') }}</div>
+  </div>
+
+  <p class="chk-intro">
+    These accounts were assembled without arithmetic: every figure above is
+    printed as its source states it, totals included. The checks below are
+    the ones a person runs before the draft is signed. They are not gates
+    and nothing here has been tested &mdash; each one names the figures to
+    compare, shows them as this draft prints them, and says what a
+    difference would mean.
+    {% if checks.version %}Notes library {{ checks.version }}.{% endif %}
+  </p>
+
+  {% for check in checks.checks %}
+    <div class="chk">
+      <div class="chk-head">
+        <span class="chk-ref">{{ check.ref }}</span>
+        <span class="chk-name">{{ check.name }}</span>
+      </div>
+      <p class="chk-compare">{{ check.compare }}</p>
+
+      {% if check.waiting_on %}
+        <p class="chk-waiting">
+          AuditMate does not read {{ check.waiting_on }} yet, so it cannot
+          show you the second figure. Compare against the document itself.
+        </p>
+      {% endif %}
+
+      {# One figure in several places - depreciation, directors'
+         remuneration, tax. Three presentations of one figure taken from
+         different documents is the fault; seeing all three together is
+         how you find it. #}
+      {% if check.figures %}
+        <table class="chk-table">
+          <tbody>
+            {% for place in check.figures %}
+              <tr>
+                <td class="chk-where">{{ place.where }}</td>
+                <td class="chk-what">{{ place.what }}</td>
+                <td class="num">
+                  {%- if place.held -%}<span class="chk-held">Incomplete</span>
+                  {%- else -%}{{ place.amount|stmt }}{%- endif -%}
+                  {%- if place.typed %} <span class="ov-mark">typed</span>{% endif -%}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+
+      {# PC-01. Each note total beside the line the library says it must
+         equal. Two quotations, not a subtraction. #}
+      {% if check.pairs %}
+        <table class="chk-table">
+          <thead>
+            <tr><th>Note</th><th class="num">Note total</th>
+                <th>Must agree with</th><th class="num">On the face</th></tr>
+          </thead>
+          <tbody>
+            {% for pair in check.pairs %}
+              <tr>
+                <td class="chk-where">{{ pair.note }}
+                  {%- if pair.table %}<span class="chk-what">{{ pair.table }}</span>{% endif -%}
+                </td>
+                <td class="num">
+                  {%- if not pair.has_total -%}
+                    <span class="chk-held">no total printed</span>
+                  {%- elif pair.note_total_held -%}
+                    <span class="chk-held">Incomplete</span>
+                  {%- else -%}{{ pair.note_total|stmt }}{%- endif -%}
+                </td>
+                <td class="chk-what">
+                  {%- for line in pair.lines -%}
+                    {{ line.label }}{% if not loop.last %} + {% endif %}
+                  {%- endfor -%}
+                  {%- if pair.unknown %}
+                    {% if pair.lines %} + {% endif %}
+                    <span class="chk-held">{{ pair.unknown|join(', ') }}
+                      (no line on the face)</span>
+                  {%- endif -%}
+                  {%- if not pair.lines and not pair.unknown -%}
+                    <span class="chk-held">{{ pair.agrees_with }}</span>
+                  {%- endif -%}
+                  {%- if pair.nil_lines %}
+                    <span class="chk-who">and {{ pair.nil_lines }} nil
+                      line{{ '' if pair.nil_lines == 1 else 's' }}</span>
+                  {%- endif -%}
+                </td>
+                <td class="num">
+                  {%- for line in pair.lines -%}
+                    {{ line.amount|stmt }}{% if not loop.last %}<br>{% endif %}
+                  {%- endfor -%}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+
+      {# PC-02. The nineteen totals that used to be formulas. They are read
+         from their source now, so nothing in the engine would notice a
+         source stating a total its own rows do not support - which is
+         what happened to the test client's unaudited set. Add them up. #}
+      {% if check.tables %}
+        {% for table in check.tables %}
+          <div class="chk-sum">
+            <div class="chk-sum-head">{{ table.note }}
+              {%- if table.heading %} &middot; {{ table.heading }}{% endif %}</div>
+            <table class="chk-table">
+              <tbody>
+                {% for row in table.rows %}
+                  <tr class="{{ 'chk-total' if row.is_total }}">
+                    <td class="chk-what">{{ row.label }}</td>
+                    <td class="num">
+                      {%- if row.held -%}<span class="chk-held">Incomplete</span>
+                      {%- else -%}{{ row.amount|stmt }}{%- endif -%}
+                      {%- if row.typed %} <span class="ov-mark">typed</span>{% endif -%}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endfor %}
+      {% endif %}
+
+      {# PC-10. Every override, with the figure its source gave beside it
+         and the reason recorded at the time. #}
+      {% if check.overrides %}
+        <table class="chk-table">
+          <thead>
+            <tr><th>Where</th><th>The source said</th>
+                <th>The accounts print</th><th>Reason given</th></tr>
+          </thead>
+          <tbody>
+            {% for item in check.overrides %}
+              <tr>
+                <td class="chk-where">{{ item.where }}
+                  <span class="chk-what">{{ item.what }}</span></td>
+                <td class="num">
+                  {%- if item.kind == 'figure' -%}
+                    {{ item.source_said|stmt if item.source_said is not none
+                       else 'nothing' }}
+                  {%- else -%}
+                    <span class="chk-words">{{ (item.source_said or '')|striptags|truncate(90) }}</span>
+                  {%- endif -%}
+                </td>
+                <td class="num">
+                  {%- if item.kind == 'figure' -%}{{ item.now_prints|stmt }}
+                  {%- else -%}
+                    <span class="chk-words">{{ (item.now_prints or '')|striptags|truncate(90) }}</span>
+                  {%- endif -%}
+                </td>
+                <td class="chk-why">{{ item.reason }}
+                  <span class="chk-who">{{ item.who }}{% if item.when %},
+                    {{ item.when|datefmt('%d %b %Y') }}{% endif %}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+
+      {% if check.note %}<p class="chk-none">{{ check.note }}</p>{% endif %}
+      <p class="chk-means"><span class="chk-means-lbl">A difference means</span>
+        {{ check.means }}</p>
+    </div>
+  {% endfor %}
+
+  <p class="chk-foot">
+    Checked by ______________________________
+    &nbsp;&nbsp;&nbsp; Date ______________________
+  </p>
+</div>
+{% endif %}

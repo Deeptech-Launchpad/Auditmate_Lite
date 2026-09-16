@@ -645,7 +645,12 @@ def build_table(spec, financial_year, statements=None):
             if _is_held(row[column]):
                 row[f"held_{column}"] = row[column].reason
                 row[column] = None
-        del row["binding"]
+        # Kept, not dropped: the Preparer checks page asks where else in
+        # the draft the same line code prints, and a rendered row is the
+        # only place that is still known after EACH: and PERACCOUNT: have
+        # expanded one library row into several. Renamed so nothing
+        # downstream can mistake it for a token still to be resolved.
+        row["from_binding"] = row.pop("binding")
 
     return {"heading": spec.get("heading"), "rows": shown,
             "columns": table.get("column_labels"),

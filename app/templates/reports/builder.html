@@ -558,6 +558,12 @@
         <div class="rpt-mini{{ ' is-editing' if editable }}" id="live-report">
           <div class="rpt-doc">
             {% include "reports/_document.html" %}
+            {# The last page of the draft, shown here where it will print.
+               Nothing on it is editable: it quotes figures from the pages
+               above, and the place to change one is the page it prints on. #}
+            {% if checks %}
+              {% include "reports/_preparer_checks.html" %}
+            {% endif %}
           </div>
         </div>
       </div>
