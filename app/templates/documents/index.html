@@ -15,6 +15,11 @@
     <p class="subtitle">{{ customer.name }} · {{ fy.year_label }} · {{ total_documents }} file(s)</p>
   </div>
   <div class="page-actions">
+    {# What the engagement still needs, before anyone has uploaded
+       anything. First in the row because it is the first thing done on
+       a job: work out what to ask the client for. #}
+    <a href="{{ url_for('documents.requests_list', fy_id=fy.id) }}" class="btn">
+      Requests</a>
     {# Figures that arrive in a document nobody parses - the tax
        computation above all. Reached from here because this is where a
        preparer already comes to answer "how do I get the figures in". #}

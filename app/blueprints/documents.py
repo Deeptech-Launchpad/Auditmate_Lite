@@ -160,6 +160,34 @@ def index(fy_id):
                                financial_year.customer_id))
 
 
+@bp.route("/fy/<int:fy_id>/requests")
+@login_required
+def requests_list(fy_id):
+    """What this engagement still needs, and whose desk it comes off.
+
+    The library's Source documents sheet has always known this - fifteen
+    tokens, each naming a document and the notes that depend on it - but
+    it was only ever read one token at a time, when a note came up short.
+    Read whole and narrowed to the notes this company actually has, it is
+    the request list a preparer sends at the start of a job.
+
+    Read-only on purpose. Nothing here records that a document arrived;
+    the record of arrival is the document itself, or the figures typed
+    off it, and inventing a second tick box would let the two disagree.
+    """
+    from ..services import document_requests
+
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+    return render_template(
+        "documents/requests.html",
+        fy=financial_year, customer=financial_year.customer,
+        groups=document_requests.by_owner(financial_year),
+        summary=document_requests.summary(financial_year),
+        IN_HAND=document_requests.IN_HAND,
+        UNTRACKED=document_requests.UNTRACKED,
+        OUTSTANDING=document_requests.OUTSTANDING)
+
+
 @bp.route("/fy/<int:fy_id>/figures", methods=["GET", "POST"])
 @login_required
 def figures(fy_id):

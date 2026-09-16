@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Document requests · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('documents.index', fy_id=fy.id) }}">Documents</a>
+  <span class="sep">/</span>
+  <span class="current">Requests</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Document requests</h1>
+    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('documents.figures', fy_id=fy.id) }}" class="btn">
+      Enter figures →</a>
+  </div>
+</div>
+
+{#
+  The list is narrowed before it is shown. Every document here is one a
+  note this company actually needs depends on - a company with no
+  borrowings is not asked for loan agreements, because a list that asks
+  for everything teaches the reader to skim it.
+#}
+<p class="muted" style="max-width:64ch">
+  Everything the notes for this engagement draw on, and who it comes from.
+  Documents nothing in these accounts depends on are not listed.
+</p>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-body" style="display:flex;gap:28px;flex-wrap:wrap">
+    <div><span class="strong" style="font-size:1.4em">{{ summary.outstanding }}</span>
+      <span class="muted small">outstanding</span></div>
+    {% if summary.partly %}
+      <div><span class="strong" style="font-size:1.4em">{{ summary.partly }}</span>
+        <span class="muted small">partly in hand</span></div>
+    {% endif %}
+    <div><span class="strong" style="font-size:1.4em">{{ summary.untracked }}</span>
+      <span class="muted small">not recorded either way</span></div>
+    <div><span class="strong" style="font-size:1.4em">{{ summary.in_hand }}</span>
+      <span class="muted small">in hand</span></div>
+    <div class="muted small" style="align-self:center;max-width:34ch">
+      {{ summary.total }} documents in all. &ldquo;Not recorded&rdquo; means
+      AuditMate has no way of knowing whether it arrived &mdash; not that
+      it is missing.
+    </div>
+  </div>
+</div>
+
+{% for group in groups %}
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-head">
+      <h2>{{ group.label }}</h2>
+      <span class="hint">
+        {% if group.outstanding %}{{ group.outstanding }} still to settle
+        {% else %}all in hand{% endif %}</span>
+    </div>
+    <div class="card-body" style="padding-top:0">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:30%">Document</th>
+            <th style="width:38%">What it supplies</th>
+            <th style="width:16%">Needed</th>
+            <th style="width:16%">State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in group.rows %}
+            <tr>
+              <td>
+                <div class="strong">{{ row.name }}</div>
+                <div class="muted small">
+                  {{ row.token }}{% if row.notes %} ·
+                    {{ row.notes|length }} note{{ '' if row.notes|length == 1 else 's' }}
+                    depend{{ 's' if row.notes|length == 1 else '' }} on it
+                  {% endif %}
+                </div>
+              </td>
+              <td class="small">{{ row.supplies }}</td>
+              <td class="small">
+                {% if row.mandatory %}
+                  <span class="pill">Mandatory</span>
+                {% else %}
+                  {{ row.required }}
+                {% endif %}
+              </td>
+              <td class="small">
+                {% if row.state == IN_HAND %}
+                  <span class="pill pill-green">In hand</span>
+                {% elif row.state == UNTRACKED %}
+                  <span class="pill">Not recorded</span>
+                {% elif row.state == OUTSTANDING %}
+                  <span class="pill pill-amber">Outstanding</span>
+                {% else %}
+                  <span class="pill pill-amber">Partly in hand</span>
+                {% endif %}
+                {% if row.total %}
+                  <div class="muted small">{{ row.have }} of {{ row.total }}
+                    {{ row.measured }}</div>
+                {% endif %}
+                {% if row.outstanding_parts %}
+                  <div class="muted small">still wanted:
+                    {{ row.outstanding_parts|join(', ') }}</div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% else %}
+  <div class="alert alert-success">
+    This engagement is not pinned to a notes library version yet, so there
+    is nothing to ask for. Generate the accounts once and the list appears.
+  </div>
+{% endfor %}
+{% endblock %}
