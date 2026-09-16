@@ -421,6 +421,34 @@
     document.execCommand('insertText', false, text);
   });
 
+  /* "Go to the note" in the gaps panel lands on the note itself.
+     The href is an anchor on the section's row in the list, which is the
+     right fallback with no JavaScript, but scrolling to a row in a list
+     leaves the preparer to find the note they were sent to. Taken over
+     here so the jump ends on the wording, with the note held for a moment
+     so it is obvious which of fifty-three was meant. */
+  document.addEventListener('click', event => {
+    const link = event.target.closest('a.gap-fix[href^="#sec-"]');
+    if (!link) return;
+    const id = link.getAttribute('href').slice(5);
+    const field = report && report.querySelector(
+      `[data-section-id="${id}"][data-field="content_html"]`);
+    const row = list && list.querySelector(`.section-item[data-section-id="${id}"]`);
+    if (!field && !row) return;             // let the plain anchor do its job
+    event.preventDefault();
+    if (row) {
+      row.classList.add('section-found');
+      setTimeout(() => row.classList.remove('section-found'), 2200);
+    }
+    const target = field || row;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (field) {
+      field.classList.add('section-found');
+      setTimeout(() => field.classList.remove('section-found'), 2200);
+      if (field.isContentEditable) field.focus();
+    }
+  });
+
   /* The pencil in the section list scrolls to the text and puts the cursor
      in it, rather than opening a second place to edit the same thing. */
   list.addEventListener('click', event => {

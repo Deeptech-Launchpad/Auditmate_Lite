@@ -9,6 +9,11 @@
 {% endblock %}
 
 {% block content %}
+{% macro fix_it(href, label) %}
+  <a class="gap-fix" href="{{ href }}">{{ label }} &rarr;</a>
+{% endmacro %}
+
+
 <div class="page-head">
   <div>
     <h1>Financial Statements</h1>
@@ -176,6 +181,7 @@
           <div class="gap-body">
             <div class="gap-title">{{ gap.lines|join(', ') }}</div>
             <div class="gap-detail muted small">{{ gap.detail }}</div>
+            {{ fix_it('#open-add-note', 'Write the note') }}
           </div>
         </div>
       {% endfor %}
@@ -186,6 +192,7 @@
           <div class="gap-body">
             <div class="gap-title">{{ gap.note }}</div>
             <div class="gap-detail muted small">{{ gap.detail }}</div>
+            {{ fix_it('#open-add-note', 'Add to the note') }}
           </div>
         </div>
       {% endfor %}
@@ -227,6 +234,12 @@
                 {{ gap.wording|safe }}
               </div>
             {% endif %}
+            {% if gap.wording and 'not provided' in gap.wording %}
+              {{ fix_it(url_for('reports.preparer_inputs', fy_id=fy.id),
+                        'Fill in the wording') }}
+            {% elif gap.section_id %}
+              {{ fix_it('#sec-' ~ gap.section_id, 'Go to the note') }}
+            {% endif %}
           </div>
         </div>
       {% endfor %}
@@ -239,6 +252,7 @@
           <div class="gap-body">
             <div class="gap-title">{{ gap.note }}</div>
             <div class="gap-detail muted small">{{ gap.detail }}</div>
+            {{ fix_it('#open-add-note', 'Write it') }}
           </div>
         </div>
       {% endfor %}
@@ -412,6 +426,7 @@
       <div id="section-list" data-report-id="{{ report.id }}">
         {% for section in ordered_sections %}
         <div class="section-item {{ '' if section.is_enabled else 'disabled' }} {{ 'section-child' if section.parent_section_id else '' }}"
+             id="sec-{{ section.id }}"
              draggable="{{ 'true' if (editable and not section.parent_section_id) else 'false' }}"
              data-section-id="{{ section.id }}">
           <span class="handle">⠿</span>
@@ -562,7 +577,17 @@
           .rpt-mini .rpt-page { background: #fff; padding: 26px 30px;
                                 margin-bottom: 12px;
                                 box-shadow: 0 1px 3px rgba(0,0,0,.15); }
-        </style>
+          .gap-fix { display:inline-block; margin-top:6px; font-size:.86em;
+              font-weight:600; text-decoration:none; }
+  /* Held for a couple of seconds after the jump, so it is obvious which
+     of fifty-three notes was meant. Fades rather than blinks. */
+  .section-found { animation: section-found 2.2s ease-out; }
+  @keyframes section-found {
+    0%, 55% { background: #fdf3d8; box-shadow: 0 0 0 3px #fdf3d8; }
+    100%    { background: transparent; box-shadow: 0 0 0 3px transparent; }
+  }
+  @media (prefers-reduced-motion: reduce) { .section-found { animation: none; } }
+</style>
         <div class="src-legend" id="src-legend">
           <span><i class="sw sw-tb"></i>from the trial balance</span>
           <span><i class="sw sw-calc"></i>calculated from other lines</span>

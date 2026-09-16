@@ -1441,6 +1441,10 @@ def content_gaps(report, financial_year):
                              ("offered_to_preparer", offered)):
             for item in binding.get(kind, []):
                 bucket.append({
+                    # Which section it belongs to, so the panel that lists
+                    # it can send the preparer to the note rather than
+                    # naming it and leaving them to find it.
+                    "section_id": section.id,
                     "note": section.title,
                     "heading": item.get("heading") or "",
                     "question": item.get("question") or "",
