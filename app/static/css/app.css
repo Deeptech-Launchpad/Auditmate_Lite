@@ -1353,3 +1353,8 @@ tr.row-doc-total input.cell { font-weight: 600; }
   color: #7c4a03; background: #fdf1dc; border: 1px solid #e8c88a;
   border-radius: 8px;
 }
+
+/* Things a preparer supplies that the books cannot say, reached from the
+   report they are holding up. */
+.side-links { display: flex; flex-direction: column; gap: 6px;
+              margin: 10px 0; }

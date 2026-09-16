@@ -117,6 +117,95 @@ def builder(fy_id):
                            pdf_available=report_service.weasyprint_available())
 
 
+@bp.route("/fy/<int:fy_id>/related-parties", methods=["GET", "POST"])
+@login_required
+def related_parties(fy_id):
+    """Who this company's related parties are, and what in the books is theirs.
+
+    The notes library's KI-01: no parsing rule recovers the counterparty
+    from a Spend Money entry, and the test client's director appears under
+    four spellings, so the list comes from the preparer and every match is
+    shown back before it counts. Nothing on this page decides anything by
+    itself - it suggests, and a person confirms or rejects.
+    """
+    from ..services import related_parties as rp_service
+
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "add":
+                rp_service.add(financial_year,
+                               request.form.get("name"),
+                               kind=request.form.get("kind") or "director",
+                               spellings=request.form.get("spellings"),
+                               note=request.form.get("note"))
+                flash("Related party added.", "success")
+            elif action == "update":
+                party = db.session.get(rp_service.RelatedParty,
+                                       int(request.form.get("party_id", 0)))
+                if party and party.financial_year_id == fy_id:
+                    rp_service.update(party,
+                                      name=request.form.get("name"),
+                                      kind=request.form.get("kind"),
+                                      spellings=request.form.get("spellings"),
+                                      note=request.form.get("note"))
+                    flash("Related party updated.", "success")
+            elif action == "remove":
+                party = db.session.get(rp_service.RelatedParty,
+                                       int(request.form.get("party_id", 0)))
+                if party and party.financial_year_id == fy_id:
+                    rp_service.remove(party)
+                    flash("Related party removed, with its confirmed matches.",
+                          "success")
+            elif action == "decide":
+                decided = _record_decisions(financial_year, request.form,
+                                            rp_service)
+                if decided:
+                    flash(f"{decided} decision(s) recorded.", "success")
+            elif action == "reopen":
+                rp_service.unsettle(financial_year, "tb_account",
+                                    int(request.form.get("subject_id", 0)))
+                flash("Put back for a decision.", "success")
+        except ValueError as bad:
+            flash(str(bad), "error")
+        return redirect(url_for("reports.related_parties", fy_id=fy_id))
+
+    rp_service.carry_forward(financial_year)
+    return render_template("reports/related_parties.html",
+                           fy=financial_year,
+                           customer=financial_year.customer,
+                           kinds=rp_service.KINDS,
+                           parties=rp_service.register(financial_year),
+                           candidates=rp_service.candidates(financial_year),
+                           state=rp_service.state(financial_year))
+
+
+def _record_decisions(financial_year, form, rp_service):
+    """One row of the matching table per decision the preparer made.
+
+    A row left on "not decided yet" writes nothing. Silence on this page
+    is the same as silence anywhere else in AuditMate: it holds the note
+    rather than being read as an answer.
+    """
+    decided = 0
+    for key in form:
+        if not key.startswith("decide__"):
+            continue
+        choice = (form.get(key) or "").strip()
+        if not choice:
+            continue                                   # not decided yet
+        subject_id = int(key[len("decide__"):])
+        party_id = None if choice == "not-related" else int(choice)
+        rp_service.decide(financial_year, "tb_account", subject_id,
+                          party_id=party_id,
+                          subject_label=form.get(f"label__{subject_id}"),
+                          matched_on=form.get(f"matched__{subject_id}"))
+        decided += 1
+    return decided
+
+
 @bp.route("/api/section/<int:section_id>", methods=["PATCH"])
 @login_required
 def update_section(section_id):

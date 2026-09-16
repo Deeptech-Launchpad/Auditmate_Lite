@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% block title %}Related parties · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('reports.builder', fy_id=fy.id) }}">Financial Statements</a>
+  <span class="sep">/</span>
+  <span class="current">Related parties</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Related parties</h1>
+    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }} ·
+      {{ state.parties }} on the list ·
+      {{ state.undecided }} still to decide</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('reports.builder', fy_id=fy.id) }}" class="btn">
+      ← Back to the report</a>
+  </div>
+</div>
+
+{#
+  Why a person does this and the app does not.
+
+  Being a director's wife is not a property of a ledger entry. The books
+  record relatedness nowhere, and on this client every entry in the
+  director loan account is Spend Money or Receive Money with no
+  counterparty at all. So the list is given, the app puts what looks like
+  it belongs to someone on that list in front of a person, and a person
+  decides. A name that merely looks similar is how an unrelated supplier
+  ends up disclosed as a director's company.
+#}
+<p class="muted" style="max-width:64ch">
+  Nothing in the books says who is related to this company, so the list
+  comes from you. AuditMate then shows you what looks like it belongs to
+  someone on it &mdash; <strong>you decide, it never does</strong>. Until
+  every candidate below is decided, the related party notes stay
+  <strong>Incomplete</strong>.
+</p>
+
+<div class="report-layout">
+
+  {# ------------------------------------------------------- the list --- #}
+  <div class="card" style="margin:0">
+    <div class="card-head">
+      <h2>The list</h2>
+      <span class="hint">{{ state.parties }} part{{ 'y' if state.parties == 1 else 'ies' }}</span>
+    </div>
+    <div class="card-body">
+      {% for party in parties %}
+        <form method="post" class="rp-party">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="party_id" value="{{ party.id }}">
+          <label class="rp-field">
+            <span class="rp-label">Name, as it should read in the accounts</span>
+            <input type="text" name="name" value="{{ party.name }}" maxlength="255">
+          </label>
+          <label class="rp-field">
+            <span class="rp-label">Relationship</span>
+            <select name="kind">
+              {% for value, label in kinds %}
+                <option value="{{ value }}" {{ 'selected' if party.kind == value }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="rp-field">
+            <span class="rp-label">Spellings used in the books, one per line</span>
+            <textarea name="spellings" rows="3"
+                      placeholder="Loan from Director&#10;Mr Tan Ah Kow&#10;TAK">{{ (party.spellings or [])|join('\n') }}</textarea>
+            <span class="rp-help">Every way this party appears on an account
+              or an invoice. Used to suggest matches, never to decide one.</span>
+          </label>
+          <label class="rp-field">
+            <span class="rp-label">Note for the reviewer</span>
+            <input type="text" name="note" value="{{ party.note or '' }}"
+                   placeholder="e.g. sole director, also owns the landlord company">
+          </label>
+          <div class="rp-actions">
+            <button type="submit" name="action" value="update"
+                    class="btn btn-sm">Save</button>
+            <button type="submit" name="action" value="remove"
+                    class="btn btn-sm no"
+                    data-confirm="Remove {{ party.name }}? Any match confirmed against them is removed too.">
+              Remove</button>
+            {% if party.carried_from_id %}
+              <span class="rp-carried">carried from last year</span>
+            {% endif %}
+          </div>
+        </form>
+      {% else %}
+        <p class="muted small">Nobody on the list yet. If this company really
+          has no related parties, that is a valid answer &mdash; but a
+          director is one, and almost every company has a director.</p>
+      {% endfor %}
+
+      <form method="post" class="rp-party rp-new">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="rp-new-head">Add a related party</div>
+        <label class="rp-field">
+          <span class="rp-label">Name</span>
+          <input type="text" name="name" maxlength="255" required
+                 placeholder="e.g. Tan Ah Kow">
+        </label>
+        <label class="rp-field">
+          <span class="rp-label">Relationship</span>
+          <select name="kind">
+            {% for value, label in kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="rp-field">
+          <span class="rp-label">Spellings used in the books, one per line</span>
+          <textarea name="spellings" rows="3"></textarea>
+        </label>
+        <div class="rp-actions">
+          <button type="submit" name="action" value="add"
+                  class="btn btn-sm btn-primary">Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# --------------------------------------------------- the matching --- #}
+  <div>
+    <div class="card" style="margin:0">
+      <div class="card-head">
+        <h2>What in the books might be theirs</h2>
+        <span class="hint">
+          {{ state.confirmed }} confirmed ·
+          {{ state.rejected }} not related ·
+          {{ state.undecided }} to decide
+        </span>
+      </div>
+      <div class="card-body">
+        {% if not candidates %}
+          <p class="muted small">Nothing in the trial balance looks like a
+            related party balance. That can be right &mdash; but a director's
+            loan or fee usually shows up here, so it is worth a look at the
+            mapping if you expected one.</p>
+        {% else %}
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <table class="table rp-table">
+            <thead>
+              <tr>
+                <th style="width:34%">In the books</th>
+                <th class="num" style="width:14%">Amount</th>
+                <th style="width:26%">Why it is here</th>
+                <th>Whose is it?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in candidates %}
+                <tr class="{{ 'settled' if item.settled }}{{ ' renamed' if item.renamed }}">
+                  <td>
+                    <div class="rp-name">{{ item.label }}</div>
+                    <div class="rp-code">{{ item.code or '' }}
+                      {%- if item.line_code %} · {{ item.line_code }}{% endif %}</div>
+                    <input type="hidden" name="label__{{ item.subject_id }}"
+                           value="{{ item.label }}">
+                    {% if item.matched_on %}
+                      <input type="hidden" name="matched__{{ item.subject_id }}"
+                             value="{{ item.matched_on }}">
+                    {% endif %}
+                  </td>
+                  <td class="num">{{ item.amount|stmt }}</td>
+                  <td class="small muted">{{ item.why }}
+                    {%- if item.renamed %}
+                      <div class="rp-warn">Decided on as
+                        &ldquo;{{ item.decision.subject_label }}&rdquo; &mdash;
+                        the account has been renamed since.</div>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if item.settled %}
+                      <div class="rp-settled">
+                        {% if item.decision.is_related %}
+                          <span class="rp-yes">{{ item.decision.party.name }}</span>
+                          <span class="rp-kind">{{ item.decision.party.kind_label|lower }}</span>
+                        {% else %}
+                          <span class="rp-no">not a related party</span>
+                        {% endif %}
+                        <button type="submit" name="action" value="reopen"
+                                class="btn btn-sm"
+                                formnovalidate
+                                onclick="this.form.subject_id.value='{{ item.subject_id }}'">
+                          Change</button>
+                      </div>
+                    {% else %}
+                      <select name="decide__{{ item.subject_id }}" class="rp-choose">
+                        <option value="">not decided yet</option>
+                        {% for party in parties %}
+                          <option value="{{ party.id }}"
+                                  {{ 'selected' if item.suggested and item.suggested.id == party.id }}>
+                            {{ party.name }}</option>
+                        {% endfor %}
+                        <option value="not-related">not a related party</option>
+                      </select>
+                      {% if item.suggested %}
+                        <div class="rp-suggested">suggested from
+                          &ldquo;{{ item.matched_on }}&rdquo; &mdash; confirm it
+                          or change it</div>
+                      {% elif not parties %}
+                        <div class="rp-suggested">add a party on the left
+                          before you can confirm this one</div>
+                      {% endif %}
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <input type="hidden" name="subject_id" value="">
+          <div class="rp-submit">
+            <button type="submit" name="action" value="decide"
+                    class="btn btn-primary">Record these decisions</button>
+            <span class="muted small">A row left on &ldquo;not decided
+              yet&rdquo; records nothing and keeps the note incomplete.</span>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if state.undecided %}
+    <div class="alert alert-warning" style="margin-top:16px">
+      The related party notes will print <strong>Incomplete</strong> until
+      {{ state.undecided }} candidate{{ '' if state.undecided == 1 else 's' }}
+      {{ 'is' if state.undecided == 1 else 'are' }} decided. Deciding
+      &ldquo;not a related party&rdquo; is an answer and settles it.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<style>
+  .rp-party { border-top: 1px solid #eef1f5; padding: 12px 0; }
+  .rp-party:first-child { border-top: none; padding-top: 0; }
+  .rp-new { border-top: 2px solid #eef1f5; margin-top: 4px; }
+  .rp-new-head { font-weight: 600; margin-bottom: 8px; }
+  .rp-field { display: block; margin-bottom: 8px; }
+  .rp-label { display: block; font-size: 11px; font-weight: 600;
+              color: #6b7280; margin-bottom: 3px; }
+  .rp-help { display: block; font-size: 11px; color: #9ca3af; margin-top: 3px; }
+  .rp-field input, .rp-field select, .rp-field textarea {
+    width: 100%; box-sizing: border-box; font: inherit; font-size: 13px;
+    padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 5px;
+  }
+  .rp-field textarea { resize: vertical; }
+  .rp-actions { display: flex; align-items: center; gap: 8px; }
+  .rp-carried { font-size: 11px; color: #1d4ed8; background: #eff6ff;
+                border: 1px solid #bfdbfe; border-radius: 2px; padding: 0 5px; }
+  .rp-table td { vertical-align: top; }
+  .rp-table tr.settled { background: #fafafa; }
+  .rp-table tr.renamed { background: #fffaf0; }
+  .rp-name { font-weight: 600; }
+  .rp-code { font-size: 11px; color: #9ca3af;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .rp-choose { width: 100%; box-sizing: border-box; font: inherit;
+               font-size: 13px; padding: 6px 8px; border: 1px solid #d1d5db;
+               border-radius: 5px; }
+  .rp-suggested { font-size: 11px; color: #7c4a03; margin-top: 4px; }
+  .rp-warn { color: #8a1c10; margin-top: 4px; }
+  .rp-settled { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .rp-yes { font-weight: 600; }
+  .rp-no { color: #6b7280; font-style: italic; }
+  .rp-kind { font-size: 11px; color: #9ca3af; }
+  .rp-submit { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+</style>
+{% endblock %}

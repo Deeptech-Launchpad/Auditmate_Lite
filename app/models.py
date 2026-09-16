@@ -1476,6 +1476,153 @@ class NoteLibraryEntry(db.Model):
     added_reason = db.Column(db.Text)
 
 
+# How a related party is related. The list a Singapore SME actually
+# needs, in the order a preparer thinks of them.
+RELATED_PARTY_KINDS = [
+    ("director", "Director"),
+    ("shareholder", "Shareholder"),
+    ("key_management", "Key management personnel"),
+    ("close_family", "Close family member of a director or shareholder"),
+    ("related_company", "Related company"),
+    ("other", "Other related party"),
+]
+
+
+class RelatedParty(db.Model):
+    """A person or company this engagement transacts with as a related party.
+
+    Entered once per engagement and carried forward, because a director
+    does not change between years.
+
+    It exists because nothing in the books can produce it. The notes
+    library's own Known issues sheet, KI-01: every entry in the test
+    client's director loan account is Spend Money or Receive Money, so no
+    parsing rule recovers the counterparty, and the director appears under
+    four spellings. Relatedness is a fact about people, and the only
+    reliable source for it is the preparer.
+
+    `spellings` holds the names the party appears under in the books -
+    "Loan from Director", "A Tan", "Mr Tan Ah Kow", "TAK". They are what
+    the matcher suggests on, never what it decides on: a suggestion is
+    shown back and a person confirms it. A name that merely looks similar
+    is the commonest way an unrelated supplier ends up disclosed as a
+    director's company.
+    """
+
+    __tablename__ = "related_parties"
+
+    id = db.Column(db.Integer, primary_key=True)
+    financial_year_id = db.Column(db.Integer,
+                                  db.ForeignKey("financial_years.id"),
+                                  nullable=False, index=True)
+
+    # As it should read in the accounts.
+    name = db.Column(db.String(255), nullable=False)
+    kind = db.Column(db.String(30), default="director", nullable=False)
+
+    # Every spelling this party appears under in the books.
+    spellings = db.Column(JSON)
+
+    # Free text the preparer wants the reviewer to see - "sole director,
+    # also owns the landlord company".
+    note = db.Column(db.Text)
+
+    # Carried from last year, so a preparer can see what they inherited
+    # rather than what they decided this year.
+    carried_from_id = db.Column(db.Integer,
+                                db.ForeignKey("related_parties.id"))
+
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    financial_year = db.relationship("FinancialYear")
+    carried_from = db.relationship("RelatedParty", remote_side=[id])
+    matches = db.relationship("RelatedPartyMatch", back_populates="party",
+                              cascade="all, delete-orphan")
+
+    @property
+    def kind_label(self):
+        return dict(RELATED_PARTY_KINDS).get(self.kind, self.kind)
+
+    @property
+    def all_names(self):
+        """Every string this party is known by, the printed name included."""
+        names = [self.name] + list(self.spellings or [])
+        seen, out = set(), []
+        for name in names:
+            key = " ".join(str(name or "").split()).lower()
+            if key and key not in seen:
+                seen.add(key)
+                out.append(name)
+        return out
+
+    def __repr__(self):
+        return f"<RelatedParty {self.name}>"
+
+
+class RelatedPartyMatch(db.Model):
+    """One thing in the books, decided to be with a related party - or not.
+
+    Addressed by subject type and id rather than by a foreign key, so the
+    same record serves a trial balance account today and a general ledger
+    entry when a ledger is loaded. The notes need both: the balances come
+    from mapped accounts, the transactions from entries.
+
+    A row exists only once a person has decided. A suggestion the engine
+    made and nobody has looked at is not stored, because a stored
+    suggestion read later is indistinguishable from a decision - and the
+    whole point of KI-01 is that the matches are shown back and confirmed.
+
+    A REJECTION IS A DECISION TOO, and is kept. Without it the same wrong
+    suggestion comes back every time the page is opened, and the preparer
+    who dismissed it last month has no way to show that they did.
+    """
+
+    __tablename__ = "related_party_matches"
+    __table_args__ = (
+        db.UniqueConstraint("financial_year_id", "subject_type", "subject_id",
+                            name="uq_related_party_match_subject"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    financial_year_id = db.Column(db.Integer,
+                                  db.ForeignKey("financial_years.id"),
+                                  nullable=False, index=True)
+
+    # NULL where the decision was "this is not a related party at all".
+    party_id = db.Column(db.Integer, db.ForeignKey("related_parties.id"))
+
+    subject_type = db.Column(db.String(20), nullable=False)   # tb_account
+    subject_id = db.Column(db.Integer, nullable=False)
+
+    # What the subject was called when the decision was made, so a later
+    # rename shows as a changed subject rather than silently carrying the
+    # decision onto something else.
+    subject_label = db.Column(db.String(255))
+
+    # confirmed | rejected
+    decision = db.Column(db.String(20), default="confirmed", nullable=False)
+
+    # Why the engine put this pair in front of a person: the spelling it
+    # matched on. Kept so a reviewer can see what the suggestion rested on.
+    matched_on = db.Column(db.String(255))
+
+    decided_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    decided_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    party = db.relationship("RelatedParty", back_populates="matches")
+
+    @property
+    def is_related(self):
+        return self.decision == "confirmed" and self.party_id is not None
+
+    def __repr__(self):
+        return (f"<RelatedPartyMatch {self.subject_type}:{self.subject_id} "
+                f"{self.decision}>")
+
+
 class DocumentFigure(db.Model):
     """One figure taken from a document the engine does not read.
 

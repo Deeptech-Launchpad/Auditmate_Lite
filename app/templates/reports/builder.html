@@ -456,6 +456,16 @@
          anticipates, and without this it gets typed into the Word file
          afterwards - so the app's copy and the delivered copy disagree from
          that moment on. #}
+      {# Two things a preparer supplies that the books cannot say: who the
+         related parties are, and the figures that live only in a document.
+         Both hold notes incomplete, so both are reachable from here. #}
+      <div class="side-links">
+        <a href="{{ url_for('reports.related_parties', fy_id=fy.id) }}"
+           class="btn btn-sm" style="width:100%">Related parties</a>
+        <a href="{{ url_for('documents.figures', fy_id=fy.id) }}"
+           class="btn btn-sm" style="width:100%">Figures from documents</a>
+      </div>
+
       <button type="button" id="open-add-note" class="btn btn-sm" style="width:100%">
         + Add a note that is not in the list
       </button>

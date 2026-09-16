@@ -248,6 +248,22 @@ def render_bindings(text: str, customer, financial_year,
     for key, value in disclosure_settings.resolved(customer).items():
         values[f"firm.{key}"] = value
 
+    # The related party register, for a preparer writing the related party
+    # note. Offered as a substitution, not imposed: FRS 24 wants the nature
+    # of the relationship described, and the library gives no binding for a
+    # party's name, so the sentence stays the preparer's to write. Only
+    # parties with something confirmed against them in the books appear -
+    # the rest are on the register but this engagement's figures cannot
+    # point at them. Left out entirely when there are none, so the binding
+    # prints as unfilled rather than as a confident blank.
+    from . import related_parties as related_service
+
+    confirmed = related_service.parties_in_play(financial_year)
+    if confirmed:
+        values["related.names"] = ", ".join(party.name for party in confirmed)
+        values["related.parties"] = ", ".join(
+            f"{party.name} ({party.kind_label.lower()})" for party in confirmed)
+
     def replace(match):
         key = match.group(1).strip()
 
@@ -1541,11 +1557,37 @@ def incomplete_reasons(section, payload, financial_year=None):
             if reason not in reasons:
                 reasons.append(reason)
 
+    # Who the related parties are, which nothing in the books can say.
+    # The library's KI-01 blocks these notes until a person has ruled on
+    # every candidate, because treating silence as "not related" would
+    # quietly drop a disclosure.
+    if financial_year is not None and _is_related_party_note(section):
+        from . import related_parties
+
+        for reason in related_parties.holds(financial_year):
+            if reason not in reasons:
+                reasons.append(reason)
+
     for blank in _MISSING_BLANK.findall(payload.get("html") or ""):
         text = f"Not filled in: {blank.strip('[]')}"
         if text not in reasons:
             reasons.append(text)
     return reasons
+
+
+# The notes the related party register decides. Matched on the library
+# code rather than on our section key, because the key follows the
+# library heading and the client has already renamed these twice.
+RELATED_PARTY_NOTES = ("RELATED_PARTY", "KEY_MANAGEMENT")
+
+
+def _is_related_party_note(section):
+    binding = section.data_binding or {}
+    codes = [spec.get("note_code") or "" for spec in
+             (binding.get("note_table_specs") or [])]
+    codes.append(binding.get("library_code") or "")
+    haystack = " ".join(codes).upper() + " " + (section.section_key or "").upper()
+    return any(name in haystack for name in RELATED_PARTY_NOTES)
 
 
 def record_completeness(report, payloads):
