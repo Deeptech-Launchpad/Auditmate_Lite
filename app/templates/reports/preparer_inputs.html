@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Preparer inputs · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block title %}Questions to answer · {{ fy.year_label }} · Auditmate Lite{% endblock %}
 {% block breadcrumb %}
   <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
   <span class="sep">/</span>
@@ -7,62 +7,116 @@
   <span class="sep">/</span>
   <a href="{{ url_for('reports.builder', fy_id=fy.id) }}">Financial Statements</a>
   <span class="sep">/</span>
-  <span class="current">Preparer inputs</span>
+  <span class="current">Questions</span>
 {% endblock %}
 
 {#
-  One macro for every answerable question, because the three modes differ
-  in what is shown above the box, not in how an answer is recorded.
+  WRITTEN FOR AN AUDITOR, NOT FOR WHOEVER BUILT IT.
 
-  The "decided" box is the whole point. A preparer who types nothing has
-  not said "none" - and a note that would print either way must not be
-  told otherwise. Nothing is inferred from an empty text box.
+  The first version of this page showed line codes (PL-DIRFEE), note codes
+  (N35_SHAREBASED_PAYMENT_P1), and the word "binding". None of that is a
+  preparer's vocabulary, and a page that has to be decoded before it can
+  be answered gets answered carelessly.
+
+  It also gave one box to questions that fill five rows of a note, so key
+  management personnel compensation - short-term, employer CPF, other
+  long-term, termination, share-based - had nowhere to put four of its
+  five figures. Each question now gets as many boxes as the library says
+  it fills, and the preparer names each one, because the library gives
+  the count but not the names.
 #}
-{% macro answer_box(row, kind) %}
+
+{% macro consequence(row) %}
+  {% if row.holds %}
+    <span class="pill pill-amber" title="Until this is answered the note prints Incomplete">
+      Needed before the note can be finished</span>
+  {% elif row.omits %}
+    <span class="pill" title="Leave it and these lines are simply left out">
+      Optional &mdash; leave it and these lines are left out</span>
+  {% endif %}
+{% endmacro %}
+
+{# The answer. Labels sit ABOVE each box: placeholder text disappears the
+   moment you click into it, which is exactly when you still need it. #}
+{% macro answer_box(row) %}
   <input type="hidden" name="mode__{{ row.item }}" value="{{ row.mode }}">
-  <div class="input-answer">
-    <label class="checkline">
+  <div class="ans">
+    {% if row.parts_wanted > 1 %}
+      <p class="ans-lead">
+        This fills <strong>{{ row.parts_wanted }} lines</strong> of the note.
+        Name each one and put its figure beside it.
+      </p>
+      <table class="ans-parts">
+        <thead><tr><th>What the line is called</th><th>Amount</th></tr></thead>
+        <tbody>
+          {% for i in range(row.parts_wanted) %}
+            {% set part = (row.answer.parts[i] if row.answer and row.answer.parts
+                           and row.answer.parts|length > i else None) %}
+            <tr>
+              <td><input type="text" class="input"
+                         name="part_label__{{ row.item }}__{{ i }}"
+                         value="{{ part.label if part else '' }}"></td>
+              <td><input type="text" class="input" inputmode="decimal"
+                         name="part_amount__{{ row.item }}__{{ i }}"
+                         value="{{ part.amount if part else '' }}"></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      {% if row.wants_figure %}
+        <label class="ans-label" for="a-{{ row.item }}">Amount</label>
+        <input id="a-{{ row.item }}" type="text" class="input" inputmode="decimal"
+               name="amount__{{ row.item }}"
+               value="{{ '%.2f'|format(row.answer.amount) if row.answer and row.answer.amount is not none else '' }}">
+      {% endif %}
+    {% endif %}
+
+    <label class="ans-label" for="t-{{ row.item }}">
+      {% if row.parts_wanted > 1 or row.wants_figure %}
+        Anything else worth recording <span class="muted">(optional)</span>
+      {% else %}
+        Your answer
+      {% endif %}
+    </label>
+    <textarea id="t-{{ row.item }}" class="input" rows="2"
+              name="answer__{{ row.item }}"
+              >{{ row.answer.answer if row.answer and row.answer.answer else '' }}</textarea>
+
+    <label class="ans-label" for="s-{{ row.item }}">
+      How you know <span class="muted">(optional)</span>
+    </label>
+    <input id="s-{{ row.item }}" type="text" class="input"
+           name="source__{{ row.item }}"
+           value="{{ row.answer.source if row.answer and row.answer.source else '' }}"
+           placeholder="e.g. confirmed with the director, 14 March">
+
+    <label class="checkline ans-done">
       <input type="checkbox" name="decided__{{ row.item }}"
              {% if row.answered %}checked{% endif %}>
-      <span>Answered</span>
+      <span><strong>I have answered this</strong>
+        <span class="muted">&mdash; tick it even if the answer is
+          &ldquo;none&rdquo;. Leaving it unticked means nobody has looked
+          yet, which is not the same thing.</span></span>
     </label>
-    {% if kind == 'amount' %}
-      <input type="text" class="input" inputmode="decimal"
-             name="amount__{{ row.item }}"
-             value="{{ '%.2f'|format(row.answer.amount) if row.answer and row.answer.amount is not none else '' }}"
-             placeholder="Figure">
-    {% endif %}
-    <textarea class="input" rows="2" name="answer__{{ row.item }}"
-              placeholder="{{ 'What the preparer says' if kind != 'amount' else 'Anything to add' }}"
-              >{{ row.answer.answer if row.answer and row.answer.answer else '' }}</textarea>
-    <input type="text" class="input small" name="source__{{ row.item }}"
-           value="{{ row.answer.source if row.answer and row.answer.source else '' }}"
-           placeholder="Where this came from — e.g. confirmed with the director, 14 March">
+
     {% if row.answered %}
       <label class="checkline muted small">
         <input type="checkbox" name="clear__{{ row.item }}">
-        <span>Put back to unanswered</span>
+        <span>Undo &mdash; put this back to unanswered</span>
       </label>
       <div class="muted small">
         Answered by {{ row.answer.who }}
-        {% if row.answer.carried_from_id %}· carried from last year{% endif %}
+        {% if row.answer.carried_from_id %}· brought forward from last year{% endif %}
       </div>
     {% endif %}
   </div>
 {% endmacro %}
 
-{% macro consequence(row) %}
-  {% if row.holds %}
-    <span class="pill pill-amber">Holds the note</span>
-  {% elif row.omits %}
-    <span class="pill">Rows drop out</span>
-  {% endif %}
-{% endmacro %}
-
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Preparer inputs</h1>
+    <h1>Questions to answer</h1>
     <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
   </div>
   <div class="page-actions">
@@ -71,12 +125,13 @@
   </div>
 </div>
 
-<p class="muted" style="max-width:66ch">
-  Everything a set of accounts needs that no trial balance holds. Narrowed
-  to this company &mdash; a company with no borrowings is not asked whether
-  a loan payment was missed. Answering &ldquo;no&rdquo; is an answer, and
-  the note says so; leaving a question alone is not, and the note prints
-  <strong>Incomplete</strong>.
+<p class="muted" style="max-width:68ch">
+  Some of what a set of accounts must disclose is not in the trial balance.
+  Sometimes the balance is there but the breakdown is not &mdash; one stock
+  figure that has to be split three ways. Sometimes there is no balance at
+  all, because nothing has happened yet: a machine ordered in November and
+  arriving in February. Those are the questions below, and only this
+  company&rsquo;s auditor can answer them.
 </p>
 
 <div class="card" style="margin-bottom:16px">
@@ -85,45 +140,148 @@
       <span class="muted small">of {{ summary.total }} answered</span></div>
     {% if summary.holding %}
       <div><span class="strong" style="font-size:1.4em">{{ summary.holding }}</span>
-        <span class="muted small">holding a note open</span></div>
+        <span class="muted small">notes waiting on an answer</span></div>
     {% endif %}
     {% if has_previous %}
       <form method="post" style="margin-left:auto">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="carry">
-        <button type="submit" class="btn">Carry last year's answers</button>
+        <button type="submit" class="btn">Bring forward last year's answers</button>
       </form>
     {% endif %}
   </div>
 </div>
 
 <form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+{% if proposed %}
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-head">
+      <h2>The books suggest an answer &mdash; check it</h2>
+      <span class="hint">{{ proposed|length }}</span>
+    </div>
+    <div class="card-body">
+      <p class="muted small" style="margin-top:0;max-width:66ch">
+        There is a figure in the books, but the note needs it broken down
+        and the breakdown is not recorded anywhere. What we found is shown
+        below. <strong>Nothing goes into the accounts until you enter
+        it.</strong>
+      </p>
+      {% for row in proposed %}
+        <div class="q">
+          <div class="q-head">
+            <span class="q-note">{{ row.note }}</span>
+            {{ consequence(row) }}
+          </div>
+          <p class="q-ask">{{ row.question }}</p>
+          {% if row.concludes %}
+            <p class="q-found"><span class="q-tag">What we found</span>
+              {{ row.concludes }}</p>
+          {% endif %}
+          {% if row.from_what %}
+            <p class="q-found"><span class="q-tag">Where we looked</span>
+              {{ row.from_what }}</p>
+          {% endif %}
+          {{ answer_box(row) }}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{% if asked %}
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-head">
+      <h2>Only you can answer these</h2>
+      <span class="hint">{{ asked|length }}</span>
+    </div>
+    <div class="card-body">
+      <p class="muted small" style="margin-top:0;max-width:66ch">
+        Nothing in the books can answer these &mdash; no entry was ever
+        made. If the answer is &ldquo;no&rdquo;, say so and tick the box:
+        a &ldquo;no&rdquo; is a disclosure, and silence is not.
+      </p>
+      {% for row in asked %}
+        <div class="q">
+          <div class="q-head">
+            <span class="q-note">{{ row.note }}</span>
+            {{ consequence(row) }}
+            {% if row.first_time_only %}
+              <span class="pill">Only on a first set of FRS accounts</span>
+            {% endif %}
+          </div>
+          <p class="q-ask">{{ row.question }}</p>
+          {% if row.example %}
+            <p class="q-found"><span class="q-tag">For example</span>
+              {{ row.example }}</p>
+          {% endif %}
+          {{ answer_box(row) }}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{% if blanks %}
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-head">
+      <h2>Wording the notes are missing</h2>
+      <span class="hint">{{ blanks|length }}</span>
+    </div>
+    <div class="card-body">
+      <p class="muted small" style="margin-top:0;max-width:66ch">
+        A sentence in one of the notes has a gap in it that only you can
+        fill &mdash; what a dispute is about, what an asset held for sale
+        is. Until it is filled the note says so where the words should be.
+      </p>
+      {% for row in blanks %}
+        <div class="q">
+          <div class="q-head">
+            <span class="q-note">{{ row.label }}</span>
+            {{ consequence(row) }}
+          </div>
+          <p class="q-ask">{{ row.question }}</p>
+          {% if row.notes_in_words %}
+            <p class="q-found"><span class="q-tag">Appears in</span>
+              {{ row.notes_in_words|join(', ') }}</p>
+          {% endif %}
+          {{ answer_box(row) }}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
 {% if derived %}
   <div class="card" style="margin-bottom:16px">
     <div class="card-head">
-      <h2>Concluded from what is already held</h2>
-      <span class="hint">{{ derived|length }} · nothing to answer</span>
+      <h2>Already settled &mdash; nothing to do</h2>
+      <span class="hint">{{ derived|length }}</span>
     </div>
     <div class="card-body">
       {#
-        Shown, not hidden. Every one of these is a decision to leave
-        something out of a client's accounts, and the person signing them
-        is entitled to see what it was read off before it is left out.
+        Shown rather than hidden. Every line here is a decision to leave
+        something out of a client's accounts, and whoever signs them is
+        entitled to see what that decision was read off before it is made
+        on their behalf.
       #}
-      <p class="muted small" style="margin-top:0">
-        Read off the mapping, the ledger or the client record. Shown so a
-        wrong conclusion can be caught, not because anything is wanted.
+      <p class="muted small" style="margin-top:0;max-width:66ch">
+        These answered themselves from what is already in the file &mdash;
+        almost always because the company does not have the thing at all.
+        Shown so you can catch one that is wrong, not because anything is
+        wanted from you.
       </p>
       <table class="table">
         <thead><tr>
-          <th style="width:26%">Note</th>
-          <th style="width:36%">What was concluded</th>
-          <th>Read off</th>
+          <th style="width:28%">Note</th>
+          <th style="width:36%">What we concluded</th>
+          <th>Read from</th>
         </tr></thead>
         <tbody>
           {% for row in derived %}
             <tr>
-              <td class="small"><span class="strong">{{ row.note }}</span>
-                <div class="muted small">{{ row.item }}</div></td>
+              <td class="small strong">{{ row.note }}</td>
               <td class="small">{{ row.concludes }}</td>
               <td class="small muted">{{ row.from_what }}</td>
             </tr>
@@ -134,118 +292,31 @@
   </div>
 {% endif %}
 
-{% if proposed %}
-  <div class="card" style="margin-bottom:16px">
-    <div class="card-head">
-      <h2>Worked out, for you to confirm</h2>
-      <span class="hint">{{ proposed|length }}</span>
-    </div>
-    <div class="card-body">
-      {#
-        The library says the preparer should see "the calculated figure,
-        to confirm". The basis is shown instead and the figure is typed:
-        every printed figure in these accounts is read from a source, and
-        one the engine worked out is read from nothing. Flagged for the
-        firm rather than decided quietly - see services/preparer_inputs.
-      #}
-      <p class="muted small" style="margin-top:0">
-        What the books suggest, and where it comes from. The figure is
-        yours to enter &mdash; nothing here is written into a note until
-        you do.
-      </p>
-      {% for row in proposed %}
-        <div class="input-block">
-          <div class="input-head">
-            <span class="strong">{{ row.note }}</span>
-            {{ consequence(row) }}
-          </div>
-          <p class="small" style="margin:.35em 0">{{ row.question }}</p>
-          {% if row.from_what %}
-            <p class="muted small" style="margin:.2em 0">
-              Basis: {{ row.from_what }}</p>
-          {% endif %}
-          {% if row.concludes %}
-            <p class="muted small" style="margin:.2em 0">
-              What the books suggest: {{ row.concludes }}</p>
-          {% endif %}
-          {{ answer_box(row, 'amount') }}
-        </div>
-      {% endfor %}
-    </div>
-  </div>
-{% endif %}
-
-{% if asked %}
-  <div class="card" style="margin-bottom:16px">
-    <div class="card-head">
-      <h2>Only you know</h2>
-      <span class="hint">{{ asked|length }}</span>
-    </div>
-    <div class="card-body">
-      {% for row in asked %}
-        <div class="input-block">
-          <div class="input-head">
-            <span class="strong">{{ row.note }}</span>
-            {{ consequence(row) }}
-            {% if row.first_time_only %}
-              <span class="pill">First FRS accounts only</span>
-            {% endif %}
-          </div>
-          <p class="small" style="margin:.35em 0">{{ row.question }}</p>
-          {% if row.example %}
-            <p class="muted small" style="margin:.2em 0">
-              For example: {{ row.example }}</p>
-          {% endif %}
-          {{ answer_box(row, 'text') }}
-        </div>
-      {% endfor %}
-    </div>
-  </div>
-{% endif %}
-
-{% if blanks %}
-  <div class="card" style="margin-bottom:16px">
-    <div class="card-head">
-      <h2>Blanks in the wording</h2>
-      <span class="hint">{{ blanks|length }}</span>
-    </div>
-    <div class="card-body">
-      {#
-        These name the exact paragraph they sit in, and until now nothing
-        offered them: an unanswered one printed "[contingent liability
-        nature not provided]" in the preview with no way to provide it.
-      #}
-      <p class="muted small" style="margin-top:0">
-        Words a paragraph needs and no figure supplies. Until one is
-        answered the paragraph says, in the preview, which blank is short.
-      </p>
-      {% for row in blanks %}
-        <div class="input-block">
-          <div class="input-head">
-            <span class="strong">{{ row.label }}</span>
-            {{ consequence(row) }}
-          </div>
-          <p class="small" style="margin:.35em 0">{{ row.question }}</p>
-          <p class="muted small" style="margin:.2em 0">
-            Appears in {{ row.used_in }}</p>
-          {{ answer_box(row, 'amount' if row.format == 'Amount' else 'text') }}
-        </div>
-      {% endfor %}
-    </div>
-  </div>
-{% endif %}
-
 <div class="form-actions">
   <button type="submit" class="btn btn-primary">Save answers</button>
 </div>
 </form>
 
 <style>
-  .input-block { padding:14px 0; border-top:1px solid var(--line, #e5e5e5); }
-  .input-block:first-of-type { border-top:0; }
-  .input-head { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  .input-answer { display:flex; flex-direction:column; gap:6px;
-                  max-width:70ch; margin-top:6px; }
-  .checkline { display:flex; gap:7px; align-items:center; }
+  .q { padding:16px 0; border-top:1px solid var(--line, #e5e5e5); }
+  .q:first-of-type { border-top:0; padding-top:4px; }
+  .q-head { display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+            margin-bottom:6px; }
+  .q-note { font-weight:600; }
+  .q-ask { margin:.2em 0 .6em; max-width:70ch; }
+  .q-found { margin:.15em 0; font-size:.88em; color:var(--muted, #666);
+             max-width:70ch; }
+  .q-tag { display:inline-block; min-width:9.5em; font-weight:600; }
+  .ans { display:flex; flex-direction:column; gap:4px; max-width:62ch;
+         margin-top:10px; padding-left:12px;
+         border-left:2px solid var(--line, #e5e5e5); }
+  .ans-lead { margin:0 0 6px; font-size:.9em; }
+  .ans-label { font-size:.82em; font-weight:600; margin-top:6px; }
+  .ans-done { margin-top:10px; align-items:flex-start; }
+  .ans-parts { width:100%; border-collapse:collapse; margin-bottom:4px; }
+  .ans-parts th { text-align:left; font-size:.78em; font-weight:600;
+                  padding:2px 6px 4px 0; color:var(--muted, #666); }
+  .ans-parts td { padding:2px 6px 2px 0; }
+  .checkline { display:flex; gap:8px; align-items:center; }
 </style>
 {% endblock %}

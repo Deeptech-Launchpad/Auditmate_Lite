@@ -110,6 +110,11 @@
                   {{ row.outstanding_parts|join(', ') }}
                 {% elif group.key == 'done' %}
                   <span class="muted">&mdash;</span>
+                {% elif group.key == 'answer' %}
+                  {# Saying "the document" here contradicted the heading
+                     two lines above it: these are the rows for which no
+                     document exists anywhere. #}
+                  <span class="muted">an answer</span>
                 {% else %}
                   <span class="muted">the document</span>
                 {% endif %}

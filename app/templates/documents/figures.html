@@ -71,8 +71,11 @@
          answered correctly by anybody. #}
       {% for group in document.groups %}
         {% if group.heading %}
-          <div class="df-group">{{ group.heading }}
-            {%- if group.scope %}<span class="df-scope">{{ group.scope }}</span>{% endif %}</div>
+          <div class="df-group">{{ group.label or group.heading }}
+            {#- The scope is a table id and stays in the form field names,
+                where it is addressing and nobody reads it. What shows is
+                the note's own name, numbered where one note has two
+                tables on this page. -#}</div>
           {% if group.hint %}<p class="df-hint">{{ group.hint }}</p>{% endif %}
         {% endif %}
 
@@ -139,11 +142,11 @@
                 {% for field in group.grid %}
                   <tr>
                     <td>
-                      <div class="df-name">{{ field.meaning }}</div>
-                      <div class="df-binding">{{ field.binding }}
-                        {%- if not field.blocking %}
-                          <span class="df-optional">not required</span>
-                        {%- endif %}</div>
+                      <div class="df-name" title="{{ field.binding }}">{{ field.meaning }}</div>
+                      {%- if not field.blocking %}
+                        <div class="df-binding">
+                          <span class="df-optional">optional</span></div>
+                      {%- endif %}
                     </td>
                     {% for cell in field.cells %}
                       <td class="{{ 'df-total-col' if cell.member == 'Total' }}">
@@ -175,11 +178,11 @@
               {% set box = field.token ~ '__' ~ field.field ~ '__' ~ group.scope %}
               <tr class="{{ 'needed' if field.blocking and not field.answer }}">
                 <td>
-                  <div class="df-name">{{ field.meaning }}</div>
-                  <div class="df-binding">{{ field.binding }}
-                    {%- if not field.blocking %}
-                      <span class="df-optional">not required</span>
-                    {%- endif %}</div>
+                  <div class="df-name" title="{{ field.binding }}">{{ field.meaning }}</div>
+                  {%- if not field.blocking %}
+                    <div class="df-binding">
+                      <span class="df-optional">optional</span></div>
+                  {%- endif %}
                 </td>
                 <td>
                   <input type="text" inputmode="decimal" class="df-amount"
@@ -197,7 +200,7 @@
                                          else 'e.g. YA2024 computation, page 2' }}"
                          aria-label="Where {{ field.meaning|lower }} was found">
                 </td>
-                <td class="small muted">{{ field.how }}
+                <td class="small muted">{{ field.how|in_words }}
                   {%- if field.blocking_note and not field.blocking_note.lower() == 'yes'
                          and not field.blocking_note.lower() == 'no' %}
                     <span class="df-optional">{{ field.blocking_note }}</span>

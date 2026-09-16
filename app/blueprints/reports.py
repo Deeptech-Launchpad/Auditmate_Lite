@@ -163,7 +163,7 @@ def preparer_inputs(fy_id):
                 financial_year, item, mode=values["mode"],
                 answer=values["answer"], amount=values["amount"],
                 source=values["source"], proposed=values["proposed"],
-                accepted_proposal=values["accepted"],
+                accepted_proposal=values["accepted"], parts=values["parts"],
                 user_id=current_user.id, commit=False)
             saved += 1
         db.session.commit()
@@ -217,7 +217,24 @@ def _posted_inputs(form):
                 amount = Decimal(raw.replace(",", "").replace("$", ""))
             except (InvalidOperation, ValueError):
                 amount = None
+        # A question that fills several rows of a note comes back as
+        # several label/amount pairs. An empty pair is dropped rather than
+        # stored: a blank line in a note is not an answer.
+        parts = []
+        index = 0
+        while True:
+            label = form.get(f"part_label__{item}__{index}")
+            amount = form.get(f"part_amount__{item}__{index}")
+            if label is None and amount is None:
+                break
+            label = (label or "").strip()
+            amount = (amount or "").strip()
+            if label or amount:
+                parts.append({"label": label, "amount": amount})
+            index += 1
+
         out[item] = {
+            "parts": parts or None,
             "mode": form.get(f"mode__{item}") or "Ask",
             "decided": form.get(key) == "on" or form.get(key) == "1",
             "clear": form.get(f"clear__{item}") in ("on", "1"),

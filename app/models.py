@@ -1807,6 +1807,15 @@ class PreparerInput(db.Model):
     # looks for.
     source = db.Column(db.String(255))
 
+    # A question that fills several rows of a note, answered in several
+    # parts: [{"label": "Employer CPF", "amount": "44315.00"}, ...].
+    #
+    # The sheet says how many rows each question fills - five for key
+    # management personnel, ten for fair value - but not what those rows
+    # are called. So the preparer names each part as well as figuring it,
+    # and one box for a five-part question is replaced by five.
+    parts = db.Column(db.JSON)
+
     carried_from_id = db.Column(db.Integer,
                                 db.ForeignKey("preparer_inputs.id"))
 

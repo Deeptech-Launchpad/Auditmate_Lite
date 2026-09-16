@@ -43,6 +43,7 @@ That is the one instruction here not followed as written: the basis is
 shown, and the preparer types the figure. See `_basis_only`.
 """
 import logging
+import re
 
 from ..extensions import db
 from ..models import (INPUT_HOLD, INPUT_OMIT, NoteLibraryNote, PreparerInput)
@@ -101,12 +102,50 @@ def _applies(financial_year, note_code, asked_when):
     return document_fields._note_applies(financial_year, note_code)
 
 
+def _rows_wanted(raw):
+    """How many rows of the note one answer fills. One, unless it says more.
+
+    A question that fills five rows needs five boxes. Giving it one was
+    not merely confusing - key management personnel wants short-term
+    benefits, employer CPF, other long-term, termination and share-based
+    as five separate figures, and there was nowhere to put four of them.
+    """
+    try:
+        return max(1, int(str(raw).strip()))
+    except (TypeError, ValueError):
+        return 1
+
+
+_CODE = re.compile(r"\b(?:PL|BS|CF|EQ)-[A-Z0-9]+\b")
+
+
+def _plain(text, labels):
+    """The library's own sentence with its line codes said in words.
+
+    "PL-DIRFEE and PL-CPF, plus the directors named on BizFile" is how the
+    workbook writes it, and it is correct. It is not how an auditor reads,
+    and a page that has to be decoded before it can be answered gets
+    answered carelessly. A code with no label is left alone rather than
+    mangled into something that looks like a label and is not.
+    """
+    if not text:
+        return text
+
+    def swap(match):
+        return labels.get(match.group(0)) or match.group(0)
+
+    return _CODE.sub(swap, str(text))
+
+
 def catalogue(financial_year):
     """Every question this engagement should see, in the sheet's own words."""
     version = _version(financial_year)
     if version is None:
         return []
     codes = _note_codes(version)
+    from . import line_codes
+
+    labels = line_codes.code_labels(financial_year) or {}
     out = []
     for row in version.sheet("Preparer inputs"):
         item = str(row.get("Item") or "").strip()
@@ -124,8 +163,10 @@ def catalogue(financial_year):
             "mode": mode,
             "note": note,
             "note_code": note_code,
-            "concludes": str(row.get("What the engine concludes") or "").strip(),
-            "from_what": str(row.get("From what") or "").strip(),
+            "concludes": _plain(
+                str(row.get("What the engine concludes") or "").strip(), labels),
+            "from_what": _plain(
+                str(row.get("From what") or "").strip(), labels),
             "sees": str(row.get("What the preparer sees") or "").strip(),
             "question": str(row.get("Question, where one is put") or "").strip(),
             "example": str(row.get("Example") or "").strip(),
@@ -134,10 +175,43 @@ def catalogue(financial_year):
             "holds": unanswered == INPUT_HOLD,
             "omits": unanswered == INPUT_OMIT,
             "rows": str(row.get("Rows") or "").strip(),
+            "parts_wanted": _rows_wanted(row.get("Rows")),
+            # A proposal is about a figure the books nearly answer, so it
+            # gets an amount box. An "Ask" is almost always a sentence -
+            # "was any invoice factored" - and showing an empty Amount
+            # field beside it invites a number that means nothing.
+            "wants_figure": mode == PROPOSE,
             "basis_only": item in _basis_only,
             "first_time_only": asked_when.lower() == FIRST_TIME_ONLY,
         })
     return out
+
+
+def _headings(version):
+    """Plain heading for each note code, so no code reaches the page.
+
+    "Appears in N35_SHAREBASED_PAYMENT_P1" is how a developer reads it.
+    An auditor reads "Share-based payment", and the paragraph number is
+    not their problem.
+    """
+    return {row.library_code: row.heading
+            for row in NoteLibraryNote.query.filter_by(
+                library_version_id=version.id).all() if row.library_code}
+
+
+def _in_words(used_in, headings):
+    """Turn "N35_SHAREBASED_PAYMENT_P1, N44_..." into note names."""
+    names = []
+    for part in str(used_in or "").replace(";", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        # The paragraph suffix - _P1, _P30 - is addressing, not meaning.
+        stem = part.rsplit("_P", 1)[0] if "_P" in part else part
+        name = headings.get(stem) or headings.get(part)
+        if name and name not in names:
+            names.append(name)
+    return names
 
 
 def blanks(financial_year):
@@ -151,6 +225,7 @@ def blanks(financial_year):
     version = _version(financial_year)
     if version is None:
         return []
+    headings = _headings(version)
     out = []
     for row in version.sheet("Fields"):
         if str(row.get("Supplied by") or "").strip() != "Preparer input":
@@ -159,6 +234,7 @@ def blanks(financial_year):
         if not field:
             continue
         blocking = str(row.get("Blocking if unresolved") or "")
+        used_in = str(row.get("Used in") or "").strip()
         out.append({
             "item": "field." + field,
             "field": field,
@@ -169,7 +245,11 @@ def blanks(financial_year):
             "holds_text": blocking.strip(),
             "question": str(row.get("What it holds") or "").strip(),
             "format": str(row.get("Format") or "").strip(),
-            "used_in": str(row.get("Used in") or "").strip(),
+            "used_in": used_in,
+            "notes_in_words": _in_words(used_in, headings),
+            "rows": "1",
+            "parts_wanted": 1,
+            "wants_figure": str(row.get("Format") or "").strip() == "Amount",
         })
     return out
 
@@ -181,8 +261,8 @@ def stored(financial_year):
 
 
 def save(financial_year, item, *, mode=ASK, answer=None, amount=None,
-         source=None, proposed=None, accepted_proposal=False, clear=False,
-         user_id=None, commit=True):
+         source=None, proposed=None, accepted_proposal=False, parts=None,
+         clear=False, user_id=None, commit=True):
     """Record an answer. Returns the row, or None when cleared.
 
     Clearing is not the same as answering no. It puts the question back to
@@ -210,6 +290,7 @@ def save(financial_year, item, *, mode=ASK, answer=None, amount=None,
     row.source = (source or "").strip() or None
     row.proposed = (proposed or "").strip() or None
     row.accepted_proposal = bool(accepted_proposal)
+    row.parts = parts or None
     row.decided = True
     row.decided_by = user_id
     if commit:

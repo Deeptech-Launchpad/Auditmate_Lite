@@ -270,7 +270,7 @@
                 {{ item.note }}{% if item.heading %} &mdash; {{ item.heading }}{% endif %}
               </div>
               {% if item.question %}
-                <div class="gap-detail muted small">{{ item.question }}</div>
+                <div class="gap-detail muted small">{{ item.question|in_words }}</div>
               {% endif %}
               {% if item.wording and '[table' not in item.wording %}
                 <div class="gap-detail small"

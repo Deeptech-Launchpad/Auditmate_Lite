@@ -507,6 +507,31 @@ def documents(financial_year):
 
         document["missing"] = [field for group in document["groups"]
                                for field in group["missing"]]
+
+        # A name for each group that a preparer can read. The scope is a
+        # table id - N09_PROPERTY_PLANT_EQUIPMENT_T6 - and it was printed
+        # beside the heading to tell two tables of the same note apart.
+        # It did tell them apart, and it also put template addressing in
+        # front of an auditor. Numbered instead, and only where a note
+        # really does have more than one table on this page.
+        seen = {}
+        for group in document["groups"]:
+            heading = group.get("heading")
+            if heading:
+                seen[heading] = seen.get(heading, 0) + 1
+        run = {}
+        for group in document["groups"]:
+            heading = group.get("heading")
+            if not heading:
+                group["label"] = ""
+                continue
+            if seen[heading] > 1:
+                run[heading] = run.get(heading, 0) + 1
+                group["label"] = "%s (table %d of %d)" % (
+                    heading, run[heading], seen[heading])
+            else:
+                group["label"] = heading
+
         out.append(document)
     return out
 

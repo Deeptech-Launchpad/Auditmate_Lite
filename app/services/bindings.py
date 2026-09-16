@@ -452,8 +452,11 @@ class Figures:
                 if other in codes:
                     continue
                 if any(self._carries(other, o) for o in (0, 1)):
+                    # The label alone. The code used to follow it in
+                    # brackets, which told a developer which binding and
+                    # told a preparer nothing they could act on.
                     return Held(f"Not in this table but on the same statement "
-                                f"line: {self.label(other)} ({other})")
+                                f"line: {self.label(other)}")
 
         period = self.period(offset)
         if period.get("nil"):

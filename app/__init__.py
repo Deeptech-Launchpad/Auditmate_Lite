@@ -1,6 +1,7 @@
 """Application factory."""
 import logging
 import os
+import re
 from datetime import datetime
 
 from flask import Flask, render_template
@@ -188,6 +189,28 @@ def create_app(config_object=Config):
         """True for a source document's own total line, not an account."""
         from .services.extraction.base import looks_like_total_label
         return looks_like_total_label(label)
+
+    @app.template_filter("in_words")
+    def _in_words(text):
+        """A sentence with its line codes said in plain words.
+
+        The notes library writes "all buckets must total BS-TR gross",
+        which is exact and is also not how an auditor reads. Applied where
+        library prose reaches a screen, so a preparer is never asked to
+        decode a page before they can answer it. A code with no label is
+        left alone rather than mangled into something that looks like one.
+        """
+        if not text:
+            return text
+        from .services import line_codes
+
+        try:
+            labels = line_codes.code_labels() or {}
+        except Exception:          # pragma: no cover - never break a page
+            return text
+        pattern = re.compile("(?:PL|BS|CF|EQ)-[A-Z0-9]+")
+        return pattern.sub(lambda m: labels.get(m.group(0)) or m.group(0),
+                           str(text))
 
     @app.template_filter("datefmt")
     def datefmt(value, fmt="%d %b %Y"):
