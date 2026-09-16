@@ -20,6 +20,16 @@
     <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
   </div>
   <div class="page-actions">
+    <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id) }}"
+       class="btn supply">Questions
+      {%- if waiting.questions %}<span class="supply-n">{{ waiting.questions }}</span>{% endif %}</a>
+    <a href="{{ url_for('documents.figures', fy_id=fy.id) }}"
+       class="btn supply">Figures
+      {%- if waiting.figures %}<span class="supply-n">{{ waiting.figures }}</span>{% endif %}</a>
+    <a href="{{ url_for('reports.related_parties', fy_id=fy.id) }}"
+       class="btn supply">Related parties
+      {%- if waiting.parties %}<span class="supply-n">{{ waiting.parties }}</span>{% endif %}</a>
+    <span class="supply-sep"></span>
     <a href="{{ url_for('reports.preview', report_id=report.id) }}"
        class="btn" target="_blank">Preview full report</a>
     {# Word first, and primary. It is the deliverable: the preparer finishes
@@ -471,20 +481,10 @@
          anticipates, and without this it gets typed into the Word file
          afterwards - so the app's copy and the delivered copy disagree from
          that moment on. #}
-      {# Two things a preparer supplies that the books cannot say: who the
-         related parties are, and the figures that live only in a document.
-         Both hold notes incomplete, so both are reachable from here. #}
-      <div class="side-links">
-        <a href="{{ url_for('reports.related_parties', fy_id=fy.id) }}"
-           class="btn btn-sm" style="width:100%">Related parties</a>
-        <a href="{{ url_for('documents.figures', fy_id=fy.id) }}"
-           class="btn btn-sm" style="width:100%">Figures from documents</a>
-        {# The library's own questions. Same reason as the two above: an
-           unanswered one that the sheet says holds its note keeps that
-           note incomplete, so the answer has to be reachable from here. #}
-        <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id) }}"
-           class="btn btn-sm" style="width:100%">Preparer inputs</a>
-      </div>
+      {# The three places a preparer supplies what the books cannot say -
+         questions, figures, related parties - now live in the page header
+         with their counts, where they are seen without scrolling past
+         fifty-three notes to find them. #}
 
       <button type="button" id="open-add-note" class="btn btn-sm" style="width:100%">
         + Add a note that is not in the list
@@ -577,7 +577,15 @@
           .rpt-mini .rpt-page { background: #fff; padding: 26px 30px;
                                 margin-bottom: 12px;
                                 box-shadow: 0 1px 3px rgba(0,0,0,.15); }
-          .gap-fix { display:inline-block; margin-top:6px; font-size:.86em;
+          .supply { position:relative; }
+  .supply-n {
+    display:inline-block; margin-left:6px; padding:1px 7px; border-radius:9px;
+    background:#c0392b; color:#fff; font-size:.78em; font-weight:600;
+    font-variant-numeric: tabular-nums;
+  }
+  .supply-sep { display:inline-block; width:1px; align-self:stretch;
+                background:var(--border); margin:0 4px; }
+  .gap-fix { display:inline-block; margin-top:6px; font-size:.86em;
               font-weight:600; text-decoration:none; }
   /* Held for a couple of seconds after the jump, so it is obvious which
      of fifty-three notes was meant. Fades rather than blinks. */

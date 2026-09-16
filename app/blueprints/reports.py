@@ -1,5 +1,6 @@
 """Audit report builder, preview and PDF export."""
 import io
+import logging
 import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -11,6 +12,8 @@ from flask_login import current_user, login_required
 from ..extensions import db
 from ..models import (AuditReport, AuditReportSection, FinancialStatement,
                       FinancialYear, ReportFigureOverride, StatementLine)
+log = logging.getLogger(__name__)
+
 from ..services import overrides as overrides_service
 from ..services import preparer_checks as checks_service
 from ..services import provenance as provenance_service, readiness
@@ -111,6 +114,12 @@ def builder(fy_id):
                            final_version=financial_year.final_version,
                            tb_approved_at=financial_year.tb_approved_at,
                            readiness=readiness.check(financial_year),
+                           # What is outstanding in the three places a
+                           # preparer supplies what the books cannot say.
+                           # Shown as counts in the header, because a link
+                           # parked under fifty-three notes is a link
+                           # nobody finds.
+                           waiting=_waiting_counts(financial_year),
                            overrides=overrides_service.for_report(report),
                            overrides_in_force=overrides_service.count_live(report),
                            checks=checks_service.build(
@@ -187,6 +196,32 @@ def preparer_inputs(fy_id):
                and not r["item"].startswith("field.")],
         blanks=[r for r in rows if r["item"].startswith("field.")],
         has_previous=_previous_year(financial_year) is not None)
+
+
+def _waiting_counts(financial_year):
+    """How much is outstanding behind each of the three side pages.
+
+    Counted rather than merely linked: a preparer should be told there are
+    eighteen unanswered questions before they go looking, not discover the
+    page by accident after the draft comes out incomplete.
+    """
+    from ..services import document_fields, preparer_inputs, related_parties
+
+    out = {"parties": 0, "figures": 0, "questions": 0}
+    try:
+        out["parties"] = len(related_parties.undecided(financial_year))
+    except Exception:                      # pragma: no cover - never a 500
+        log.exception("Related party count failed")
+    try:
+        out["figures"] = sum(len(d["missing"]) for d
+                             in document_fields.documents(financial_year))
+    except Exception:                      # pragma: no cover
+        log.exception("Figure count failed")
+    try:
+        out["questions"] = len(preparer_inputs.outstanding(financial_year))
+    except Exception:                      # pragma: no cover
+        log.exception("Question count failed")
+    return out
 
 
 def _previous_year(financial_year):
