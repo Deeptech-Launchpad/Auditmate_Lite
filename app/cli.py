@@ -31,6 +31,7 @@ def register_cli(app):
     app.cli.add_command(load_test_engagement)
     app.cli.add_command(assign_line_codes)
     app.cli.add_command(activate_note_library)
+    app.cli.add_command(drop_note_library)
     app.cli.add_command(move_to_library)
     app.cli.add_command(setup_production)
     app.cli.add_command(fix_report_layout)
@@ -1476,3 +1477,23 @@ def move_to_library(financial_year_id, version_label, reason, rebuild_notes):
     else:
         click.echo("The existing report still holds notes from the old "
                    "version. Run again with --rebuild-notes to rebuild them.")
+
+
+@click.command("drop-note-library")
+@click.argument("version_label")
+@with_appcontext
+def drop_note_library(version_label):
+    """Remove a withdrawn library version. Refused while anything uses it."""
+    from .models import NoteLibraryVersion
+    from .services import note_library as nl
+
+    version = (NoteLibraryVersion.query.filter_by(version_label=version_label)
+               .order_by(NoteLibraryVersion.imported_at.desc()).first())
+    if version is None:
+        raise click.ClickException(f"No library version {version_label} loaded")
+    try:
+        result = nl.drop_version(version)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+    click.echo(f"Dropped version {result['version']} and its "
+               f"{result['notes']} notes. Nothing reported under it.")

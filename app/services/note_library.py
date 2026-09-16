@@ -890,6 +890,35 @@ def move_engagement(financial_year, version, reason):
     return previous
 
 
+def drop_version(version):
+    """Remove a loaded library version. Recorded.
+
+    Refused while an engagement is pinned to it: the promise versioning makes
+    is that a period reports under the library that was in force for it, and
+    an engagement whose library has been deleted can no longer reproduce the
+    accounts it issued. Used when the firm withdraws a version - 2.1 was
+    withdrawn by the client the day 3.5 replaced it - after its engagements
+    have been moved.
+    """
+    from .audit import record
+
+    pinned = FinancialYear.query.filter_by(library_version_id=version.id).all()
+    if pinned:
+        names = ", ".join(f"{fy.customer.name} {fy.year_label}"
+                          for fy in pinned[:5])
+        raise ValueError(f"{len(pinned)} engagement(s) still report under "
+                         f"{version.version_label}: {names}. Move them first.")
+
+    label, notes = version.version_label, len(version.notes)
+    record("note_library_version", version.id, "drop",
+           before={"version": label, "status": version.status,
+                   "notes": notes})
+    db.session.delete(version)
+    db.session.commit()
+    log.info("Dropped notes library version %s (%d notes)", label, notes)
+    return {"version": label, "notes": notes}
+
+
 def supersede_overlapping(version):
     """Make `version` the active one for its year ends. Returns labels retired.
 
