@@ -28,6 +28,17 @@
   </div>
 {% endmacro %}
 
+{#
+  Whether this rendering is a working copy.
+
+  The builder and the on-screen preview always are. A stamped draft export
+  is. The clean copy the client receives is not, and shows no working marks
+  - not the Incomplete reasons, not the override marks, not the sources.
+#}
+{% set show_working_marks = editable|default(false)
+                            or draft_incomplete|default(false)
+                            or not for_pdf|default(false) %}
+
 {% macro amount_cell(value) %}
   <td class="num">{{ value|stmt }}</td>
 {% endmacro %}
@@ -35,6 +46,33 @@
 {# A figure nobody can source yet. Never a dash - a dash says nil. #}
 {% macro held_cell(reason) %}
   <td class="num held" title="{{ reason }}">Incomplete</td>
+{% endmacro %}
+
+{#
+  A figure a person typed over (library 3.5, OV-05).
+
+  The reviewer's problem is not that an override happened - it is telling an
+  assembled figure from a typed one at a glance. So the mark goes where the
+  figure prints, and carries the four things OV-03 keeps: what the source
+  said, who changed it, when, and why.
+
+  Working copy only. It shows in the builder, in the on-screen preview and
+  in a stamped draft; the clean copy the client receives is the accounts,
+  not the working papers, and prints the figure plain.
+#}
+{% macro override_mark(record) %}
+  {%- if record -%}
+    <span class="ov-mark" title="{{ record.source_name|capitalize }} said
+{{- ' ' }}{{ record.source_amount|stmt if record.source_amount is not none
+              else record.source_label or '(nothing)' }}.
+{{- ' ' }}Changed by {{ record.who }}{% if record.when %} on
+{{- ' ' }}{{ record.when|datefmt('%d %b %Y') }}{% endif %}.
+{{- ' ' }}Reason: {{ record.reason or 'not given' }}">typed</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% macro overridden_cell(value, record) %}
+  <td class="num was-typed">{{ value|stmt }}{{ override_mark(record) }}</td>
 {% endmacro %}
 
 {#
@@ -83,12 +121,17 @@
            ' is-computed' if line.is_computed and not line.is_overridden }}">
       <span class="ed-amount" contenteditable="true"
             data-line-id="{{ line.id }}" data-field="amount"
+            data-source-label="{{ line.effective_label }}"
             data-computed="{{ line.amount_current }}">{{ line.effective_amount|stmt }}</span>
+      {{ override_mark(line.override_record) }}
       {% if from_tb or line.is_computed %}
         <button type="button" class="src-dot" data-line-id="{{ line.id }}"
                 title="Where this figure came from">&#9432;</button>
       {% endif %}
     </td>
+  {% elif line.override_record and show_working_marks %}
+    <td class="num was-typed">{{ line.effective_amount|stmt
+       }}{{ override_mark(line.override_record) }}</td>
   {% else %}
     <td class="num">{{ line.effective_amount|stmt }}</td>
   {% endif %}
@@ -323,7 +366,11 @@
         {% endif %}
       {% endif %}
 
-      <div class="rpt-body"{% if editable %} contenteditable="true"
+      {# `ov-show` turns on the margin mark that a paragraph carrying
+         data-override draws for itself - see _styles.html. Wording a person
+         wrote over the library's (OV-02) is marked in the working copy for
+         the same reason a typed figure is, and is plain in the clean copy. #}
+      <div class="rpt-body{{ ' ov-show' if show_working_marks }}"{% if editable %} contenteditable="true"
            data-section-id="{{ section.id }}" data-field="content_html"
            data-placeholder="Click to write this section…"{% endif %}>{{ payload.html|safe }}</div>
 
@@ -385,13 +432,18 @@
                           data-computed="{{ row.computed_current
                                             if row.computed_current is not none
                                             else row.current }}"
+                          data-source-label="{{ row.original_label or row.label }}"
                           >{{ row.current|stmt }}</span>
+                    {{ override_mark(row.override_record) }}
                     {% if acct_id %}
                       <button type="button" class="src-dot"
                               data-account-id="{{ acct_id }}"
                               title="Where this figure came from">&#9432;</button>
                     {% endif %}
                   </td>
+                  {{ amount_cell(row.previous) }}
+                {% elif row.override_record and show_working_marks %}
+                  {{ overridden_cell(row.current, row.override_record) }}
                   {{ amount_cell(row.previous) }}
                 {% else %}
                   {{ amount_cell(row.current) }}

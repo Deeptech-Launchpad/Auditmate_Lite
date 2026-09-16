@@ -10,6 +10,7 @@ from flask_login import current_user, login_required
 from ..extensions import db
 from ..models import (AuditReport, AuditReportSection, FinancialStatement,
                       FinancialYear, ReportFigureOverride, StatementLine)
+from ..services import overrides as overrides_service
 from ..services import provenance as provenance_service, readiness
 from ..services import reports as report_service
 from ..services import statements as statement_service
@@ -62,6 +63,15 @@ def builder(fy_id):
         flash(f"{carried} note(s) start from last year's wording — check each "
               f"one still describes the company.", "info")
 
+    # Last year's overrides, brought across with their reasons (library
+    # 3.5, OV-06): this year's comparative is last year's figure, so a
+    # preparer inheriting it has to be able to see that it was changed.
+    # Carried as history, never silently reapplied - this year has its own
+    # trial balance.
+    previous = getattr(financial_year, "previous_year", None)
+    if previous is not None and previous.reports:
+        overrides_service.carry_forward(report, previous.reports[0])
+
     # A closed engagement renders the finished document, not an editor.
     editable = not financial_year.is_closed
 
@@ -99,6 +109,8 @@ def builder(fy_id):
                            final_version=financial_year.final_version,
                            tb_approved_at=financial_year.tb_approved_at,
                            readiness=readiness.check(financial_year),
+                           overrides=overrides_service.for_report(report),
+                           overrides_in_force=overrides_service.count_live(report),
                            pdf_available=report_service.weasyprint_available())
 
 
@@ -142,19 +154,13 @@ def update_section(section_id):
 
 
 def _decimal(raw):
-    """Parse a figure typed into the report. Returns (value, error)."""
-    from decimal import Decimal, InvalidOperation
+    """Parse a figure typed into the report. Returns (value, error).
 
-    if raw is None or str(raw).strip() == "":
-        return None, None                     # cleared: revert to computed
-    cleaned = (str(raw).replace(",", "").replace("−", "-").strip())
-    # Accountants write a negative as (1,234).
-    if cleaned.startswith("(") and cleaned.endswith(")"):
-        cleaned = "-" + cleaned[1:-1].strip()
-    try:
-        return Decimal(cleaned), None
-    except InvalidOperation:
-        return None, f"{raw!r} is not a number."
+    One parser for both places a figure can be typed - a line on the face
+    and a row in a note - so "(1,234)" cannot mean one thing on the balance
+    sheet and another two pages later.
+    """
+    return overrides_service.parse_amount(raw)
 
 
 @bp.route("/api/line/<int:line_id>", methods=["PATCH"])
@@ -183,6 +189,25 @@ def update_line(line_id):
         value, error = _decimal(payload["amount"])
         if error:
             return jsonify({"ok": False, "error": error}), 400
+        # A figure on the face is overridden on the same terms as a figure
+        # in a note (library 3.5, OV-04): a reason, entered at the time.
+        # Clearing needs none - it withdraws a change already on the record.
+        if value is not None and value != line.manual_override_amount:
+            reason = " ".join(str(payload.get("reason") or "").split())
+            if not reason:
+                return jsonify({
+                    "ok": False, "needs_reason": True,
+                    "error": "Say why this figure is being changed. The reason "
+                             "is kept with the override and shown to whoever "
+                             "reviews the draft."}), 400
+            if line.override_source_amount is None:
+                line.override_source_amount = line.effective_amount
+            line.override_reason = reason
+            line.override_at = datetime.utcnow()
+            line.override_by = current_user.id
+        elif value is None:
+            line.override_at = datetime.utcnow()
+            line.override_by = current_user.id
         line.manual_override_amount = value
         line.source = ("manual" if value is not None
                        else ("computed" if line.formula else "auto"))
@@ -210,13 +235,22 @@ def update_line(line_id):
 @bp.route("/api/note-row", methods=["PATCH"])
 @login_required
 def update_note_row():
-    """Edit one row of a note table.
+    """Type over one row of a note table, with the reason recorded.
 
     Note tables have no stored rows - they are recomputed from the trial
     balance on every render - so the edit is held by position and reapplied
     at render time. `anchor_label` records what the row said when it was
     edited, so a later rebuild that changes the note shows the edit as stale
     instead of moving it onto a different account.
+
+    Library 3.5 (OV-01, OV-04) makes every figure overridable and the reason
+    compulsory, so a save without one is refused. What the source said is
+    read back here from the freshly built table rather than taken from the
+    browser: the original is the one thing in the record the person typing
+    over it must not be able to set.
+
+    Clearing the cell does not delete the record (OV-07) - the source figure
+    comes back and the history stays.
     """
     payload = request.get_json(silent=True) or {}
     section = db.session.get(AuditReportSection,
@@ -224,42 +258,152 @@ def update_note_row():
 
     table_index = int(payload.get("table_index", 0))
     row_index = int(payload.get("row_index", 0))
+    source = _source_row(section, table_index, row_index)
 
-    override = ReportFigureOverride.query.filter_by(
-        report_id=section.report_id, section_key=section.section_key,
-        table_index=table_index, row_index=row_index).first()
-
-    if override is None:
-        override = ReportFigureOverride(
-            report_id=section.report_id, section_key=section.section_key,
-            table_index=table_index, row_index=row_index,
-            created_by=current_user.id)
-        db.session.add(override)
-
-    override.anchor_label = payload.get("anchor_label") or override.anchor_label
-
+    fields = {}
     if "label" in payload:
-        text = (payload["label"] or "").strip()
-        override.label_override = text or None
-
+        fields["label"] = (payload["label"] or "").strip() or None
     if "amount" in payload:
-        value, error = _decimal(payload["amount"])
+        value, error = overrides_service.parse_amount(payload["amount"])
         if error:
             return jsonify({"ok": False, "error": error}), 400
-        override.amount_override = value
+        fields["amount"] = value
 
-    # An override holding neither a label nor a figure is just clutter.
-    if override.is_empty:
-        db.session.delete(override)
+    # Typing the source figure back in, or emptying the cell, is a revert -
+    # not a new override that happens to match.
+    existing = overrides_service.for_row(section, table_index, row_index)
+    reverting = (
+        "amount" in fields
+        and (fields["amount"] is None
+             or (source.get("current") is not None
+                 and fields["amount"] == source["current"]))
+        and fields.get("label", ...) in (..., None, source.get("label")))
+    if reverting and existing is not None and existing.is_live:
+        overrides_service.clear(existing)
+        record("report_figure_override", existing.id, "note_edit_cleared",
+               after={"section": section.section_key})
         db.session.commit()
+        return jsonify({"ok": True, "cleared": True,
+                        "amount": _float(source.get("current"))})
+    if reverting and existing is None:
+        return jsonify({"ok": True, "cleared": True,
+                        "amount": _float(source.get("current"))})
+
+    try:
+        override = overrides_service.set_figure(
+            section, table_index, row_index,
+            reason=payload.get("reason"),
+            label=fields.get("label", ...),
+            amount=fields.get("amount", ...),
+            anchor_label=payload.get("anchor_label") or source.get("label"),
+            source_amount=source.get("current"),
+            source_label=source.get("label"),
+            source_name=source.get("source_name"))
+    except overrides_service.ReasonRequired as needed:
+        return jsonify({"ok": False, "error": str(needed),
+                        "needs_reason": True}), 400
+
+    if override is None:
         return jsonify({"ok": True, "cleared": True})
 
-    record("report_figure_override", override.id or 0, "note_edit",
+    record("report_figure_override", override.id, "note_edit",
+           before={"source_amount": str(override.source_amount)},
            after={"section": section.section_key,
                   "label": override.label_override,
-                  "amount": str(override.amount_override)})
+                  "amount": str(override.amount_override),
+                  "reason": override.reason})
+    db.session.commit()
+    return jsonify({"ok": True, "override_id": override.id,
+                    "source_amount": _float(override.source_amount),
+                    "reason": override.reason})
+
+
+def _float(value):
+    return None if value is None else float(value)
+
+
+def _source_row(section, table_index, row_index):
+    """The row as its source gives it, before any override is laid over it.
+
+    Built here rather than trusted from the browser. The figure the source
+    gave is the whole point of the record (OV-03); a value posted by the
+    page doing the overriding could say anything.
+    """
+    from ..services import notes as notes_service
+
+    spec = (report_service._spec_index().get(section.section_key, {})
+            .get("note_table"))
+    if spec is None and section.data_binding:
+        spec = section.data_binding.get("note_table_specs")
+    tables = notes_service.build_tables(spec, section.report.financial_year)
+    try:
+        row = tables[table_index]["rows"][row_index]
+    except (IndexError, KeyError, TypeError):
+        return {}
+    return {"label": row.get("label"), "current": row.get("current"),
+            "source_name": ("the trial balance" if row.get("ref")
+                            else "the notes library")}
+
+
+@bp.route("/api/note-paragraph", methods=["PATCH"])
+@login_required
+def update_note_paragraph():
+    """Type over one paragraph of a note, with the reason recorded.
+
+    Library 3.5, OV-02: a client circumstance the library did not
+    anticipate is corrected in the sentence, not by dropping the note. The
+    new wording goes into the section's stored text the way every other
+    edit does; what this adds is the record beside it, so the reviewer can
+    see that a sentence in the accounts is not the library's own.
+
+    The browser saves the paragraph first and the section body second, so
+    the id returned here can be written into the paragraph as
+    `data-override`, which is what keeps the record with its sentence when
+    the note is reordered.
+    """
+    payload = request.get_json(silent=True) or {}
+    section = db.session.get(AuditReportSection,
+                             int(payload.get("section_id", 0))) or abort(404)
+
+    wording = payload.get("wording") or ""
+    try:
+        override = overrides_service.set_paragraph(
+            section, wording=wording,
+            source_text=payload.get("source_text") or "",
+            reason=payload.get("reason"),
+            para_id=(payload.get("para_id") or None),
+            override_id=payload.get("override_id"))
+    except overrides_service.ReasonRequired as needed:
+        return jsonify({"ok": False, "error": str(needed),
+                        "needs_reason": True}), 400
+
+    if override is None:
+        return jsonify({"ok": True, "unchanged": True})
+
+    record("report_figure_override", override.id, "note_wording",
+           after={"section": section.section_key,
+                  "para": override.para_id,
+                  "reason": override.reason})
     db.session.commit()
     return jsonify({"ok": True, "override_id": override.id})
+
+
+@bp.route("/api/override/<int:override_id>/clear", methods=["POST"])
+@login_required
+def clear_override(override_id):
+    """Withdraw an override. OV-07: the source comes back, the record stays."""
+    override = db.session.get(ReportFigureOverride, override_id) or abort(404)
+    source = override.source_text
+    try:
+        overrides_service.clear(override,
+                               (request.get_json(silent=True) or {}).get("reason"))
+    except overrides_service.ReasonRequired as needed:
+        return jsonify({"ok": False, "error": str(needed),
+                        "needs_reason": True}), 400
+    record("report_figure_override", override.id, "cleared",
+           after={"section": override.section_key})
+    db.session.commit()
+    return jsonify({"ok": True, "restores": source})
 
 
 @bp.route("/api/line/<int:line_id>/sources")

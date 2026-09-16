@@ -832,6 +832,15 @@ class StatementLine(db.Model):
     source = db.Column(db.String(20), default="auto")   # auto | manual | computed
     manual_override_amount = db.Column(Numeric(18, 2))
 
+    # Why a person typed over the computed figure, and what it was at the
+    # time. Library 3.5 asks this of every overridden figure (OV-03, OV-04);
+    # a line on the face of the statements is no different from a row in a
+    # note, and the reviewer reads the two side by side.
+    override_reason = db.Column(db.Text)
+    override_source_amount = db.Column(Numeric(18, 2))
+    override_at = db.Column(db.DateTime)
+    override_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+
     # Wording differs between clients - Revenue or Turnover, Cost of sales or
     # Cost of goods sold. The label is presentation only, so unlike the
     # figure it can be rewritten freely without anything downstream moving.
@@ -853,6 +862,29 @@ class StatementLine(db.Model):
     @property
     def is_overridden(self):
         return self.manual_override_amount is not None
+
+    @property
+    def override_record(self):
+        """What the reviewer needs about a figure typed over on the face.
+
+        The same shape a note row carries, so one template macro marks
+        both (library 3.5, OV-05): a reviewer should not have to read the
+        balance sheet and the notes in two different ways.
+        """
+        if not self.is_overridden or not self.override_reason:
+            return None
+        person = db.session.get(User, self.override_by) \
+            if self.override_by else None
+        return {
+            "source_amount": self.override_source_amount,
+            "source_label": self.label,
+            "source_name": ("the lines it adds up" if self.formula
+                            else "the trial balance"),
+            "reason": self.override_reason,
+            "who": (getattr(person, "name", None)
+                    or getattr(person, "email", None) or "a preparer"),
+            "when": self.override_at,
+        }
 
     @property
     def effective_label(self):
@@ -1444,19 +1476,43 @@ class NoteLibraryEntry(db.Model):
     added_reason = db.Column(db.Text)
 
 
+# table_index for a paragraph override: no table has index -1.
+PARAGRAPH_TABLE_INDEX = -1
+
+
 class ReportFigureOverride(db.Model):
-    """An auditor's edit to one row of a note table.
+    """One place where a person typed over what the engine assembled.
 
-    Statement lines are stored rows, so an override lives on the row itself.
-    Note tables are not - `app/services/notes.py` computes them from the
-    trial balance every time the report is rendered, so there is no row to
-    write to. This table is that missing home: it holds the auditor's
-    wording and figure for one row, addressed by where the row sits.
+    A figure on a note table, or a paragraph of a note's wording. Library
+    3.5 makes both overridable everywhere (Overrides sheet, OV-01 and
+    OV-02): the engine assembles and does not verify, so the preparer must
+    be able to correct anything it produced. What the library asks in
+    return is that the intervention is visible - OV-03 lists what has to be
+    kept, and OV-04 makes the reason compulsory:
 
-    Identified by position rather than by the row's `ref`, because plenty of
-    rows (totals, tax reconciliation lines, currency rows) have no ref at
-    all. If the underlying note is rebuilt with different rows the override
-    is dropped rather than applied to the wrong line - see `matches`.
+        the figure as the source gave it   source_amount / source_text
+        the figure as printed              amount_override / text_override
+        who changed it                     created_by, updated_by
+        when                               created_at, updated_at
+        and the reason they gave           reason
+
+    Clearing does not delete the row (OV-07). `cleared_at` is stamped, the
+    source figure comes back, and the record of what was changed and why
+    stays for the reviewer. Every set and clear also writes a
+    ReportOverrideEvent, so a figure typed over three times keeps all three.
+
+    An override changes what the accounts print and nothing else (OV-08):
+    the trial balance, the register and the listing are left as they are.
+
+    A FIGURE is addressed by position, because plenty of rows (totals, tax
+    reconciliation lines, currency rows) have no ref at all. If the note is
+    rebuilt with different rows the override is shown as stale rather than
+    applied to the wrong line - see `matches`.
+
+    A PARAGRAPH is addressed the other way round: table_index is -1, the
+    row index is a per-section sequence that is never reused, and the
+    paragraph in the stored wording carries `data-override="<id>"`, so the
+    edit stays with its sentence however the note is reordered.
     """
 
     __tablename__ = "report_figure_overrides"
@@ -1480,12 +1536,57 @@ class ReportFigureOverride(db.Model):
     label_override = db.Column(db.String(255))
     amount_override = db.Column(Numeric(18, 2))
 
+    # A paragraph of wording instead of a row of a table (OV-02).
+    para_id = db.Column(db.String(40))
+    text_override = db.Column(db.Text)
+
+    # What the source said at the moment the override was made (OV-03).
+    # Kept even after the override is cleared, so a reviewer reading the
+    # record a year later can still see what was changed.
+    source_amount = db.Column(Numeric(18, 2))
+    source_label = db.Column(db.String(255))
+    source_text = db.Column(db.Text)
+
+    # Where that figure came from, in words - "the trial balance", "the
+    # fixed asset register". The reviewer's first question about a typed
+    # figure is what it was typed over.
+    source_name = db.Column(db.String(120))
+
+    # OV-04. Nullable in the database because every column added to a live
+    # table is; the service refuses to write an override without one.
+    reason = db.Column(db.Text)
+
+    # OV-07: cleared, not deleted.
+    cleared_at = db.Column(db.DateTime)
+
+    # OV-06: the override this one was carried forward from, so a figure
+    # inherited as a comparative still carries the history of its change.
+    carried_from_id = db.Column(db.Integer,
+                                db.ForeignKey("report_figure_overrides.id"))
+
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow,
                            onupdate=datetime.utcnow)
 
     report = db.relationship("AuditReport")
+    author = db.relationship("User", foreign_keys=[created_by])
+    editor = db.relationship("User", foreign_keys=[updated_by])
+    carried_from = db.relationship("ReportFigureOverride", remote_side=[id])
+    events = db.relationship(
+        "ReportOverrideEvent", back_populates="override",
+        cascade="all, delete-orphan",
+        order_by="ReportOverrideEvent.at")
+
+    @property
+    def is_paragraph(self):
+        return self.table_index == PARAGRAPH_TABLE_INDEX
+
+    @property
+    def is_live(self):
+        """Applied to the report right now, rather than kept as history."""
+        return self.cleared_at is None and not self.is_empty
 
     def matches(self, row):
         """True when this override still belongs to the row given."""
@@ -1495,11 +1596,56 @@ class ReportFigureOverride(db.Model):
 
     @property
     def is_empty(self):
-        return self.label_override is None and self.amount_override is None
+        return (self.label_override is None and self.amount_override is None
+                and self.text_override is None)
+
+    @property
+    def who(self):
+        person = self.editor or self.author
+        return (getattr(person, "name", None)
+                or getattr(person, "email", None) or "a preparer")
 
     def __repr__(self):
         return (f"<FigureOverride {self.section_key}"
                 f"[{self.table_index}][{self.row_index}]>")
+
+
+class ReportOverrideEvent(db.Model):
+    """Every time an override was set, changed or cleared.
+
+    The override row holds what is true now. This holds what was true
+    before, which is what OV-07 asks for: a withdrawn override is still
+    something a reviewer may want to see, and so is the second reason
+    someone gave when they typed over the same figure again.
+    """
+
+    __tablename__ = "report_override_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    override_id = db.Column(db.Integer,
+                            db.ForeignKey("report_figure_overrides.id"),
+                            nullable=False, index=True)
+
+    # set | changed | cleared | carried
+    action = db.Column(db.String(20), nullable=False)
+    field = db.Column(db.String(20))               # amount | label | wording
+    from_value = db.Column(db.Text)
+    to_value = db.Column(db.Text)
+    reason = db.Column(db.Text)
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    override = db.relationship("ReportFigureOverride", back_populates="events")
+    user = db.relationship("User")
+
+    @property
+    def who(self):
+        return (getattr(self.user, "name", None)
+                or getattr(self.user, "email", None) or "a preparer")
+
+    def __repr__(self):
+        return f"<OverrideEvent {self.action} {self.field}>"
 
 
 # --------------------------------------------------------------------------

@@ -614,7 +614,12 @@ def _assemble_v2_note(note, financial_year, first_year=False, period=None,
                                         "note_code": note.get("library_code")})
                 continue
             if wording.strip():
-                parts.append(f"<p>{wording}</p>")
+                # The paragraph id travels with the sentence. An override on
+                # the wording (library 3.5, OV-02) is addressed by it, so the
+                # edit stays put when the note is reordered or rebuilt.
+                para_id = piece.get("para_id") or ""
+                mark = f' data-para="{para_id}"' if para_id else ""
+                parts.append(f"<p{mark}>{wording}</p>")
         return parts
 
     html_parts.extend(run(note))
@@ -1571,14 +1576,20 @@ def apply_note_overrides(section, tables):
     onto whichever figure happens to sit there now - silently moving an
     auditor's correction onto a different account is the one outcome worth
     engineering against.
+
+    A cleared override is skipped, not applied (library 3.5, OV-07): the
+    source figure comes back and the record stays behind for the reviewer.
+    A live one leaves `override_record` on the row - the source figure, the
+    reason, who and when - which is what marks it where it prints (OV-05).
     """
     from ..models import ReportFigureOverride
 
     if not tables:
         return
 
-    overrides = ReportFigureOverride.query.filter_by(
+    overrides = [o for o in ReportFigureOverride.query.filter_by(
         report_id=section.report_id, section_key=section.section_key).all()
+        if o.is_live]
     if not overrides:
         return
 
@@ -1597,6 +1608,14 @@ def apply_note_overrides(section, tables):
                 row["stale_override"] = override.anchor_label
                 continue
 
+            row["override_record"] = {
+                "source_amount": override.source_amount,
+                "source_label": override.source_label,
+                "source_name": override.source_name or "the source",
+                "reason": override.reason,
+                "who": override.who,
+                "when": override.updated_at or override.created_at,
+            }
             if override.label_override is not None:
                 row["original_label"] = row.get("label")
                 row["label"] = override.label_override

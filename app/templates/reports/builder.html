@@ -562,6 +562,72 @@
         </div>
       </div>
     </div>
+
+    {#
+      Where a person overrode the engine.
+
+      Library 3.5 puts manual entry on every figure and every paragraph, and
+      asks that the intervention be visible rather than merely possible
+      (Overrides sheet, OV-05). The marks on the document say where; this
+      says what the source gave, who changed it, when and why, in one place,
+      so a reviewer does not have to find them by reading the whole draft.
+
+      Withdrawn overrides stay on the list, struck through: a change someone
+      made and then took back is often the first thing worth asking about.
+    #}
+    {% if overrides %}
+    <div class="card" style="margin-top:16px">
+      <div class="card-head">
+        <h2>Changed by hand</h2>
+        <span class="hint">
+          {{ overrides_in_force }} in force
+          {%- if overrides|length > overrides_in_force %},
+            {{ overrides|length - overrides_in_force }} withdrawn{% endif %}
+        </span>
+      </div>
+      <div class="card-body">
+        <p class="muted small" style="margin-top:0">
+          An override changes what the accounts print. It does not change the
+          trial balance, the register or any document behind them.
+        </p>
+        <ul class="ov-list">
+          {% for item in overrides %}
+            <li class="{{ 'is-cleared' if item.cleared }}">
+              <div>
+                <span class="ov-where">{{ item.where }}</span>
+                &middot; {{ item.what }}
+                {% if item.cleared %}<span class="ov-tag cleared">withdrawn</span>{% endif %}
+                {% if item.carried %}<span class="ov-tag carried">from last year</span>{% endif %}
+              </div>
+              <div class="ov-change">
+                {% if item.kind == 'figure' %}
+                  <del>{{ item.source_said|stmt if item.source_said is not none
+                          else 'nothing' }}</del>
+                  &rarr; <ins>{{ item.now_prints|stmt if item.now_prints is not none
+                                 else 'back to the source' }}</ins>
+                  <span class="ov-who">from {{ item.source_name or 'the source' }}</span>
+                {% else %}
+                  <del>{{ (item.source_said or '')|striptags|truncate(120) }}</del>
+                  {% if item.now_prints %}
+                    &rarr; <ins>{{ item.now_prints|striptags|truncate(120) }}</ins>
+                  {% else %}
+                    &rarr; <ins>back to the library's wording</ins>
+                  {% endif %}
+                {% endif %}
+              </div>
+              <div class="ov-why">{{ item.reason or 'No reason recorded.' }}</div>
+              <div class="ov-who">
+                {{ item.who }}{% if item.when %},
+                  {{ item.when|datefmt('%d %b %Y') }}{% endif %}
+                {%- if item.history|length > 1 %} &middot;
+                  changed {{ item.history|length }} times{% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

@@ -197,6 +197,20 @@
 {{ S }} p.held-table {
   background: #fdecea; color: #8a1c10; font-style: italic; padding: 4px 8px;
 }
+/* A figure or a sentence a person typed over the source. Quiet on the
+   page - it is a working mark, not an error - but unmissable once you
+   are looking for it, which is what a reviewer is doing. */
+{{ S }} .ov-mark {
+  display: inline-block; margin-left: 5px; padding: 0 4px;
+  font-size: 8pt; line-height: 1.5; vertical-align: 1px;
+  color: #7c4a03; background: #fdf1dc; border: 1px solid #e8c88a;
+  border-radius: 3px; cursor: help; font-variant: small-caps;
+  letter-spacing: .04em;
+}
+{{ S }} td.was-typed { background: #fffaf0; }
+{{ S }} .ov-show p[data-override] {
+  border-left: 2px solid #e8c88a; padding-left: 8px; margin-left: -10px;
+}
 {{ S }} .draft-stamp {
   position: fixed; top: 6mm; left: 0; right: 0; text-align: center;
   font-family: Arial, sans-serif; font-weight: 700; font-size: 11pt;
@@ -211,6 +225,11 @@
 {{ S }} .missing-binding { background: none; color: #000; }
 {{ S }} td.held { background: none; color: #000; }
 {{ S }} p.held-table { background: none; color: #000; }
+/* Override marks reach a PDF only on a stamped draft - the clean copy
+   leaves them out of the document entirely - so here they lose the
+   highlighting and keep the word, the way a held figure does. */
+{{ S }} .ov-mark { background: none; color: #000; border-color: #999; }
+{{ S }} td.was-typed { background: none; }
 {% endif %}
 
 /* ----------------------------------------------------------------------

@@ -1287,3 +1287,59 @@ tr.row-doc-total input.cell { font-weight: 600; }
   outline: none; border-color: var(--brand);
 }
 .section-item .delete-section { margin-left: 2px; }
+
+/* --------------------------------------------------------------------------
+   Why was this changed?
+
+   The box that asks for the reason before an override is stored (library
+   3.5, OV-04). Deliberately a modal: the reason is asked for at the moment
+   of the edit, because that is the only moment anybody knows it.
+   -------------------------------------------------------------------------- */
+.reason-veil {
+  position: fixed; inset: 0; z-index: 90; display: flex;
+  align-items: center; justify-content: center; padding: 16px;
+  background: rgba(17, 24, 39, .45);
+}
+.reason-veil[hidden] { display: none; }
+.reason-box {
+  width: min(520px, 100%); background: #fff; border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .28); padding: 20px 22px;
+}
+.reason-box h3 { margin: 0 0 10px; font-size: 16px; }
+.reason-what {
+  margin: 0 0 10px; font-size: 13px; color: #374151; line-height: 1.5;
+}
+.reason-note { margin: 0 0 10px; font-size: 12px; color: #6b7280; }
+.reason-text {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 13px;
+  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;
+  resize: vertical;
+}
+.reason-text:focus { outline: 2px solid #2563eb; outline-offset: 1px; }
+.reason-error { margin: 6px 0 0; font-size: 12px; color: #b3261e; }
+.reason-buttons {
+  display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px;
+}
+
+/* The reviewer's list of every override on the report (OV-05). */
+.ov-list { list-style: none; margin: 0; padding: 0; }
+.ov-list li {
+  padding: 8px 0; border-top: 1px solid #eef1f5; font-size: 12px;
+  line-height: 1.5;
+}
+.ov-list li:first-child { border-top: none; }
+.ov-where { font-weight: 600; color: #111827; }
+.ov-change { color: #374151; }
+.ov-change del { color: #9ca3af; text-decoration: line-through; }
+.ov-change ins { text-decoration: none; color: #7c4a03; font-weight: 600; }
+.ov-why { color: #4b5563; font-style: italic; }
+.ov-who { color: #9ca3af; }
+.ov-list li.is-cleared { opacity: .65; }
+.ov-list li.is-cleared .ov-change { text-decoration: line-through; }
+.ov-tag {
+  display: inline-block; font-size: 10px; letter-spacing: .04em;
+  text-transform: uppercase; border-radius: 2px; padding: 0 5px;
+  border: 1px solid #e8c88a; background: #fdf1dc; color: #7c4a03;
+}
+.ov-tag.cleared { border-color: #d1d5db; background: #f3f4f6; color: #6b7280; }
+.ov-tag.carried { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }

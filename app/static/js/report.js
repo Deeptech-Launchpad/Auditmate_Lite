@@ -286,9 +286,25 @@
 
     if (value === original.get(field)) return;      /* nothing changed */
 
+    /* Wording is overridable too (OV-02), and on the same terms as a
+       figure: the library's sentence is kept, the new one prints, and a
+       reason is recorded. Saved before the body, so the id can be written
+       into the paragraph - that is what keeps the record with its
+       sentence when the note is later reordered or rebuilt. */
+    if (key === 'content_html') {
+      const kept = await recordWording(field, original.get(field) || '');
+      if (!kept) {
+        field.innerHTML = original.get(field) || '';
+        say('Change not saved - no reason given', 'failed');
+        return;
+      }
+    }
+
     say('Saving…', 'saving');
     try {
-      await patchSection(field.dataset.sectionId, { [key]: value });
+      await patchSection(field.dataset.sectionId,
+                         { [key]: key === 'content_html'
+                                  ? serialise(field) : value });
       original.set(field, value);
       say('Saved', 'saved');
       if (key === 'title') syncTitle(field.dataset.sectionId, value);
@@ -296,6 +312,78 @@
       say('Could not save — your text is still here', 'failed');
     }
   });
+
+  /* Which elements of a note body count as a paragraph a person can type
+     over. Headings and list items are wording the accounts print, so they
+     are in; a table placed by the note is not - its rows have their own
+     override path with their own source figures. */
+  const PARAGRAPHS = 'p, h4, li, blockquote';
+
+  /* Record every paragraph that changed, one reason covering the edit.
+     Returns false only if the person declined to give one. */
+  async function recordWording(field, before) {
+    const was = document.createElement('div');
+    was.innerHTML = before;
+    const old = Array.from(was.querySelectorAll(PARAGRAPHS));
+    const now = Array.from(field.querySelectorAll(PARAGRAPHS));
+
+    /* Same number of paragraphs: match them up and record the ones that
+       differ. A different number means the person added or removed one,
+       which no position can describe honestly - so the whole body is
+       recorded as the change, with the previous text kept beside it. */
+    const changes = [];
+    if (old.length === now.length) {
+      now.forEach((node, index) => {
+        const previous = old[index];
+        if (node.textContent.trim() === previous.textContent.trim()) return;
+        changes.push({
+          node: node,
+          para_id: node.dataset.para || previous.dataset.para || '',
+          override_id: node.dataset.override || previous.dataset.override || '',
+          source_text: previous.innerHTML.trim(),
+          wording: node.innerHTML.trim(),
+          what: 'The library says: "' + previous.textContent.trim().slice(0, 220)
+                + '"'
+        });
+      });
+    } else {
+      changes.push({
+        node: null, para_id: '', override_id: '',
+        source_text: before, wording: serialise(field),
+        what: 'This note had ' + old.length + ' paragraph(s) and now has '
+              + now.length + '.'
+      });
+    }
+    if (!changes.length) return true;
+
+    const reason = await window.__auditmateAskReason(changes[0].what);
+    if (!reason) return false;
+
+    for (const change of changes) {
+      try {
+        const response = await fetch('/reports/api/note-paragraph', {
+          method: 'PATCH', headers: csrfHeaders(),
+          body: JSON.stringify({
+            section_id: field.dataset.sectionId,
+            para_id: change.para_id,
+            override_id: change.override_id || null,
+            source_text: change.source_text,
+            wording: change.wording,
+            reason: reason
+          })
+        });
+        const data = await response.json();
+        if (data.ok && data.override_id && change.node) {
+          change.node.setAttribute('data-override', data.override_id);
+        }
+      } catch (err) {
+        /* The wording still saves below; the record is what is missing,
+           and saying so is better than losing the person's sentence. */
+        say('Saved, but the reason was not recorded', 'failed');
+      }
+    }
+    return true;
+  }
 
   /* Keep the section list in step with a title edited in the preview. */
   function syncTitle(sectionId, title) {
@@ -410,14 +498,54 @@
     });
   }
 
+  /* Cleared, or typed back to what the source gave: a revert, not a new
+     override. The source figure comes back and no reason is asked for -
+     the reason for the change that is being withdrawn is already on the
+     record, and stays there (OV-07). */
+  function isRevert(field, value) {
+    if (field.dataset.field !== 'amount') return false;
+    if (value === '') return true;
+    const was = field.dataset.computed;
+    if (was === undefined || was === '' || was === 'None') return false;
+    const typed = value.replace(/,/g, '').replace(/^\((.*)\)$/, '-$1');
+    return Math.round(Number(typed)) === Math.round(Number(was));
+  }
+
   async function saveCell(field) {
     const key = field.dataset.field;                 /* 'label' | 'amount' */
     const value = field.textContent.trim();
 
+    /* A note figure or caption is an override of what the engine
+       assembled, so it needs a reason before it is stored. A statement
+       line goes through the statements' own override path, which has
+       carried its own record since long before the library asked for one. */
+    let reason = null;
+    const isFigure = field.dataset.field === 'amount';
+    /* A caption is presentation - one client says Revenue, another
+       Turnover - and is simply stored. A figure is a change to what the
+       accounts state, wherever it sits, so it needs a reason: a line on
+       the face of the balance sheet is no different from a row in a note,
+       and the reviewer reads the two side by side. */
+    if ((isFigure || !field.dataset.lineId) && !isRevert(field, value)) {
+      const was = field.dataset.field === 'amount'
+        ? fmt(field.dataset.computed)
+        : (field.dataset.sourceLabel || '');
+      reason = await window.__auditmateAskReason(
+        (field.dataset.sourceLabel || 'This row') + ': the source gives '
+        + was + '; the accounts will print ' + (value || '--') + '.');
+      if (!reason) {
+        /* Nobody will explain it, so it does not happen. */
+        field.textContent = field.dataset.field === 'amount'
+          ? fmt(field.dataset.computed) : (field.dataset.sourceLabel || '');
+        say('Change not saved - no reason given', 'failed');
+        return;
+      }
+    }
+
     let url, body;
     if (field.dataset.lineId) {
       url = '/reports/api/line/' + field.dataset.lineId;
-      body = {};
+      body = { reason: reason };
       body[key] = value;
     } else {
       url = '/reports/api/note-row';
@@ -425,7 +553,8 @@
         section_id: field.dataset.sectionId,
         table_index: Number(field.dataset.tableIndex),
         row_index: Number(field.dataset.rowIndex),
-        anchor_label: field.dataset.anchor
+        anchor_label: field.dataset.anchor,
+        reason: reason
       };
       body[key] = value;
     }
@@ -444,7 +573,16 @@
         return;
       }
       if (data.lines) applyLines(data.lines);
-      say('Saved', 'saved');
+      if (data.cleared && data.amount !== undefined && data.amount !== null) {
+        field.textContent = fmt(data.amount);
+        const cell = field.closest('td');
+        if (cell) cell.classList.remove('is-overridden');
+        const mark = cell && cell.querySelector('.ov-mark');
+        if (mark) mark.remove();
+        say('Put back to ' + fmt(data.amount), 'saved');
+        return;
+      }
+      say(reason ? 'Saved, with the reason' : 'Saved', 'saved');
     } catch (err) {
       say('Could not save - the figure on screen is not stored', 'failed');
     }
@@ -591,4 +729,81 @@
     });
     paint();
   }
+})();
+
+/* ------------------------------------------------------------------------
+   Why was this changed?
+
+   Library 3.5 puts manual entry on every figure and every paragraph, and
+   asks one thing back: a reason, entered at the time (Overrides sheet,
+   OV-04). Short is fine; blank is not. The reason is what makes the
+   override reviewable a year later, when the person who made it has
+   forgotten, so it is asked for at the moment of the edit and never
+   afterwards.
+
+   Cancelling puts back what was on the page. An edit nobody will explain
+   is an edit that does not happen - which is the point.
+   ------------------------------------------------------------------------ */
+window.__auditmateAskReason = (function () {
+  let box = null;
+
+  function build() {
+    box = document.createElement('div');
+    box.className = 'reason-veil';
+    box.hidden = true;
+    box.innerHTML =
+      '<div class="reason-box" role="dialog" aria-modal="true"'
+      + ' aria-labelledby="reason-title">'
+      + '<h3 id="reason-title">Why is this being changed?</h3>'
+      + '<p class="reason-what"></p>'
+      + '<p class="reason-note">Kept with the change and shown to whoever'
+      + ' reviews the draft. It does not alter the trial balance or any'
+      + ' document behind it — only what the accounts print.</p>'
+      + '<textarea class="reason-text" rows="3" maxlength="600"'
+      + ' placeholder="e.g. agreed to the signed 2022 accounts"></textarea>'
+      + '<p class="reason-error" hidden>A reason is required.</p>'
+      + '<div class="reason-buttons">'
+      + '<button type="button" class="btn btn-sm reason-cancel">Cancel</button>'
+      + '<button type="button" class="btn btn-sm btn-primary reason-ok">'
+      + 'Save the change</button>'
+      + '</div></div>';
+    document.body.appendChild(box);
+  }
+
+  return function ask(what) {
+    if (!box) build();
+    const text = box.querySelector('.reason-text');
+    const error = box.querySelector('.reason-error');
+    box.querySelector('.reason-what').textContent = what || '';
+    text.value = '';
+    error.hidden = true;
+    box.hidden = false;
+    setTimeout(() => text.focus(), 0);
+
+    return new Promise(resolve => {
+      function done(value) {
+        box.hidden = true;
+        box.removeEventListener('click', onClick);
+        text.removeEventListener('keydown', onKey);
+        resolve(value);
+      }
+      function accept() {
+        const reason = text.value.trim();
+        if (!reason) { error.hidden = false; text.focus(); return; }
+        done(reason);
+      }
+      function onClick(event) {
+        if (event.target.closest('.reason-ok')) accept();
+        else if (event.target.closest('.reason-cancel') || event.target === box) {
+          done(null);
+        }
+      }
+      function onKey(event) {
+        if (event.key === 'Escape') done(null);
+        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) accept();
+      }
+      box.addEventListener('click', onClick);
+      text.addEventListener('keydown', onKey);
+    });
+  };
 })();
