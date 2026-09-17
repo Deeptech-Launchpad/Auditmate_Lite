@@ -67,6 +67,7 @@
           them, so they do not go.
         </p>
         <form method="post" style="margin-top:12px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="allow">
           <input type="text" class="input" name="note" style="max-width:46ch"
                  placeholder="Why this client is cleared (optional)">
@@ -93,11 +94,13 @@
         {{ outgoing|length }} account{{ '' if outgoing|length == 1 else 's' }}
         would be sent &mdash; names and debit/credit only.</span>
       <form method="post" style="margin-left:auto">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="ask">
         <button type="submit" class="btn btn-primary"
                 {% if not outgoing %}disabled{% endif %}>Ask</button>
       </form>
       <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="revoke">
         <button type="submit" class="btn">Withdraw clearance</button>
       </form>
@@ -144,12 +147,14 @@
                 {% if row.suggestion and row.suggestion.code
                       and not row.suggestion.decision %}
                   <form method="post" style="display:inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="accept">
                     <input type="hidden" name="suggestion_id"
                            value="{{ row.suggestion.id }}">
                     <button type="submit" class="btn btn-sm">Take it</button>
                   </form>
                   <form method="post" style="display:inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="reject">
                     <input type="hidden" name="suggestion_id"
                            value="{{ row.suggestion.id }}">
