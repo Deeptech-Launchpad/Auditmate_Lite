@@ -333,15 +333,6 @@ def related_parties(fy_id):
                 rp_service.unsettle(financial_year, "tb_account",
                                     int(request.form.get("subject_id", 0)))
                 flash("Put back for a decision.", "success")
-            elif action == "add_directors":
-                added = rp_service.add_directors(
-                    financial_year, rp_service.missing_directors(financial_year))
-                if added:
-                    flash(f"{len(added)} director(s) added from the client "
-                          f"record. Add spellings and confirm what is "
-                          f"theirs below.", "success")
-                else:
-                    flash("Nothing to add - already on the list.", "info")
         except ValueError as bad:
             flash(str(bad), "error")
         return redirect(url_for("reports.related_parties", fy_id=fy_id))
@@ -353,9 +344,7 @@ def related_parties(fy_id):
                            kinds=rp_service.KINDS,
                            parties=rp_service.register(financial_year),
                            candidates=rp_service.candidates(financial_year),
-                           state=rp_service.state(financial_year),
-                           missing_directors=rp_service.missing_directors(
-                               financial_year))
+                           state=rp_service.state(financial_year))
 
 
 def _record_decisions(financial_year, form, rp_service):

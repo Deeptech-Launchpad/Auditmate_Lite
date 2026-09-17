@@ -52,26 +52,6 @@
       <span class="hint">{{ state.parties }} part{{ 'y' if state.parties == 1 else 'ies' }}</span>
     </div>
     <div class="card-body">
-      {% if missing_directors %}
-        {#
-          Never run without a click. The client's Directors field already
-          names these people for the cover page and the Directors'
-          Statement - this offers to reuse that, once, rather than typing
-          each name a second time. Nothing about whether an account is
-          theirs is decided here; they only join the list, as candidates,
-          the same as anyone added by hand.
-        #}
-        <form method="post" class="rp-add-directors">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="action" value="add_directors">
-          <p class="muted small" style="margin:0 0 8px">
-            {{ customer.name }}'s directors, from the client record:
-            {{ missing_directors|join(', ') }}.
-          </p>
-          <button type="submit" class="btn btn-sm">
-            + Add {{ 'them' if missing_directors|length > 1 else 'this director' }} to the list</button>
-        </form>
-      {% endif %}
       {% for party in parties %}
         <form method="post" class="rp-party">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
