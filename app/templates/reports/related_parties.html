@@ -56,6 +56,7 @@
         <form method="post" class="rp-party">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="party_id" value="{{ party.id }}">
+          <div class="rp-who">Editing <strong>{{ party.name }}</strong></div>
           <label class="rp-field">
             <span class="rp-label">Name, as it should read in the accounts</span>
             <input type="text" name="name" value="{{ party.name }}" maxlength="255">
@@ -71,7 +72,7 @@
           <label class="rp-field">
             <span class="rp-label">Spellings used in the books, one per line</span>
             <textarea name="spellings" rows="3"
-                      placeholder="Loan from Director&#10;Mr Tan Ah Kow&#10;TAK">{{ (party.spellings or [])|join('\n') }}</textarea>
+                      placeholder="One per line">{{ (party.spellings or [])|join('\n') }}</textarea>
             <span class="rp-help">Every way this party appears on an account
               or an invoice. Used to suggest matches, never to decide one.</span>
           </label>
@@ -100,7 +101,7 @@
 
       <form method="post" class="rp-party rp-new">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="rp-new-head">Add a related party</div>
+        <div class="rp-new-head">+ Add someone else</div>
         <label class="rp-field">
           <span class="rp-label">Name</span>
           <input type="text" name="name" maxlength="255" required
@@ -114,7 +115,10 @@
         </label>
         <label class="rp-field">
           <span class="rp-label">Spellings used in the books, one per line</span>
-          <textarea name="spellings" rows="3"></textarea>
+          <textarea name="spellings" rows="3"
+                    placeholder="Loan from Director&#10;Mr Tan Ah Kow&#10;TAK"></textarea>
+          <span class="rp-help">Optional. Every way this name appears on an
+            account, so matches can be suggested.</span>
         </label>
         <div class="rp-actions">
           <button type="submit" name="action" value="add"
@@ -270,5 +274,10 @@
   .rp-no { color: #6b7280; font-style: italic; }
   .rp-kind { font-size: 11px; color: #9ca3af; }
   .rp-submit { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .rp-who { font-size:.82em; color:var(--muted); padding-bottom:6px;
+             margin-bottom:4px; border-bottom:1px dashed var(--border); }
+  .rp-new { background:rgba(0,0,0,.025); border:1px solid var(--border);
+            border-radius:4px; padding:12px 13px; margin-top:16px; }
+  .rp-new-head { font-weight:600; margin-bottom:8px; }
 </style>
 {% endblock %}
