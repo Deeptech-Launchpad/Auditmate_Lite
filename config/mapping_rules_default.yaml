@@ -59,6 +59,14 @@
 # ---------------------------------------------------------------- assets ---
 - {pattern: "property, plant",      statement: balance_sheet, line: ppe, priority: 5}
 - {pattern: "plant and equipment",  statement: balance_sheet, line: ppe, priority: 5}
+# "Plant and machinery" is at least as common in a Singapore chart as
+# "plant and equipment", and had no rule at all - it reached the unmapped
+# list on a demo engagement, which is where it was noticed.
+- {pattern: "plant and machinery",  statement: balance_sheet, line: ppe, priority: 5}
+- {pattern: "leasehold improvement", statement: balance_sheet, line: ppe, priority: 12}
+# Bare "machinery" sits BELOW repairs (14) and maintenance (15) on
+# purpose, so "Machinery repairs" stays an expense.
+- {pattern: "machinery",            statement: balance_sheet, line: ppe, priority: 16}
 - {pattern: "fixed asset",          statement: balance_sheet, line: ppe, priority: 10}
 - {pattern: "motor vehicle",        statement: balance_sheet, line: ppe, priority: 15}
 - {pattern: "office equipment",     statement: balance_sheet, line: ppe, priority: 15}
