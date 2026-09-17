@@ -280,6 +280,23 @@
 {{ S }} td.held {
   background: #fdecea; color: #8a1c10; font-style: italic; font-size: .9em;
 }
+/* Held cells the binding engine can route to a document figure. The
+   dashed underline is the same signal a hyperlink gives - there is
+   something to do here - without pretending this is a regular field,
+   which is why it keeps the same red the word "Incomplete" prints in
+   everywhere else. */
+{{ S }} td.held.is-editable .held-answer {
+  display: inline-block; min-width: 4em; outline: none;
+  border-bottom: 1px dashed #8a1c10;
+}
+{{ S }} td.held.is-editable .held-answer:hover,
+{{ S }} td.held.is-editable .held-answer:focus {
+  border-bottom-style: solid; cursor: text;
+}
+{{ S }} td.held.is-editable .held-answer:empty::before {
+  content: attr(data-placeholder);
+  color: #8a1c10; font-style: italic;
+}
 {% if for_pdf %}
 /* Nothing needs highlighting in a delivered PDF, but it must still be
    visible that a field was never filled in. */

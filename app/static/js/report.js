@@ -618,6 +618,68 @@
 
   window.__auditmateSaveCell = saveCell;
 
+  /* Answering an Incomplete cell directly in the note. Not an override -
+     there is no source figure to contradict, only a blank the Figures
+     page would ask the same question about - so it saves straight
+     through document_fields.save() and asks for no reason, the same act
+     as typing it on that page.
+
+     Reloads on success rather than patching the one cell in place:
+     filling this figure can settle whether OTHER cells in the same note
+     are still held (a total that was Incomplete because one of its parts
+     was), and reloading is the only way every one of them is sure to
+     catch up, not just the one just typed into. */
+  report.addEventListener('focusin', event => {
+    const field = event.target.closest('.held-answer');
+    if (!field) return;
+    field.dataset.original = field.textContent.trim();
+  });
+
+  report.addEventListener('focusout', async event => {
+    const field = event.target.closest('.held-answer');
+    if (!field) return;
+    const value = field.textContent.trim();
+    if (value === (field.dataset.original || '')) return;
+
+    say('Saving…', 'saving');
+    try {
+      const response = await fetch('/reports/api/document-figure', {
+        method: 'PATCH', headers: csrfHeaders(),
+        body: JSON.stringify({
+          financial_year_id: Number(field.dataset.fyId),
+          token: field.dataset.token,
+          field: field.dataset.docField,
+          scope: field.dataset.scope,
+          member: field.dataset.member,
+          amount: value
+        })
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        field.textContent = field.dataset.original || '';
+        say(data.error || 'Could not save', 'failed');
+        return;
+      }
+      say(value === '' ? 'Cleared - reloading' : 'Saved - reloading', 'saved');
+      location.reload();
+    } catch (err) {
+      field.textContent = field.dataset.original || '';
+      say('Could not save - the figure was not stored', 'failed');
+    }
+  });
+
+  report.addEventListener('keydown', event => {
+    const field = event.target.closest('.held-answer');
+    if (!field) return;
+    if (event.key === 'Enter') { event.preventDefault(); field.blur(); }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      field.textContent = field.dataset.original || '';
+      field.blur();
+    }
+  });
+
+
   /* Enter commits a cell rather than inserting a line break into a table. */
   report.addEventListener('keydown', event => {
     const field = event.target.closest('.ed-amount, .ed-label');

@@ -43,9 +43,28 @@
   <td class="num{{ ' unsourced' if value is none }}">{{ value|stmt }}</td>
 {% endmacro %}
 
-{# A figure nobody can source yet. Never a dash - a dash says nil. #}
-{% macro held_cell(reason) %}
-  <td class="num held" title="{{ reason }}">Incomplete</td>
+{# A figure nobody can source yet. Never a dash - a dash says nil.
+
+   `edit` is set only for a document-sourced hold - the tax computation,
+   the prior signed set, the register, the aged listing - because those
+   are the only holds with an exact field to answer. Answering one here
+   writes through the same document_fields.save() the Figures page uses,
+   so this cell and that page can never disagree about whether the field
+   has been answered. A hold with no `edit` (a preparer question still
+   outstanding, a structural gap nothing in a document could fill) stays
+   the plain word it has always been. #}
+{% macro held_cell(reason, edit=none) %}
+  {% if edit and editable %}
+    <td class="num held is-editable">
+      <span class="held-answer" contenteditable="true"
+            data-fy-id="{{ fy.id }}" data-token="{{ edit.token }}"
+            data-doc-field="{{ edit.field }}" data-scope="{{ edit.scope }}"
+            data-member="{{ edit.member }}" data-placeholder="Incomplete"
+            title="{{ reason }} &mdash; click to answer it here"></span>
+    </td>
+  {% else %}
+    <td class="num held" title="{{ reason }}">Incomplete</td>
+  {% endif %}
 {% endmacro %}
 
 {#
@@ -409,7 +428,7 @@
                 {% for cell in row.cells %}
                   {% set why = (row.held or {}).get(loop.index0) %}
                   {% if why %}
-                    <td class="num held" title="{{ why }}">Incomplete</td>
+                    {{ held_cell(why, (row.held_edit or {}).get(loop.index0)) }}
                   {% elif cell is none %}
                     <td class="num"></td>
                   {% else %}
@@ -461,8 +480,8 @@
                   {% endif %}
                 </td>
                 {% if row.held_current or row.held_previous %}
-                  {% if row.held_current %}{{ held_cell(row.held_current) }}{% else %}{{ amount_cell(row.current) }}{% endif %}
-                  {% if row.held_previous %}{{ held_cell(row.held_previous) }}{% else %}{{ amount_cell(row.previous) }}{% endif %}
+                  {% if row.held_current %}{{ held_cell(row.held_current, row.held_current_edit) }}{% else %}{{ amount_cell(row.current) }}{% endif %}
+                  {% if row.held_previous %}{{ held_cell(row.held_previous, row.held_previous_edit) }}{% else %}{{ amount_cell(row.previous) }}{% endif %}
                 {% elif row.current is none and row.previous is none %}
                   <td class="num"></td><td class="num"></td>
                 {% elif editable %}

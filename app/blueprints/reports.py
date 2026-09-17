@@ -602,6 +602,78 @@ def _source_row(section, table_index, row_index):
                             else "the notes library")}
 
 
+@bp.route("/api/document-figure", methods=["PATCH"])
+@login_required
+def update_document_figure():
+    """Answer an Incomplete cell in a note, without leaving the report.
+
+    NOT an override. An override says a source gave one figure and the
+    accounts print another - it needs a reason because it contradicts
+    something. There is nothing to contradict here: the cell is
+    Incomplete because nobody has answered yet, so this supplies the
+    answer the same way the Figures page would.
+
+    It writes through document_fields.save() - the exact function the
+    Figures page calls - so a figure typed from this cell and a figure
+    typed from that page are the same act on the same row. Answering it
+    here clears it there, and answering it there clears it here; neither
+    can say something the other does not.
+
+    Only reachable for a hold the binding engine marked editable, which
+    means it carries a token and field document_fields.save() defines -
+    see bindings.Held.editable. A hold with no token (an unanswered
+    preparer question, a structural gap) has nothing to route to and is
+    never offered this control.
+    """
+    from ..services import document_fields
+
+    payload = request.get_json(silent=True) or {}
+    fy_id = payload.get("financial_year_id")
+    financial_year = db.session.get(FinancialYear, fy_id) if fy_id else None
+    if financial_year is None:
+        return jsonify({"ok": False, "error": "Unknown engagement."}), 404
+
+    if financial_year.is_closed:
+        return jsonify({"ok": False,
+                        "error": "This engagement is closed."}), 400
+
+    token = (payload.get("token") or "").strip()
+    field = (payload.get("field") or "").strip()
+    if not token or not field:
+        # Never trusted from the page alone - a row with no editable hold
+        # has no token to post, so a request without one is either a bug
+        # or a cell that should never have been offered as editable.
+        return jsonify({"ok": False, "error": "Nothing to save here."}), 400
+
+    scope = (payload.get("scope") or "").strip()
+    member = (payload.get("member") or "").strip()
+    raw = payload.get("amount")
+
+    if raw is None or str(raw).strip() == "":
+        document_fields.save(financial_year, token, field, scope=scope,
+                             member=member, clear=True)
+        db.session.commit()
+        return jsonify({"ok": True, "cleared": True})
+
+    cleaned = str(raw).replace(",", "").replace("$", "").strip()
+    negative = cleaned.startswith("(") and cleaned.endswith(")")
+    if negative:
+        cleaned = cleaned[1:-1].strip()
+    try:
+        amount = Decimal(cleaned)
+        if negative:
+            amount = -amount
+    except InvalidOperation:
+        return jsonify({"ok": False,
+                        "error": f"{raw!r} is not a number."}), 400
+
+    document_fields.save(financial_year, token, field, scope=scope,
+                         member=member, amount=amount,
+                         found_at="entered from the report")
+    db.session.commit()
+    return jsonify({"ok": True, "amount": float(amount)})
+
+
 @bp.route("/api/note-paragraph", methods=["PATCH"])
 @login_required
 def update_note_paragraph():

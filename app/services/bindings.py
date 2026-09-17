@@ -114,9 +114,11 @@ TOTAL_COLUMN = "Total"
 class Held:
     """A figure that cannot be stated yet, and why."""
 
-    __slots__ = ("reason", "whole_year", "blocking")
+    __slots__ = ("reason", "whole_year", "blocking",
+                "token", "field", "scope", "member")
 
-    def __init__(self, reason, whole_year=False, blocking=True):
+    def __init__(self, reason, whole_year=False, blocking=True,
+                token=None, field=None, scope="", member=""):
         self.reason = reason
         # True when nothing at all is known about that year - not one
         # figure, but the whole column.
@@ -127,6 +129,28 @@ class Held:
         # not missing a disclosure, so the row is left out rather than
         # printed as Incomplete, which would hold finished accounts.
         self.blocking = blocking
+        # Set only where this hold names an exact document figure - the
+        # token and field services/document_fields.save() takes. A note
+        # left held for a structural reason (no earlier engagement, a
+        # code the library does not define, a question still waiting on
+        # the preparer) carries none of these, and stays read-only: it
+        # names nothing a single figure could answer.
+        self.token = token
+        self.field = field
+        self.scope = scope
+        self.member = member
+
+    @property
+    def editable(self):
+        """True where a preparer could answer this hold on the spot.
+
+        Only a document-sourced figure qualifies - the token and field
+        are exactly what document_fields.save() needs, and saving through
+        it writes the same row the Figures page would, so answering a
+        note's Incomplete cell and answering the Figures page are the
+        same act rather than two that can disagree.
+        """
+        return self.token is not None and self.field is not None
 
     def __repr__(self):
         return f"<Held {self.reason}>"
@@ -594,7 +618,7 @@ class Figures:
 
         blocking = document_fields.is_blocking(year, token, field, scope)
         return Held(f"Needs {DOCUMENT_TOKENS[token]} ({field})",
-                    blocking=blocking)
+                    blocking=blocking, token=token, field=field, scope=scope)
 
     def _line_code(self, code, offset):
         period = self.period(offset)
@@ -761,7 +785,8 @@ def by_class_table(spec, financial_year):
                         f"{DOCUMENT_TOKENS.get(token, 'A document')} has not "
                         f"given {field} for {column}",
                         blocking=document_fields.is_blocking(
-                            financial_year, token, field, scope)))
+                            financial_year, token, field, scope),
+                        token=token, field=field, scope=scope, member=column))
             elif column == TOTAL_COLUMN:
                 row["cells"].append(figures.resolve(binding, 0, scope))
             else:
@@ -786,6 +811,10 @@ def by_class_table(spec, financial_year):
         for index, value in enumerate(row["cells"]):
             if _is_held(value):
                 row.setdefault("held", {})[index] = value.reason
+                row.setdefault("held_edit", {})[index] = (
+                    {"token": value.token, "field": value.field,
+                     "scope": value.scope, "member": value.member}
+                    if value.editable else None)
                 row["cells"][index] = None
 
     return {"heading": spec.get("heading"), "table_id": table.get("table_id"),
@@ -925,7 +954,12 @@ def build_table(spec, financial_year, statements=None):
             row["ref"] = f"tb:{row['ids'][0]}"
         for column in ("current", "previous"):
             if _is_held(row[column]):
-                row[f"held_{column}"] = row[column].reason
+                held = row[column]
+                row[f"held_{column}"] = held.reason
+                row[f"held_{column}_edit"] = (
+                    {"token": held.token, "field": held.field,
+                     "scope": held.scope, "member": held.member}
+                    if held.editable else None)
                 row[column] = None
         # Kept, not dropped: the Preparer checks page asks where else in
         # the draft the same line code prints, and a rendered row is the
