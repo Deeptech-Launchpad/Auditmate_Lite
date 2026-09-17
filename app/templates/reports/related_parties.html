@@ -36,7 +36,7 @@
   ends up disclosed as a director's company.
 #}
 <p class="muted" style="max-width:64ch">
-  Nothing in the books says who is related to this company, so the list
+  No account name says who is related to this company, so the list
   comes from you. AuditMate then shows you what looks like it belongs to
   someone on it &mdash; <strong>you decide, it never does</strong>. Until
   every candidate below is decided, the related party notes stay
@@ -70,11 +70,14 @@
             </select>
           </label>
           <label class="rp-field">
-            <span class="rp-label">Spellings used in the books, one per line</span>
+            <span class="rp-label">Other ways this name appears on the accounts</span>
             <textarea name="spellings" rows="3"
                       placeholder="One per line">{{ (party.spellings or [])|join('\n') }}</textarea>
-            <span class="rp-help">Every way this party appears on an account
-              or an invoice. Used to suggest matches, never to decide one.</span>
+            <span class="rp-help">One per line. A director shown as
+              &ldquo;Mr Tan&rdquo; on one account and &ldquo;TAK&rdquo; on
+              another is one person &mdash; list both and those accounts
+              get suggested. Suggestions only; you still decide each
+              one.</span>
           </label>
           <label class="rp-field">
             <span class="rp-label">Note for the reviewer</span>
@@ -114,11 +117,13 @@
           </select>
         </label>
         <label class="rp-field">
-          <span class="rp-label">Spellings used in the books, one per line</span>
+          <span class="rp-label">Other ways this name appears on the accounts</span>
           <textarea name="spellings" rows="3"
                     placeholder="Loan from Director&#10;Mr Tan Ah Kow&#10;TAK"></textarea>
-          <span class="rp-help">Optional. Every way this name appears on an
-            account, so matches can be suggested.</span>
+          <span class="rp-help">Optional, one per line. A director shown
+            as &ldquo;Mr Tan&rdquo; on one account and &ldquo;TAK&rdquo; on
+            another is one person &mdash; list both and those accounts get
+            suggested.</span>
         </label>
         <div class="rp-actions">
           <button type="submit" name="action" value="add"
@@ -132,7 +137,7 @@
   <div>
     <div class="card" style="margin:0">
       <div class="card-head">
-        <h2>What in the books might be theirs</h2>
+        <h2>Accounts that might be theirs</h2>
         <span class="hint">
           {{ state.confirmed }} confirmed ·
           {{ state.rejected }} not related ·
@@ -151,7 +156,7 @@
           <table class="table rp-table">
             <thead>
               <tr>
-                <th style="width:34%">In the books</th>
+                <th style="width:34%">Account</th>
                 <th class="num" style="width:14%">Amount</th>
                 <th style="width:26%">Why it is here</th>
                 <th>Whose is it?</th>

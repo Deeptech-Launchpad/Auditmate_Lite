@@ -164,6 +164,15 @@ def create_app(config_object=Config):
         return Markup('{:,.2f}<span class="side">{}</span>'.format(
             abs(amount), side))
 
+    # What a column says where nothing sourced the figure. One word, in
+    # one place, so the statements and the notes cannot drift apart.
+    INCOMPLETE = "Incomplete"
+
+    @app.template_filter("unsourced")
+    def unsourced(value):
+        """True where nothing supplied this figure - not where it is nil."""
+        return value is None
+
     @app.template_filter("stmt")
     def stmt(value, blank=""):
         """Format the way the published annual report does.
@@ -172,12 +181,20 @@ def create_app(config_object=Config):
         double hyphen for nil - which is the Singapore FRS presentation
         convention and what the client's own template uses.
         """
+        # UNKNOWN IS NOT NIL, and the two must not print the same way.
+        # The library's display conventions are explicit: a dash says the
+        # figure is nil, and using one where nobody has sourced the figure
+        # "would tell the reader the balance is zero when nobody knows what
+        # it is". The books already keep them apart - a prior year that was
+        # sourced stores its empty lines as 0, and a prior year nothing
+        # sourced stores None - so the distinction only had to survive the
+        # formatting, and it did not.
         if value is None:
-            return blank or "--"
+            return blank or INCOMPLETE
         try:
             amount = round(float(value))
         except (TypeError, ValueError):
-            return blank or "--"
+            return blank or INCOMPLETE
         if amount == 0:
             return "--"
         if amount < 0:

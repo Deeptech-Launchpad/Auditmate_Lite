@@ -40,7 +40,7 @@
                             or not for_pdf|default(false) %}
 
 {% macro amount_cell(value) %}
-  <td class="num">{{ value|stmt }}</td>
+  <td class="num{{ ' unsourced' if value is none }}">{{ value|stmt }}</td>
 {% endmacro %}
 
 {# A figure nobody can source yet. Never a dash - a dash says nil. #}
@@ -133,7 +133,8 @@
     <td class="num was-typed">{{ line.effective_amount|stmt
        }}{{ override_mark(line.override_record) }}</td>
   {% else %}
-    <td class="num">{{ line.effective_amount|stmt }}</td>
+    <td class="num{{ ' unsourced' if line.effective_amount is none }}">{{
+       line.effective_amount|stmt }}</td>
   {% endif %}
 {% endmacro %}
 
@@ -412,7 +413,8 @@
                   {% elif cell is none %}
                     <td class="num"></td>
                   {% else %}
-                    <td class="num{{ ' total-col' if loop.last }}">{{ cell|stmt }}</td>
+                    <td class="num{{ ' total-col' if loop.last }}{{
+                        ' unsourced' if cell is none }}">{{ cell|stmt }}</td>
                   {% endif %}
                 {% endfor %}
               </tr>

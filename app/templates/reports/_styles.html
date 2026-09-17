@@ -257,10 +257,25 @@
 }
 {{ S }} table.by-class .total-col { font-weight: 600; }
 
+/* The stamp is fixed to the viewport, so it crosses whatever paragraph
+   happens to be under it and both become unreadable. Given its own
+   opaque band instead, so it reads as a banner over the page rather
+   than as ink printed through the text. */
 {{ S }} .draft-stamp {
-  position: fixed; top: 6mm; left: 0; right: 0; text-align: center;
+  position: fixed; top: 0; left: 0; right: 0; text-align: center;
   font-family: Arial, sans-serif; font-weight: 700; font-size: 11pt;
   letter-spacing: .12em; color: #b3261e; z-index: 50;
+  background: #fdecea; border-bottom: 1px solid #f3c4bf;
+  padding: 5px 0 4px;
+}
+
+/* A figure nobody sourced. The library is explicit that a dash here
+   would say the balance is nil when nobody knows what it is, so the
+   column says so in words - the same word, and the same treatment, the
+   notes already use. */
+{{ S }} td.num.unsourced {
+  color: #b3261e; font-style: italic; font-size: .82em;
+  font-variant-numeric: normal; letter-spacing: 0;
 }
 {{ S }} td.held {
   background: #fdecea; color: #8a1c10; font-style: italic; font-size: .9em;
@@ -276,6 +291,7 @@
    highlighting and keep the word, the way a held figure does. */
 {{ S }} .ov-mark { background: none; color: #000; border-color: #999; }
 {{ S }} td.was-typed { background: none; }
+{{ S }} td.num.unsourced { color: #000; }
 {% endif %}
 
 /* ----------------------------------------------------------------------
