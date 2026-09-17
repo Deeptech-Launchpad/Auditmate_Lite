@@ -173,7 +173,22 @@ def build_statement(financial_year_id: int, statement_type: str,
 
         figures, source = _prior_balances(financial_year)
         if figures:
-            prior = figures
+            # balances() returns every source debit-positive, by design -
+            # see prior_year._entered()'s own docstring, "TYPED AS
+            # PRINTED, STORED AS PRINTED, RETURNED DEBIT-POSITIVE". A
+            # preparer who reads 1,642,000 off last year's signed income
+            # statement and types it gets it back from that function as
+            # -1,642,000. Every other consumer of `prior` in this
+            # function is stated as printed - a credit-side line like
+            # revenue is positive - so it is flipped back here, once,
+            # the same way present() flips a line code on its way out of
+            # the note-level binding engine, and nowhere else: the OTHER
+            # branch above (an earlier engagement's own effective_amount)
+            # is already in this convention and must not be touched.
+            from .classify import is_credit_balance
+
+            prior = {key: (-value if is_credit_balance(key) else value)
+                    for key, value in figures.items()}
             log.info("FY %s comparatives taken from %s",
                      financial_year.id, source)
 

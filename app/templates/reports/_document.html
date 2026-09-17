@@ -39,8 +39,18 @@
                             or draft_incomplete|default(false)
                             or not for_pdf|default(false) %}
 
-{% macro amount_cell(value) %}
-  <td class="num{{ ' unsourced' if value is none }}">{{ value|stmt }}</td>
+{% macro amount_cell(value, edit=none) %}
+  {% if value is none and edit and editable %}
+    <td class="num unsourced is-editable">
+      <span class="held-answer" contenteditable="true"
+            data-fy-id="{{ fy.id }}" data-token="{{ edit.token }}"
+            data-doc-field="{{ edit.field }}" data-scope="{{ edit.scope }}"
+            data-member="{{ edit.member }}" data-placeholder="Incomplete"
+            title="Type what the signed set gives for this line &mdash; click to answer it here"></span>
+    </td>
+  {% else %}
+    <td class="num{{ ' unsourced' if value is none }}">{{ value|stmt }}</td>
+  {% endif %}
 {% endmacro %}
 
 {# A figure nobody can source yet. Never a dash - a dash says nil.
@@ -326,7 +336,10 @@
                 <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ stmt_label(line) }}</td>
                 {% if show_notes %}<td class="notes">{{ note_numbers.get(line.note_ref, '') if note_numbers else '' }}</td>{% endif %}
                 {{ stmt_amount(line) }}
-                {{ amount_cell(line.amount_previous) }}
+                {{ amount_cell(line.amount_previous,
+                    {"token": "PRIORFS", "field": line.line_key,
+                     "scope": "", "member": ""} if not line.is_detail
+                    else none) }}
               </tr>
             {% endfor %}
           </tbody>

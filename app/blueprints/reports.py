@@ -653,6 +653,10 @@ def update_document_figure():
         document_fields.save(financial_year, token, field, scope=scope,
                              member=member, clear=True)
         db.session.commit()
+        if token == "PRIORFS":
+            from ..services import statements as statements_service
+
+            statements_service.build_all(financial_year.id, use_ai=False)
         return jsonify({"ok": True, "cleared": True})
 
     cleaned = str(raw).replace(",", "").replace("$", "").strip()
@@ -671,6 +675,18 @@ def update_document_figure():
                          member=member, amount=amount,
                          found_at="entered from the report")
     db.session.commit()
+
+    # PRIORFS answers a comparative, and a statement line's amount_previous
+    # is a stored figure, not one resolved live at render time the way a
+    # note's binding is - typing it here does nothing to the page until
+    # the statements are rebuilt. build_all() also cascades to any LATER
+    # engagement whose own comparative was taken from this one, so a
+    # correction here does not leave next year quoting the old figure.
+    if token == "PRIORFS":
+        from ..services import statements as statements_service
+
+        statements_service.build_all(financial_year.id, use_ai=False)
+
     return jsonify({"ok": True, "amount": float(amount)})
 
 
