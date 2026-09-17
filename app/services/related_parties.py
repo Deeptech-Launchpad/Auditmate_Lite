@@ -87,6 +87,52 @@ def register(financial_year):
             .order_by(RelatedParty.name).all())
 
 
+def directors_of(customer):
+    """Names on the customer's own Directors field, one per line.
+
+    The same field the cover page and the Directors' Statement print
+    from. Kept separate from the register on purpose - a director is
+    not automatically a related party for THIS engagement's figures,
+    only a very likely candidate to be one - but there is no reason to
+    make a preparer type the same name twice.
+    """
+    raw = (customer.directors or "").strip()
+    if not raw:
+        return []
+    seen, names = set(), []
+    for line in raw.splitlines():
+        name = " ".join(line.strip().split())
+        if name and name.lower() not in seen:
+            seen.add(name.lower())
+            names.append(name)
+    return names
+
+
+def missing_directors(financial_year):
+    """Directors on the customer record not yet on this engagement's list.
+
+    What the "Add the client's directors" button on the Related parties
+    page offers - never run silently, so a page load never writes to the
+    database. A director already on the register (added by hand, or
+    carried from last year, however spelled) does not appear twice.
+    """
+    on_record = {p.name.strip().lower()
+                for p in register(financial_year)}
+    return [name for name in directors_of(financial_year.customer)
+            if name.lower() not in on_record]
+
+
+def add_directors(financial_year, names):
+    """Add several directors at once, exactly as add() would one at a time.
+
+    No spellings are guessed - the customer record gives a name, not the
+    handful of ways it appears across a trial balance, and inventing
+    those would be worse than leaving the box empty for someone to fill.
+    """
+    added = [add(financial_year, name, kind="director") for name in names]
+    return added
+
+
 def add(financial_year, name, kind="director", spellings=None, note=None):
     from flask_login import current_user
 
