@@ -577,7 +577,16 @@
           .rpt-mini .rpt-page { background: #fff; padding: 26px 30px;
                                 margin-bottom: 12px;
                                 box-shadow: 0 1px 3px rgba(0,0,0,.15); }
-          .supply { position:relative; }
+          /* A shut panel still has to look like a thing you can open. */
+  .ov-summary { cursor: pointer; list-style: none; user-select: none; }
+  .ov-summary::-webkit-details-marker { display: none; }
+  .ov-summary::after { content: 'be'; margin-left: auto; padding-left: 10px;
+                       color: var(--muted, #666); transition: transform .15s; }
+  .ov-panel[open] .ov-summary::after { transform: rotate(180deg); }
+  .ov-summary:hover { background: var(--hover, #fafafa); }
+  .ov-summary:focus-visible { outline: 2px solid #5a6fa0; outline-offset: -2px; }
+  .ov-panel .card-body { max-height: 40vh; overflow: auto; }
+  .supply { position:relative; }
   .supply-n {
     display:inline-block; margin-left:6px; padding:1px 7px; border-radius:9px;
     background:#c0392b; color:#fff; font-size:.78em; font-weight:600;
@@ -630,15 +639,20 @@
       made and then took back is often the first thing worth asking about.
     #}
     {% if overrides %}
-    <div class="card" style="margin-top:16px">
-      <div class="card-head">
+    {# Shut by default. It is a reviewer's list, read once before signing,
+       and left open it takes the height the draft itself needs - the
+       document pane above is capped, so every line here is a line of the
+       accounts nobody can see. The count stays visible shut, which is the
+       part worth knowing at a glance. #}
+    <details class="card ov-panel" style="margin-top:16px">
+      <summary class="card-head ov-summary">
         <h2>Changed by hand</h2>
         <span class="hint">
           {{ overrides_in_force }} in force
           {%- if overrides|length > overrides_in_force %},
             {{ overrides|length - overrides_in_force }} withdrawn{% endif %}
         </span>
-      </div>
+      </summary>
       <div class="card-body">
         <p class="muted small" style="margin-top:0">
           An override changes what the accounts print. It does not change the
@@ -680,7 +694,7 @@
           {% endfor %}
         </ul>
       </div>
-    </div>
+    </details>
     {% endif %}
   </div>
 </div>
