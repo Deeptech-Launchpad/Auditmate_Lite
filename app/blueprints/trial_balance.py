@@ -149,14 +149,14 @@ def ai_mapping_view(fy_id):
             customer.ai_allowed_at = datetime.utcnow()
             customer.ai_allowed_note = (request.form.get("note") or "").strip()
             db.session.commit()
-            flash(f"{customer.name} is now cleared for account names to be "
+            flash(f"{customer.name} is now allowed to have account names "
                   f"sent to a model. Nothing has been sent yet.", "success")
         elif action == "revoke":
             customer.ai_allowed = False
             customer.ai_allowed_by = current_user.id
             customer.ai_allowed_at = datetime.utcnow()
             db.session.commit()
-            flash(f"{customer.name} is no longer cleared. Nothing further "
+            flash(f"{customer.name} is no longer allowed. Nothing further "
                   f"will be sent.", "success")
         elif action == "ask":
             try:

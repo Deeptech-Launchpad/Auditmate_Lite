@@ -39,11 +39,11 @@
     <div class="card-head"><h2>Nothing has been sent</h2></div>
     <div class="card-body">
       <p style="margin-top:0;max-width:64ch">
-        {{ customer.name }} has not been cleared for anything to go to a
-        model. Read the list below first &mdash; it is exactly what would
-        be sent, in full. If any of it is something this client would not
-        want leaving your office, do not clear them; map those accounts by
-        hand instead.
+        Nothing about {{ customer.name }} has been allowed to leave the
+        machine yet. Read the list below first &mdash; it is exactly what
+        would be sent, in full, nothing more. If any of it is something
+        this client would not want leaving your office, do not allow it;
+        map those accounts by hand instead.
       </p>
       {% if outgoing %}
         <table class="table" style="max-width:60ch">
@@ -70,9 +70,9 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="allow">
           <input type="text" class="input" name="note" style="max-width:46ch"
-                 placeholder="Why this client is cleared (optional)">
+                 placeholder="Why this is allowed (optional)">
           <button type="submit" class="btn btn-primary" style="margin-top:8px">
-            Clear {{ customer.name }} for this</button>
+            Allow account names to be sent for {{ customer.name }}</button>
         </form>
       {% else %}
         <p class="muted">Every account is already mapped. There is nothing
@@ -83,7 +83,7 @@
 {% else %}
   <div class="card" style="margin-bottom:16px">
     <div class="card-head">
-      <h2>Cleared</h2>
+      <h2>Allowed</h2>
       <span class="hint">
         {% if customer.ai_allowed_at %}
           since {{ customer.ai_allowed_at.strftime('%d %b %Y') }}
@@ -102,7 +102,7 @@
       <form method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="revoke">
-        <button type="submit" class="btn">Withdraw clearance</button>
+        <button type="submit" class="btn">Stop allowing this</button>
       </form>
     </div>
   </div>
@@ -111,7 +111,7 @@
 {% if rows %}
   <div class="card">
     <div class="card-head">
-      <h2>Accounts nothing could place</h2>
+      <h2>Accounts the rules could not map</h2>
       <span class="hint">{{ rows|length }}</span>
     </div>
     <div class="card-body">

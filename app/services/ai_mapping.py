@@ -154,7 +154,7 @@ def suggest(financial_year, user_id=None):
     customer = financial_year.customer
     if not permitted(customer):
         raise NotPermitted(
-            f"{customer.name} has not been cleared for anything to be sent "
+            f"{customer.name} has not been allowed to have anything sent "
             f"to a model. Nothing was sent.")
 
     accounts = outgoing(financial_year)
