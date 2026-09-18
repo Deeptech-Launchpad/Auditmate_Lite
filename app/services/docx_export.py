@@ -78,6 +78,12 @@ class _Reader(HTMLParser):
         self._cell = None
         self._header_row = False
         self._cell_numeric = False
+        # Where a cell's text should sit, and which sections it points at.
+        # The contents page cites a page number through WeasyPrint's
+        # target-counter, which is CSS and leaves the cell empty here - so
+        # the anchors are carried through and become Word page references.
+        self._cell_align = None
+        self._cell_refs = []
         # A set of accounts is ruled, not gridded: a line under the column
         # headings, one above each subtotal, a double one under the final
         # total, and nothing anywhere else. Which row is which is on the
@@ -146,6 +152,20 @@ class _Reader(HTMLParser):
             self._bold += 1
         elif tag in ("i", "em"):
             self._italic += 1
+        elif tag == "a":
+            # The contents page links each entry to the section it names.
+            # Kept so the page number can be a real Word field rather than
+            # a number frozen at the moment the file was written.
+            href = next((v for k, v in attrs if k == "href"), "") or ""
+            if href.startswith("#sec-") and self._cell is not None:
+                self._cell_refs.append(href[1:])
+        elif tag == "div" and not self._in_table:
+            # Still a block, as it was before: closing the open one is what
+            # the BLOCKS branch below would have done. The anchor is extra.
+            self._emit_block()
+            anchor = next((v for k, v in attrs if k == "id"), "") or ""
+            if anchor.startswith("sec-"):
+                self.out.append(("bookmark", anchor, None))
         elif tag == "br":
             self._text.append((LINE_BREAK, False, False))
         elif tag in HEADINGS:
@@ -174,7 +194,15 @@ class _Reader(HTMLParser):
             # cell (a date has two dots, "S$" has no digits either), which
             # left them left-aligned under a column of right-aligned figures.
             class_attr = next((v for k, v in attrs if k == "class"), "") or ""
-            self._cell_numeric = "num" in class_attr.split()
+            classes = class_attr.split()
+            self._cell_numeric = "num" in classes
+            self._cell_refs = []
+            # A note reference is centred under its heading, a figure is
+            # right-aligned, a page number on the contents page follows its
+            # dot leader to the right margin.
+            self._cell_align = ("center" if "notes" in classes
+                                else "right" if self._cell_numeric
+                                or "c-page" in classes else None)
             if tag == "th":
                 self._header_row = True
         elif tag == "hr":
@@ -200,9 +228,12 @@ class _Reader(HTMLParser):
         elif tag in ("td", "th") and self._in_table:
             text = "".join(r[0] for r in self._flush()).strip()
             if self._row is not None:
-                self._row.append((text, self._cell_numeric))
+                self._row.append((text, self._cell_align,
+                                  tuple(self._cell_refs)))
             self._cell = None
             self._cell_numeric = False
+            self._cell_align = None
+            self._cell_refs = []
         elif tag == "tr" and self._in_table:
             if self._row:
                 self.out.append(
@@ -319,6 +350,50 @@ def _page_numbers(section):
         run.font.size = Pt(9)
 
 
+def _bookmark(paragraph, name, number):
+    """Mark this paragraph so a page reference can point at it."""
+    start = _element("w:bookmarkStart", id=str(number), name=name)
+    end = _element("w:bookmarkEnd", id=str(number))
+    paragraph._p.insert(0, start)
+    paragraph._p.append(end)
+
+
+def _page_ref(paragraph, bookmark):
+    """PAGEREF: the page a bookmark lands on, as a field Word keeps right.
+
+    The contents page gets its numbers from WeasyPrint's target-counter,
+    which is CSS - so in the PDF it is correct and in the Word file the
+    cell came out empty. A number written in here instead would be right
+    once and wrong as soon as the preparer added a paragraph, which is
+    the one thing a Word deliverable is for.
+    """
+    begin = _element("w:fldChar", fldCharType="begin")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = " PAGEREF %s \\h " % bookmark
+    separate = _element("w:fldChar", fldCharType="separate")
+    placeholder = OxmlElement("w:t")
+    placeholder.text = "1"
+    end = _element("w:fldChar", fldCharType="end")
+    run = paragraph.add_run()
+    for node in (begin, instr, separate, placeholder, end):
+        run._r.append(node)
+    return run
+
+
+def _update_fields_on_open(document):
+    """Ask Word to refresh every field when the document is opened.
+
+    Without it a PAGEREF shows whatever was written as its placeholder
+    until somebody presses F9 - and the acceptance test for this document
+    is opening it and exporting a PDF without touching anything.
+    """
+    settings = document.settings.element
+    for existing in settings.findall(qn("w:updateFields")):
+        settings.remove(existing)
+    settings.append(_element("w:updateFields", val="true"))
+
+
 def _write_runs(paragraph, runs):
     for text, bold, italic in runs:
         if text == LINE_BREAK:
@@ -391,6 +466,10 @@ def build(html: str, title: str = None, draft: bool = False) -> bytes:
 
     table = None
     pending_rows = []
+    # The section anchor seen but not yet attached: it is placed on the
+    # first heading that follows, which is what the contents page names.
+    pending_bookmark = None
+    bookmark_number = 0
 
     for kind, arg, payload in instructions:
         if kind == "table_start":
@@ -431,19 +510,31 @@ def build(html: str, title: str = None, draft: bool = False) -> bytes:
                     if is_header:
                         _repeat_as_header(row)
                     for index in range(width):
-                        text, is_numeric = (cells[index] if index < len(cells)
-                                            else ("", False))
+                        text, align, refs = (cells[index]
+                                             if index < len(cells)
+                                             else ("", None, ()))
                         cell = row.cells[index]
                         cell.width = Mm(label_mm if index == 0
                                         else AMOUNT_COLUMN_MM)
                         paragraph = cell.paragraphs[0]
-                        run = paragraph.add_run(text)
-                        run.bold = is_header or kind_of_row == "total"
+                        if refs:
+                            # A contents entry: the page each section lands
+                            # on. A range where the notes run over several.
+                            for position_ref, target in enumerate(refs):
+                                if position_ref:
+                                    paragraph.add_run(" – ")
+                                _page_ref(paragraph, target)
+                        else:
+                            run = paragraph.add_run(text)
+                            run.bold = is_header or kind_of_row == "total"
                         # The column's own marked-up class wins; the regex is
                         # a fallback for a table with no such marking at all
                         # (a note an auditor typed by hand, say).
-                        if is_numeric or NUMERIC.match(text or ""):
+                        if align == "right" or (align is None
+                                                and NUMERIC.match(text or "")):
                             paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                        elif align == "center":
+                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
                         # The ruling. Under the headings, over a subtotal,
                         # and double under the last total - nowhere else.
@@ -459,15 +550,26 @@ def build(html: str, title: str = None, draft: bool = False) -> bytes:
             pending_rows = []
             continue
 
+        if kind == "bookmark":
+            pending_bookmark = arg
+            continue
+
         if kind == "heading":
             document.add_heading("", level=min(arg + 1, 4))
             _write_runs(document.paragraphs[-1], payload)
+            if pending_bookmark:
+                bookmark_number += 1
+                _bookmark(document.paragraphs[-1], pending_bookmark,
+                          bookmark_number)
+                pending_bookmark = None
         elif kind == "bullet":
             _write_runs(document.add_paragraph(style="List Bullet"), payload)
         elif kind == "rule":
             document.add_paragraph("_" * 60)
         elif kind == "para":
             _write_runs(document.add_paragraph(), payload)
+
+    _update_fields_on_open(document)
 
     buffer = io.BytesIO()
     document.save(buffer)
