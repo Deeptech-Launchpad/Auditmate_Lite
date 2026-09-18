@@ -67,6 +67,12 @@ def index(fy_id):
                            checks=reconcile.check(financial_year),
                            outward=outward.check(financial_year),
                            opening=prior_year.opening_check(financial_year),
+                           # Prior-year documents on the engagement that
+                           # are supplying nothing. The comparative fills
+                           # from the next source down either way, so
+                           # without this the preparer cannot tell.
+                           prior_ignored=prior_year.ignored_documents(
+                               financial_year),
                            depreciation=depreciation_check.check(financial_year),
                            mapping=mapping_review.review(financial_year),
                            line_options=_statement_line_options(),

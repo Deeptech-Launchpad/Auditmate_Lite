@@ -299,6 +299,73 @@ def sources(financial_year):
     return found
 
 
+# Documents that are meant to supply last year's figures.
+PRIOR_CATEGORIES = ("signed_accounts", "prior_trial_balance")
+
+
+def ignored_documents(financial_year):
+    """Prior-year documents that are loaded and are not being read.
+
+    A document can sit on an engagement and contribute nothing, and until
+    this nothing said so anywhere. Two ways it happens:
+
+      NOBODY HAS REVIEWED IT. _document_of only returns a document marked
+      verified, because extraction is a parser reading a PDF and an
+      unchecked figure is not a comparative. That rule is right and it
+      stays. But a preparer who uploads last year's signed accounts and
+      does not review them watches the comparative column fill in anyway,
+      to the cent, with no reason to doubt it.
+
+      IT IS REVIEWED AND NOTHING CAME OUT OF IT. Either it was never
+      analysed, so there are no extracted rows at all, or the rows map to
+      no statement line.
+
+    Either way the engine drops quietly to the next source down, which is
+    most often Auditmate's own previous engagement - so a re-run prints
+    the same comparatives it printed last time, and looks for all the
+    world as though the document had been read. That is what makes this
+    worth naming: the failure is indistinguishable from success.
+
+    Reported, not repaired. Whether to review the document, analyse it,
+    or type the figures by hand is the preparer's call; what they cannot
+    do is make it while the engine is silent.
+    """
+    ignored = []
+    for document in financial_year.documents:
+        if document.category not in PRIOR_CATEGORIES:
+            continue
+
+        verified = (document.review_status == "verified"
+                    or document.file_type == "xero_prior")
+        if not verified:
+            ignored.append({
+                "document": document,
+                "why": "not reviewed",
+                "detail": "Uploaded but not reviewed, so its figures are "
+                          "not used. Last year's column is coming from "
+                          "somewhere else.",
+            })
+            continue
+
+        if _from_document(document, financial_year.customer_id):
+            continue                       # reviewed, read, contributing
+
+        extracted = (ExtractedLineItem.query
+                     .filter_by(document_id=document.id)
+                     .filter(ExtractedLineItem.status != "discarded")
+                     .count())
+        ignored.append({
+            "document": document,
+            "why": "nothing read" if extracted else "not analysed",
+            "detail": ("Reviewed, but none of its rows match a statement "
+                       "line, so it supplies no figure."
+                       if extracted else
+                       "Reviewed, but it has not been analysed, so there "
+                       "are no figures in it to read."),
+        })
+    return ignored
+
+
 def balances(financial_year):
     """Last year's figures for the jobs that need data, and where from.
 

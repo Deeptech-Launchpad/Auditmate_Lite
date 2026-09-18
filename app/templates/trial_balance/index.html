@@ -160,6 +160,54 @@
    one fact reads as two problems. The notice above carries it, and links
    here. #}
 
+{# A prior-year document that is loaded and supplying nothing.
+
+   The comparative column fills from the next source down whether or not
+   this document is read, and fills to the cent, so the failure looks
+   exactly like success: the figures arrive, they are plausible, and they
+   are last year's engagement rather than the document just uploaded.
+   Nothing else on any screen says so. #}
+{% if prior_ignored %}
+  <div class="card" style="border-left:3px solid #c47f0a;margin-bottom:16px">
+    <div class="card-head">
+      <h2>Last year's figures are not coming from these</h2>
+      <span class="hint">{{ prior_ignored|length }}</span>
+    </div>
+    <div class="card-body">
+      <p class="muted small" style="max-width:66ch;margin-top:0">
+        These are on the engagement to supply last year's figures and are
+        supplying none. The comparative column is filled from the next
+        source down, so it looks right either way &mdash; that is what
+        makes this worth saying.
+      </p>
+      <table class="table">
+        <thead><tr>
+          <th style="width:34%">Document</th>
+          <th style="width:16%">Why</th>
+          <th>What it means</th>
+        </tr></thead>
+        <tbody>
+          {% for row in prior_ignored %}
+            <tr>
+              <td class="small"><span class="strong">
+                {{ row.document.original_filename
+                   or row.document.stored_filename }}</span>
+                <div class="muted small">{{ row.document.category|replace('_', ' ') }}</div></td>
+              <td class="small"><span class="pill pill-amber">{{ row.why }}</span></td>
+              <td class="small muted">{{ row.detail }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted small" style="max-width:66ch;margin-bottom:0">
+        Review the document to have its figures used, or type last year's
+        figures on the Figures page &mdash; a figure a person read off the
+        signed set outranks a parser reading the same PDF.
+      </p>
+    </div>
+  </div>
+{% endif %}
+
 {# Does what the books hold still agree with what was signed?
    The strongest check there is, and invisible from inside this year: a tax
    payable balance that had not moved in twelve months sat in accounts that
