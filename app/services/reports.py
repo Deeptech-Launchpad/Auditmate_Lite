@@ -1658,6 +1658,58 @@ def _is_related_party_note(section):
     return any(name in haystack for name in RELATED_PARTY_NOTES)
 
 
+def statement_blockers(financial_year):
+    """Faults on the face of the statements that stop a clean copy.
+
+    Completeness was read off the notes alone, so nothing examined the
+    primary statements, and a cash flow that does not reconcile could
+    reach an approved set. The remainder prints as its own line -
+    "Movement not yet analysed" - and a plug figure in a client's
+    accounts is not a presentation choice. It is a number nobody can
+    support, sitting in a statement that claims to explain where the
+    cash went.
+
+    The line stays on the working draft, and so does its amount: the
+    preparer needs to see how much is unexplained, and hiding it would
+    make a set that silently does not add up. What changes is that a
+    draft carrying one cannot be approved.
+
+    Almost always the cause is a missing opening cash balance, which is
+    last year's closing cash and comes from the signed prior year
+    accounts - so the reason says that rather than only naming the gap.
+    """
+    blockers = []
+    statement = FinancialStatement.query.filter_by(
+        financial_year_id=financial_year.id,
+        statement_type="cash_flow").first()
+    if statement is None:
+        return blockers
+
+    for line in statement.lines:
+        if line.line_key != "cf_unexplained" or not line.effective_amount:
+            continue
+        blockers.append((statement.type_label, [
+            "%s of the movement in cash is not explained by the operating, "
+            "investing and financing sections, and prints as “Movement "
+            "not yet analysed”. Most often the opening cash balance is "
+            "missing - it is last year's closing cash, from the signed "
+            "prior year accounts." % _plain_amount(line.effective_amount)]))
+        break
+    return blockers
+
+
+def _plain_amount(value):
+    """A figure for a sentence: thousands separated, brackets for negative."""
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return str(value)
+    text = "{:,.2f}".format(abs(number))
+    return "(%s)" % text if number < 0 else text
+
+
 def record_completeness(report, payloads):
     """Remember how many sections are incomplete, for screens that list many
     engagements and cannot afford to render every report. Returns the list
@@ -1666,6 +1718,9 @@ def record_completeness(report, payloads):
 
     incomplete = [(p["section"].title, p["incomplete"])
                   for p in payloads if p.get("incomplete")]
+    # The statements as well as the notes. A set whose cash flow does not
+    # reconcile is not a finished set, however complete its notes are.
+    incomplete += statement_blockers(report.financial_year)
     if report.incomplete_notes != len(incomplete):
         report.incomplete_notes = len(incomplete)
         report.completeness_checked_at = datetime.utcnow()

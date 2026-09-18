@@ -1054,9 +1054,14 @@ def finalise(fy_id):
     # No clean final copy while anything is incomplete.
     incomplete = report_service.record_completeness(report, _assemble(report))
     if incomplete:
-        flash(f"{len(incomplete)} note(s) are still incomplete, so the "
-              f"accounts cannot be approved yet. Each is marked Incomplete "
-              f"in the report, with what it is waiting for.", "error")
+        # "Item" rather than "note": a statement that does not reconcile
+        # blocks approval too, and calling that a note sends the preparer
+        # looking through the notes for something that is not there.
+        flash(f"{len(incomplete)} item(s) are still incomplete, so the "
+              f"accounts cannot be approved yet: "
+              f"{', '.join(title for title, _reasons in incomplete)}. "
+              f"Each is marked in the report, with what it is waiting for.",
+              "error")
         return redirect(url_for("reports.builder", fy_id=fy_id))
 
     note = (request.form.get("note") or "").strip() or None
