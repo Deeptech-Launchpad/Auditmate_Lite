@@ -224,14 +224,17 @@
 # above would otherwise claim it first - "Bank Fees" is a charge, not cash,
 # and "Salaries and wages payable" is an accrual, not salary cost.
 - {pattern: "contractor",           statement: profit_and_loss, line: manpower_supply, priority: 8}
-- {pattern: "subcontractor",        statement: profit_and_loss, line: manpower_supply, priority: 7}
-- {pattern: "sub-contractor",       statement: profit_and_loss, line: manpower_supply, priority: 7}
+# Work bought in to deliver the job: above gross profit, not below it.
+# "manpower" is left pointing at Manpower supply cost - that is a different
+# account and a real client's signed set presents it there.
+- {pattern: "subcontractor",        statement: profit_and_loss, line: subcontractor_costs, priority: 7}
+- {pattern: "sub-contractor",       statement: profit_and_loss, line: subcontractor_costs, priority: 7}
 - {pattern: "consultanc",           statement: profit_and_loss, line: consulting_fee, priority: 10}
 - {pattern: "auditor",              statement: profit_and_loss, line: accounting_charges, priority: 6}
 - {pattern: "audit and tax",        statement: profit_and_loss, line: accounting_charges, priority: 5}
 - {pattern: "tax fee",              statement: profit_and_loss, line: accounting_charges, priority: 8}
 - {pattern: "bank fee",             statement: profit_and_loss, line: bank_charges, priority: 4}
-- {pattern: "levy",                 statement: profit_and_loss, line: mom_application_fee, priority: 8}
+- {pattern: "levy",                 statement: profit_and_loss, line: statutory_levies, priority: 8}
 - {pattern: "mom fee",              statement: profit_and_loss, line: mom_application_fee, priority: 6}
 - {pattern: "foreign worker",       statement: profit_and_loss, line: mom_application_fee, priority: 6}
 - {pattern: "software",             statement: profit_and_loss, line: other_expenses, priority: 14}
@@ -299,3 +302,18 @@
 - {pattern: "employment cost",      statement: profit_and_loss, line: staff_salaries, priority: 12}
 - {pattern: "personnel cost",       statement: profit_and_loss, line: staff_salaries, priority: 12}
 - {pattern: "remuneration",         statement: profit_and_loss, line: staff_salaries, priority: 18}
+
+# ------------------------------------------- names nothing else claimed ---
+# Found running the Willow Crest demo pack: five accounts reached the
+# unmapped tray, one of them revenue - the largest figure in the accounts.
+# Left unmapped nothing prints, which is safe and useless.
+- {pattern: "renovation income",    statement: profit_and_loss, line: revenue, priority: 8, sign: -1}
+- {pattern: "fit-out",              statement: profit_and_loss, line: revenue, priority: 8, sign: -1}
+- {pattern: "fitout",               statement: profit_and_loss, line: revenue, priority: 8, sign: -1}
+- {pattern: "government grant",     statement: profit_and_loss, line: other_income, priority: 8}
+- {pattern: "material",             statement: profit_and_loss, line: purchases, priority: 12}
+- {pattern: "staff welfare",        statement: profit_and_loss, line: other_expenses, priority: 10}
+# CPF on the balance sheet is what the company still owes; the P&L rule
+# above is what it charged. The account type tells the two apart.
+- {pattern: "cpf",                  statement: balance_sheet, line: accruals, priority: 12, sign: -1}
+- {pattern: "sdl",                  statement: balance_sheet, line: accruals, priority: 12, sign: -1}

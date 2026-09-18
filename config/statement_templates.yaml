@@ -37,6 +37,11 @@ profit_and_loss:
 
     # --- Cost of sales: detail lines feed the subtotal shown on the face ---
     - {key: purchases,             label: "Purchases", group: cost_of_sales, detail: true}
+    # Work bought in to deliver the job. It is what the revenue cost, so it
+    # belongs above gross profit - the "subcontractor" rule pointed at
+    # Manpower supply cost, which sits in operating expenses, and put a
+    # contractor's largest cost below the line it is measured against.
+    - {key: subcontractor_costs,   label: "Subcontractor costs", group: cost_of_sales, detail: true}
     - {key: design_implementation, label: "Design & implementation", group: cost_of_sales, detail: true}
     - {key: service_charges,       label: "Service charges for project", group: cost_of_sales, detail: true}
     - {key: cost_of_sales,         label: "Cost of sales", group: cost_of_sales, subtotal: true, formula: sum_group_cost_of_sales}
@@ -54,6 +59,10 @@ profit_and_loss:
     - {key: staff_salaries,        label: "Staff salaries", group: operating_expenses, detail: true}
     - {key: staff_bonus,           label: "Staff bonus", group: operating_expenses, detail: true}
     - {key: cpf,                   label: "CPF", group: operating_expenses, detail: true}
+    # Skills Development Levy and the foreign worker levy. They had no line
+    # of their own, so "levy" was pointed at MOM application fee - a fee for
+    # a work pass application, which is not what either of these is.
+    - {key: statutory_levies,      label: "Statutory levies", group: operating_expenses, detail: true}
     - {key: commission_employee,   label: "Commission to employee", group: operating_expenses, detail: true}
     - {key: manpower_supply,       label: "Manpower supply cost", group: operating_expenses, detail: true}
     - {key: mom_application_fee,   label: "MOM application fee", group: operating_expenses, detail: true}
