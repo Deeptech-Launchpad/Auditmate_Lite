@@ -314,9 +314,20 @@
   color: #8a1c10; font-style: italic;
 }
 {% if for_pdf %}
-/* Nothing needs highlighting in a delivered PDF, but it must still be
-   visible that a field was never filled in. */
-{{ S }} .missing-binding { background: none; color: #000; }
+/* A blank nobody filled in. It was dropped to plain black here, on the
+   reasoning that a delivered PDF needs no highlighting - but that made
+   "[principal activities not provided]" read as a sentence of the
+   accounts, set in the same ink as the sentence around it, which is the
+   one thing it must never look like.
+
+   It only ever reaches a PDF on a stamped draft: an unfilled binding
+   holds its note incomplete, and an incomplete note cannot be approved.
+   So this is a working mark on a working copy, and it is allowed to
+   look like one. */
+{{ S }} .missing-binding {
+  background: none; color: #8a5a10; font-style: italic;
+  border-bottom: 1px dashed #8a5a10;
+}
 {{ S }} td.held { background: none; color: #000; }
 {{ S }} p.held-table { background: none; color: #000; }
 /* Override marks reach a PDF only on a stamped draft - the clean copy
