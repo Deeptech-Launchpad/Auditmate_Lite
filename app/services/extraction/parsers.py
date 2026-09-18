@@ -598,6 +598,136 @@ def extract_docx(path: Path) -> ExtractionResult:
 # PDF (typed / text-layer)
 # --------------------------------------------------------------------------
 
+def _columns_from_words(words, page_width, min_gap=4.0):
+    """Column boundaries, read off the whitespace a columnar page keeps.
+
+    A PDF that draws no table lines still lines its columns up, and the
+    bands of the page no word ever covers are where one column ends and
+    the next begins. Those bands are the same on every row, which is what
+    makes them trustworthy: a single row's spacing is not.
+    """
+    spans = sorted((word["x0"], word["x1"]) for word in words)
+    occupied = []
+    for left, right in spans:
+        if occupied and left <= occupied[-1][1] + 0.1:
+            occupied[-1][1] = max(occupied[-1][1], right)
+        else:
+            occupied.append([left, right])
+
+    gaps = [(occupied[i][1], occupied[i + 1][0])
+            for i in range(len(occupied) - 1)
+            if occupied[i + 1][0] - occupied[i][1] >= min_gap]
+    return [0.0] + [(a + b) / 2 for a, b in gaps] + [float(page_width) + 1]
+
+
+def _lines_from_words(words, tolerance=3.0):
+    """Words gathered into the visual lines they sit on."""
+    lines = {}
+    for word in words:
+        lines.setdefault(round(word["top"] / tolerance), []).append(word)
+    return [sorted(row, key=lambda w: w["x0"])
+            for _key, row in sorted(lines.items())]
+
+
+def _cells_from_line(words, bounds):
+    """One visual line as table cells, by which column each word sits in."""
+    cells = [""] * (len(bounds) - 1)
+    for word in words:
+        middle = (word["x0"] + word["x1"]) / 2
+        for index in range(len(bounds) - 1):
+            if bounds[index] <= middle < bounds[index + 1]:
+                cells[index] = (cells[index] + " " + word["text"]).strip()
+                break
+    return cells
+
+
+def _merge_header(rows):
+    """Several header lines as one. A column heading wraps.
+
+    "Debit - Year to" on one line and "Date" on the next is one heading,
+    and identifying columns from either half alone finds nothing.
+    """
+    if not rows:
+        return []
+    width = max(len(row) for row in rows)
+    merged = []
+    for index in range(width):
+        parts = [row[index].strip() for row in rows
+                 if index < len(row) and row[index].strip()]
+        merged.append(" ".join(parts))
+    return merged
+
+
+def _rows_from_layout(page, page_no):
+    """Rows from a page that lays out a table without drawing one.
+
+    pdfplumber's extract_tables finds a table by its ruling lines, so a
+    PDF that sets its columns with whitespace alone - which is most
+    accounting software's PDF output, and both files in the client's own
+    demo pack - yields nothing at all from it. The text was read and then
+    never looked at: the rows were there, on the page, in columns, and
+    the only thing that could reach them was the AI fallback.
+
+    This is a fallback too, and stays one: it runs only where the table
+    pass found nothing in the whole document, so no file that reads
+    correctly today changes.
+    """
+    words = page.extract_words() or []
+    if len(words) < 8:
+        return []
+
+    bounds = _columns_from_words(words, page.width)
+    if len(bounds) < 3:
+        return []                     # one column: prose, not a table
+
+    grid = [_cells_from_line(line, bounds)
+            for line in _lines_from_words(words)]
+
+    # Where the figures start. A row carrying two or more amounts is data;
+    # everything above it is the title block and the column headings.
+    first_data = None
+    for index, cells in enumerate(grid):
+        if sum(1 for c in cells if parse_amount(c) is not None) >= 2:
+            first_data = index
+            break
+    if first_data is None:
+        return []
+
+    header = _merge_header([cells for cells in grid[:first_data]
+                            if looks_like_header(cells)])
+    cols = _identify_columns(header) if header else {
+        "label": None, "debit": None, "credit": None,
+        "amount": None, "code": None}
+
+    rows = []
+    for offset, cells in enumerate(grid[first_data:], start=first_data):
+        source_ref = {"page": page_no, "row": offset + 1}
+        extracted = _row_from_cells(cells, cols, source_ref)
+        if not extracted:
+            continue
+        rows.append(extracted)
+        prior = _comparative_row(cells, cols, source_ref, extracted)
+        if prior:
+            rows.append(prior)
+
+    # Was it a table at all?
+    #
+    # Aligning words into columns finds columns in anything, including a
+    # page of prose that happens to carry figures - a set of financial
+    # statements, where a paragraph, a note reference and a total all sit
+    # at their own margins. What comes back from that is figures with
+    # nothing to call them.
+    #
+    # A figure with no label is not a line item: nothing can map it and
+    # nothing can present it. So the proportion of them is the test, and
+    # it separates the two cleanly rather than by a hair - the client's
+    # own trial balance leaves none, its signed accounts leave half.
+    unlabelled = sum(1 for row in rows if not (row.label or "").strip())
+    if rows and unlabelled * 3 >= len(rows):
+        return []
+    return rows
+
+
 def extract_pdf(path: Path) -> ExtractionResult:
     import pdfplumber
 
@@ -632,6 +762,16 @@ def extract_pdf(path: Path) -> ExtractionResult:
                                                  extracted)
                         if prior:
                             result.rows.append(prior)
+
+        # Nothing from the ruling lines, and there is text on the page:
+        # read the columns off their own alignment instead. Second pass,
+        # and only for a document the first pass could not read at all,
+        # so a PDF that extracts correctly today is untouched by it.
+        if not result.rows and "".join(text_chunks).strip():
+            for page_no, page in enumerate(pdf.pages, start=1):
+                result.rows.extend(_rows_from_layout(page, page_no))
+            if result.rows:
+                result.engine = "pdfplumber-layout"
 
     result.raw_text = "\n".join(text_chunks)
 
