@@ -34,6 +34,18 @@
     color: #000;
   }
 }
+/* The Preparer Checks page is a working paper and never prints.
+
+   Keeping it out of the export routes was not enough: the preview page
+   carries a "Print / Save as PDF" button of its own, and that prints
+   what is on screen - which is the copy the checks legitimately belong
+   to. So a preparer pressing the button on this very page got them in
+   the PDF, which is the one place the client asked for them not to be.
+
+   Hidden here rather than removed from the preview, because on screen
+   it is exactly where it should be: the page that tells the person what
+   to check before they sign. */
+{{ S }} .checks-page { display: none !important; }
 /* Real page numbers on the contents page - resolved by WeasyPrint via
    target-counter(); a browser's own print has no equivalent and simply
    will not render this rule at all, leaving the dotted leader with no
