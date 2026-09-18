@@ -1658,6 +1658,23 @@ def _is_related_party_note(section):
     return any(name in haystack for name in RELATED_PARTY_NOTES)
 
 
+# Rows that are the engine talking to the preparer, not lines of the
+# accounts. "Movement not yet analysed" is the whole of the set: it is
+# not an SFRS caption, no source states it, and it exists to say that
+# the three sections do not account for the movement in cash.
+#
+# It was printing in the label column with a figure beside it, among the
+# real captions, which is the one place it must not be. A reader cannot
+# tell it from an account, and it would be read as one - a line of these
+# accounts, in these accounts, that no document supports.
+WORKING_NOTE_LINES = {"cf_unexplained"}
+
+
+def is_working_note(line):
+    """Whether this row is a working mark rather than a line of the accounts."""
+    return getattr(line, "line_key", None) in WORKING_NOTE_LINES
+
+
 def statement_blockers(financial_year):
     """Faults on the face of the statements that stop a clean copy.
 

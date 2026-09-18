@@ -241,6 +241,24 @@ def create_app(config_object=Config):
             return "—"
         return f"{float(value) * 100:.0f}%"
 
+    # --- Helpers the statement templates need, wherever they render ---
+    #
+    # These were registered on the reports blueprint's context processor,
+    # which covers a request routed through that blueprint and nothing
+    # else. Anything rendering reports/_document.html by another route -
+    # an export, a job, a test - got a template that silently had no
+    # visible_lines and no is_working_note, and failed on whichever it
+    # reached first. They belong to the template, not to one blueprint.
+    @app.context_processor
+    def statement_helpers():
+        from .services import reports as reports_service
+
+        return {
+            "GROUP_HEADINGS": reports_service.GROUP_HEADINGS,
+            "visible_lines": reports_service.visible_statement_lines,
+            "is_working_note": reports_service.is_working_note,
+        }
+
     # --- Cache busting for static files ---
     @app.url_defaults
     def stamp_static(endpoint, values):

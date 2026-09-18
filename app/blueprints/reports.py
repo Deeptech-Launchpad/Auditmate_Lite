@@ -24,11 +24,10 @@ from ..services.audit import record
 bp = Blueprint("reports", __name__, url_prefix="/reports")
 
 
-@bp.context_processor
-def inject_report_globals():
-    """Statement captions, shared by the builder preview and the export."""
-    return {"GROUP_HEADINGS": report_service.GROUP_HEADINGS,
-            "visible_lines": report_service.visible_statement_lines}
+# The statement helpers this blueprint's templates need - GROUP_HEADINGS,
+# visible_lines, is_working_note - are registered app-wide in the factory,
+# because reports/_document.html also renders from paths that never touch
+# this blueprint and was failing on whichever helper it reached first.
 
 
 def _assemble(report, chips=False):

@@ -332,6 +332,31 @@
                   {% endfor %}
                 {% endif %}
               {% endif %}
+              {# A working mark, not a line of the accounts.
+
+                 "Movement not yet analysed" is the engine saying the three
+                 sections do not account for the movement in cash. It is not
+                 an SFRS caption and no source states it, so printing it in
+                 the label column with a figure beside it put a number in
+                 these accounts that no document supports and that a reader
+                 could not tell from an account. It now reads as what it is,
+                 and it is absent from the clean copy entirely - a set
+                 carrying one cannot be approved, so no clean copy of it
+                 exists to be missing anything. #}
+              {% if is_working_note(line) %}
+                {% if show_working_marks %}
+                  <tr class="working-note">
+                    <td colspan="{{ 4 if show_notes else 3 }}">
+                      <span class="wn-tag">Not part of the accounts</span>
+                      This draft cannot explain
+                      <strong>{{ line.effective_amount|stmt }}</strong>
+                      of the movement in cash. The operating, investing and
+                      financing sections do not add up to it, so the set
+                      cannot be approved until the difference is found.
+                    </td>
+                  </tr>
+                {% endif %}
+              {% else %}
               <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}{% if line.is_detail %} detail{% endif %}">
                 <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ stmt_label(line) }}</td>
                 {% if show_notes %}<td class="notes">{{ note_numbers.get(line.note_ref, '') if note_numbers else '' }}</td>{% endif %}
@@ -341,6 +366,7 @@
                      "scope": "", "member": ""} if not line.is_detail
                     else none) }}
               </tr>
+              {% endif %}
             {% endfor %}
           </tbody>
         </table>
