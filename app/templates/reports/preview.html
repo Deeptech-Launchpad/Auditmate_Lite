@@ -60,10 +60,16 @@
 
 <div class="rpt-doc">
   {% include "reports/_document.html" %}
-  {# The last page of a draft, and only of a draft. The clean copy the
-     client receives is the accounts; the checks a person ran to get there
-     belong in the file, not in the accounts. #}
-  {% if checks and (not for_pdf or draft_incomplete) %}
+  {# On screen only. Never in a file that leaves the office.
+
+     It read "not for_pdf or draft_incomplete", which kept the checks out
+     of a finished set and let them into every draft - and a draft is
+     exactly what gets exported and sent for comment. A page naming the
+     checks a preparer runs before signing is a working paper; inside a
+     set of financial statements it is a document the firm cannot send
+     anywhere, and one that reaches a client with it still attached is an
+     incident. The preparer reads it here, where it is addressed to them. #}
+  {% if checks and not for_pdf %}
     {% include "reports/_preparer_checks.html" %}
   {% endif %}
 </div>
