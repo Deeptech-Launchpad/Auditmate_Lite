@@ -177,9 +177,15 @@ def create_app(config_object=Config):
     def stmt(value, blank=""):
         """Format the way the published annual report does.
 
-        Whole dollars, thousands separated, negatives in brackets, and a
-        double hyphen for nil - which is the Singapore FRS presentation
-        convention and what the client's own template uses.
+        Whole dollars, thousands separated, negatives in brackets, and an
+        em dash for nil.
+
+        An em dash because the library says so, in as many words: "Figure
+        is nil in both years - an em dash - a dash means nil. This is the
+        convention in all six comparison sets." It read "--" here, on the
+        belief that a double hyphen was what the firm's own template used.
+        The Display conventions sheet says otherwise in v3.5 and again in
+        v3.9, and it is the authority.
         """
         # UNKNOWN IS NOT NIL, and the two must not print the same way.
         # The library's display conventions are explicit: a dash says the
@@ -196,7 +202,7 @@ def create_app(config_object=Config):
         except (TypeError, ValueError):
             return blank or INCOMPLETE
         if amount == 0:
-            return "--"
+            return "—"
         if amount < 0:
             return "({:,.0f})".format(abs(amount))
         return "{:,.0f}".format(amount)
