@@ -126,13 +126,31 @@ def _places(payloads, figures):
 
 
 def _statement_lines(financial_year, figures):
-    """The face of the statements, keyed by the line codes that roll into it."""
+    """The face of the statements, keyed by the line codes that roll into it.
+
+    Read through the same visibility rule the statements themselves use,
+    and for the reason that rule exists. The template offers every line
+    any company might need, so a line this company has no balance on in
+    either year is not its line: it is a caption the template carried in,
+    taken from whichever chart of accounts it was first written against.
+    The face drops those. This page quoted them.
+
+    That is how one engagement's account names reached another's draft -
+    "Commission to employee", "Working Capital" and the rest, printed
+    against a dash on a client with no such account, on a page that says
+    it is quoting that client's own statements. A page describing a set
+    of accounts must not name a line the reader cannot find in them.
+    """
+    from .reports import visible_statement_lines
+
     lines = []
     for statement in FinancialStatement.query.filter_by(
             financial_year_id=financial_year.id).all():
         if statement.statement_type == "trial_balance":
             continue                                  # not part of the draft
-        for line in statement.lines:
+        # detailed=True: the Detailed Profit and Loss is part of the draft,
+        # so a breakdown line the reader can see there may be quoted here.
+        for line in visible_statement_lines(statement.lines, detailed=True):
             keys = {line.line_key}
             codes = [code for code in figures.lines
                      if _keys_of(figures, code) & keys]
@@ -304,13 +322,20 @@ def _face_lines(financial_year):
     Read back off the rendered line rather than re-totalled from the trial
     balance, so a figure overridden on the face shows here as the figure
     the reader is holding.
+
+    Filtered the same way as _statement_lines, and for the same reason. No
+    caller prints a nil line from here, but PC-01 counts them - "and 3 nil
+    lines" beneath a comparison - and a count that includes lines belonging
+    to no client overstates what this client's accounts hold.
     """
+    from .reports import visible_statement_lines
+
     face = {}
     for statement in FinancialStatement.query.filter_by(
             financial_year_id=financial_year.id).all():
         if statement.statement_type == "trial_balance":
             continue
-        for line in statement.lines:
+        for line in visible_statement_lines(statement.lines, detailed=True):
             face.setdefault(line.line_key, {
                 "label": line.effective_label,
                 "amount": line.effective_amount,
