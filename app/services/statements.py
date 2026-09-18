@@ -400,6 +400,14 @@ def _build_context(financial_year_id: int, statement_type: str) -> dict:
                                               "cash_and_equivalents")
         context["closing_cash"] = statement_value("balance_sheet",
                                                   "cash_and_equivalents")
+        # What tax cost, and how much of it is still owed. cf_tax_paid
+        # reads the difference: the charge less the rise in the provision
+        # is the cash that went.
+        context["tax_expense"] = statement_value("profit_and_loss",
+                                                 "tax_expense")
+        context["tax_provision_movement"] = (
+            statement_value("balance_sheet", "tax_payable")
+            - prior_value("balance_sheet", "tax_payable"))
         # Working-capital movements: this year's balance less last year's.
         context["receivables_movement"] = (
             statement_value("balance_sheet", "trade_receivables")

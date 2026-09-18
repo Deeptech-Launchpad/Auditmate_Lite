@@ -1688,12 +1688,28 @@ def statement_blockers(financial_year):
     for line in statement.lines:
         if line.line_key != "cf_unexplained" or not line.effective_amount:
             continue
-        blockers.append((statement.type_label, [
-            "%s of the movement in cash is not explained by the operating, "
-            "investing and financing sections, and prints as “Movement "
-            "not yet analysed”. Most often the opening cash balance is "
-            "missing - it is last year's closing cash, from the signed "
-            "prior year accounts." % _plain_amount(line.effective_amount)]))
+        reason = ("%s of the movement in cash is not explained by the "
+                  "operating, investing and financing sections, and prints "
+                  "as “Movement not yet analysed”."
+                  % _plain_amount(line.effective_amount))
+        # Name the likely cause rather than guessing at one. With no
+        # opening cash every movement is measured against nothing, which
+        # is a different problem from a statement that is merely missing
+        # a line, and telling a preparer to go and find last year's
+        # accounts when last year's accounts are already loaded wastes
+        # their afternoon.
+        opening = next((other.effective_amount for other in statement.lines
+                        if other.line_key == "cf_opening_cash"), None)
+        if not opening:
+            reason += (" No opening cash balance is loaded, so every "
+                       "movement is measured from nil - it is last year's "
+                       "closing cash, from the signed prior year accounts.")
+        else:
+            reason += (" Opening cash is loaded, so the gap is a movement "
+                       "no line accounts for - most often a fixed asset "
+                       "bought or sold, which is read from the fixed asset "
+                       "register.")
+        blockers.append((statement.type_label, [reason]))
         break
     return blockers
 

@@ -138,6 +138,27 @@ def cf_depreciation(lines, ctx):
     return Decimal(str(ctx.get("depreciation", 0)))
 
 
+def cf_tax_paid(lines, ctx):
+    """Tax that actually left the bank, as against the charge for the year.
+
+    The profit and loss states the charge. The balance sheet states how
+    much of it is still owed at each year end. What the company handed
+    over is the charge less the increase in what it still owes - or plus
+    the decrease, where it settled more than this year's charge.
+
+    Both halves are quoted, not estimated: the charge is the printed tax
+    expense and the movement is the printed provision at two dates. An
+    outflow, so it is negative.
+
+    Nothing filled this line before, so the tax a company paid fell
+    through to "Movement not yet analysed" - 13,211.21 of it on the one
+    engagement whose cash flow this was first traced on.
+    """
+    charge = Decimal(str(ctx.get("tax_expense", 0)))
+    still_owed = Decimal(str(ctx.get("tax_provision_movement", 0)))
+    return -(charge - still_owed)
+
+
 def sum_group_operating(lines, ctx):
     return _sum_group(lines, "operating")
 
@@ -277,6 +298,7 @@ FORMULAS = {
     "total_equity_and_liabilities": total_equity_and_liabilities,
     "cf_profit_before_tax": cf_profit_before_tax,
     "cf_depreciation": cf_depreciation,
+    "cf_tax_paid": cf_tax_paid,
     "sum_group_operating": sum_group_operating,
     "sum_group_investing": sum_group_investing,
     "sum_group_financing": sum_group_financing,

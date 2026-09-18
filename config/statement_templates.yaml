@@ -150,10 +150,14 @@ cash_flow:
   columns: [current, previous]
   lines:
     - {key: cf_profit_before_tax, label: "Profit before taxation and changes in working capital", group: operating, indent: 1, formula: cf_profit_before_tax}
+    # Depreciation is charged against profit but no cash leaves, so it is
+    # added back. The formula was written and never given a line to print
+    # on, so the whole charge fell through to "Movement not yet analysed".
+    - {key: cf_depreciation,      label: "Depreciation of fixed assets", group: operating, indent: 1, formula: cf_depreciation}
     - {key: cf_receivables,       label: "Trade and other receivables", group: operating, indent: 1, formula: cf_receivables}
     - {key: cf_payables,          label: "Other payables", group: operating, indent: 1, formula: cf_payables}
     - {key: cf_operations,        label: "Cash (used in)/generated from operations", group: operating, subtotal: true, formula: sum_group_operating}
-    - {key: cf_tax_paid,          label: "Income tax paid", group: operating_after, indent: 1}
+    - {key: cf_tax_paid,          label: "Income tax paid", group: operating_after, indent: 1, formula: cf_tax_paid}
     - {key: cf_expenses_paid,     label: "Expenses paid", group: operating_after, indent: 1}
     - {key: cf_operating_total,   label: "Net cash flow (used in)/generated from operating activities", group: operating_after, subtotal: true, formula: cf_operating_total}
 
