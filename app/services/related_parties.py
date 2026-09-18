@@ -87,6 +87,30 @@ def register(financial_year):
             .order_by(RelatedParty.name).all())
 
 
+def _already_on_the_list(financial_year_id, name, exclude_id=None):
+    """The existing party with this name, folded the same way a caption is.
+
+    Nothing stopped the same person being added twice - "Tan Ah Kow" typed
+    a second time made a second row, and a preparer confirming an account
+    against either one would have looked identical on screen while the
+    other silently held its own, separate set of decisions. Checked by
+    name because that is the only thing on the add form a preparer reads
+    to tell two rows apart.
+
+    Takes the id rather than a FinancialYear object - RelatedParty has no
+    financial_year relationship, only the column, and update() only ever
+    has the party in hand.
+    """
+    query = RelatedParty.query.filter_by(financial_year_id=financial_year_id)
+    if exclude_id is not None:
+        query = query.filter(RelatedParty.id != exclude_id)
+    folded = normalise(name)
+    for existing in query.all():
+        if normalise(existing.name) == folded:
+            return existing
+    return None
+
+
 def add(financial_year, name, kind="director", spellings=None, note=None):
     from flask_login import current_user
 
@@ -95,6 +119,12 @@ def add(financial_year, name, kind="director", spellings=None, note=None):
     name = " ".join(str(name or "").split())
     if not name:
         raise ValueError("A related party needs a name.")
+
+    clash = _already_on_the_list(financial_year.id, name)
+    if clash is not None:
+        raise ValueError(
+            "“" + clash.name + "” is already on the list. Edit "
+            "that entry instead of adding a second one.")
 
     party = RelatedParty(
         financial_year_id=financial_year.id, name=name,
@@ -120,6 +150,11 @@ def update(party, *, name=None, kind=None, spellings=None, note=None):
     if name is not None:
         cleaned = " ".join(str(name).split())
         if cleaned:
+            clash = _already_on_the_list(
+                party.financial_year_id, cleaned, exclude_id=party.id)
+            if clash is not None:
+                raise ValueError(
+                    "“" + clash.name + "” is already on the list.")
             party.name = cleaned
     if kind is not None and kind in dict(KINDS):
         party.kind = kind
