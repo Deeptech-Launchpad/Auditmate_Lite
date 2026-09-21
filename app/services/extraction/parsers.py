@@ -160,11 +160,22 @@ def _comparative_row(cells, cols, source_ref, current):
     # comparative column, so it follows this year's row for the same
     # account - the only evidence available, and right whenever the account
     # has not changed sides.
+    #
+    # debit/credit are magnitudes, the same as this year's own debit and
+    # credit columns - never signed, the side itself is what carries the
+    # sign. A comparative column brackets a credit balance the way the
+    # rest of this codebase brackets one everywhere else, so parsing
+    # "(25,133.34)" back to -25,133.34 is right, and writing that
+    # STRAIGHT into credit was not: it stored a credit-side balance as a
+    # negative credit, which read back through prior_year.py as a second,
+    # contradicting sign on top of the one the credit side already means.
+    # The bracket confirms the side a bare column cannot state; it is not
+    # licence to carry the minus into a field that has no minus of its own.
     debit = credit = amount = None
     if current.debit is not None:
-        debit = value
+        debit = abs(value)
     elif current.credit is not None:
-        credit = value
+        credit = abs(value)
     else:
         amount = value
 
@@ -226,7 +237,16 @@ def _row_from_cells(cells, cols, source_ref):
 
     code = None
     if cols.get("code") is not None and cols["code"] < len(cells):
-        code = str(cells[cols["code"]] or "").strip() or None
+        # Capped the same way account_type is a few lines down: a column
+        # this parser calls "code" sometimes carries the account's full
+        # name too, on a client file that never gave the code its own
+        # column - a wrapped name folded back in by _merge_wrapped_labels
+        # can run past the sixty characters most codes need by a wide
+        # margin. account_code is a 50-character column; the full text is
+        # not lost, it is exactly what `label` below is for.
+        code = (str(cells[cols["code"]] or "").strip() or None)
+        if code:
+            code = code[:50]
 
     account_type = None
     if cols.get("type") is not None and cols["type"] < len(cells):
@@ -658,6 +678,99 @@ def _merge_header(rows):
     return merged
 
 
+_LEADING_CODE = re.compile(r"^\s*(\d+)\s*(.*)$")
+
+
+def _is_data_row(cells):
+    """Two or more figures on the row: this is a line item, not a label."""
+    return sum(1 for c in cells if parse_amount(c) is not None) >= 2
+
+
+def _merge_wrapped_labels(cell_rows, tops, first_data):
+    """Fold an account name that wraps onto its own line back into its row.
+
+    A row this narrow prints the code, the type and the figures on one
+    baseline and lets the name run onto whichever lines are free - one
+    above the row, one below it, sometimes both:
+
+        Office Equipment & Fittings - Accumulated
+        711                    Fixed Asset   -   34,993.34  (25,133.34)
+        Depreciation
+
+    Read a line at a time, the code's own line carries no name at all -
+    "711" is the whole of it - and the two fragments either side, having
+    no figures of their own, were dropped as content-free. The account
+    reached the statements as "Fixed Asset", the account type standing
+    in for a name nobody kept, and from there it matched whatever a bare
+    type word matches rather than what it actually is.
+
+    A fragment is folded into a row only when the two sit closer than
+    any real gap between one account and the next on this page - a
+    threshold read off the page itself, not assumed, because a client's
+    row height is its own. Nothing here binds a fragment to a row two or
+    three lines further off, however little else is going on between
+    them: a page's title block sits well clear of the first account, and
+    must stay clear of it.
+    """
+    data_rows = [i for i in range(first_data, len(cell_rows))
+                if _is_data_row(cell_rows[i])]
+    if not data_rows:
+        return cell_rows
+
+    data_tops = [tops[i] for i in data_rows]
+    gaps = [b - a for a, b in zip(data_tops, data_tops[1:])]
+    row_height = min(gaps) if gaps else 20.0
+    close = row_height * 0.6
+
+    merged = [list(row) for row in cell_rows]
+    # target row index -> fragment text, kept apart by which side of the
+    # row it was read on: a fragment above the row finishes ahead of the
+    # row's own text, one below continues after it.
+    before, after = {}, {}
+
+    for index in range(first_data, len(cell_rows)):
+        if _is_data_row(cell_rows[index]):
+            continue
+        text = (cell_rows[index][0] or "").strip()
+        if not text:
+            continue
+
+        earlier = index - 1
+        if (earlier in data_rows
+                and tops[index] - tops[earlier] <= close):
+            after[earlier] = text
+            continue
+
+        later = index + 1
+        if (later < len(cell_rows) and later in data_rows
+                and tops[later] - tops[index] <= close):
+            before[later] = text
+
+    for target, text in before.items():
+        if not text:
+            continue
+        own = merged[target][0] or ""
+        code_match = _LEADING_CODE.match(own)
+        code, rest = (code_match.group(1), code_match.group(2)) \
+            if code_match else ("", own)
+        pieces = [p for p in (text, rest) if p.strip()]
+        label = " ".join(pieces).strip()
+        merged[target][0] = (code + " " + label).strip() if code else label
+
+    for target, text in after.items():
+        if not text:
+            continue
+        own = merged[target][0] or ""
+        code_match = _LEADING_CODE.match(own)
+        code, rest = (code_match.group(1), code_match.group(2)) \
+            if code_match else ("", own)
+        pieces = [p for p in (rest, text) if p.strip()]
+        label = " ".join(pieces).strip()
+        merged[target][0] = (code + " " + label).strip() if code else label
+
+    return merged
+
+
 def _rows_from_layout(page, page_no):
     """Rows from a page that lays out a table without drawing one.
 
@@ -680,14 +793,15 @@ def _rows_from_layout(page, page_no):
     if len(bounds) < 3:
         return []                     # one column: prose, not a table
 
-    grid = [_cells_from_line(line, bounds)
-            for line in _lines_from_words(words)]
+    lines = _lines_from_words(words)
+    tops = [min(word["top"] for word in line) for line in lines]
+    grid = [_cells_from_line(line, bounds) for line in lines]
 
     # Where the figures start. A row carrying two or more amounts is data;
     # everything above it is the title block and the column headings.
     first_data = None
     for index, cells in enumerate(grid):
-        if sum(1 for c in cells if parse_amount(c) is not None) >= 2:
+        if _is_data_row(cells):
             first_data = index
             break
     if first_data is None:
@@ -699,8 +813,17 @@ def _rows_from_layout(page, page_no):
         "label": None, "debit": None, "credit": None,
         "amount": None, "code": None}
 
+    grid = _merge_wrapped_labels(grid, tops, first_data)
+
+    # Two-or-more is right for finding a WRAP BOUNDARY - a single stray
+    # number must never anchor a merge - but it is too strict a test for
+    # whether a row is worth extracting at all. A new account with no
+    # figure in one year, "260 Government Grants  -  2,000.00  -", has
+    # exactly one. _row_from_cells already knows the real rule - at
+    # least one of debit, credit or amount - so it decides, not this.
     rows = []
-    for offset, cells in enumerate(grid[first_data:], start=first_data):
+    for offset in range(first_data, len(grid)):
+        cells = grid[offset]
         source_ref = {"page": page_no, "row": offset + 1}
         extracted = _row_from_cells(cells, cols, source_ref)
         if not extracted:
@@ -714,16 +837,29 @@ def _rows_from_layout(page, page_no):
     #
     # Aligning words into columns finds columns in anything, including a
     # page of prose that happens to carry figures - a set of financial
-    # statements, where a paragraph, a note reference and a total all sit
-    # at their own margins. What comes back from that is figures with
-    # nothing to call them.
+    # statements, where a caption, a note reference and a total each sit
+    # at their own margin. What comes back from that is figures with
+    # nothing trustworthy to call them, and _merge_wrapped_labels makes
+    # this harder to catch than it was: gluing a caption on an adjacent
+    # line onto a nearby figure is exactly right for a wrapped account
+    # name and exactly wrong for a financial statement, where a caption
+    # and its figure sitting near each other is simply how the page
+    # reads. On the client's own signed accounts it moved the share of
+    # blank labels from one row in two down to one in eleven - not
+    # nothing, but no longer the mile of daylight this gate first relied
+    # on.
     #
-    # A figure with no label is not a line item: nothing can map it and
-    # nothing can present it. So the proportion of them is the test, and
-    # it separates the two cleanly rather than by a hair - the client's
-    # own trial balance leaves none, its signed accounts leave half.
+    # A second, independent measure closes the gap: a general ledger
+    # export numbers its accounts - the client's trial balance does,
+    # 200, 260, 310 - and a set of financial statements never numbers
+    # its own captions. "Revenue" and "Gross profit" are never "5
+    # Revenue" and "6 Gross profit". Between this document pair the two
+    # measures could not be further apart - 0% against 97% - so both
+    # have to pass for the document to be kept, and either one failing
+    # decisively is reason enough to refuse it.
     unlabelled = sum(1 for row in rows if not (row.label or "").strip())
-    if rows and unlabelled * 3 >= len(rows):
+    coded = sum(1 for row in rows if _LEADING_CODE.match(row.label or ""))
+    if rows and (unlabelled * 3 >= len(rows) or coded * 2 < len(rows)):
         return []
     return rows
 

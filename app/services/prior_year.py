@@ -176,14 +176,27 @@ def _from_tb_comparative(financial_year):
     and last year moves with it; read from the document instead and the two
     columns would quietly disagree.
 
-    The sign flip is the part easy to leave out and wrong every time it is:
-    a trial balance stores raw debits and credits, and a credit-balance
-    account - revenue, every liability - is negative in that form. The
-    CURRENT figure is flipped to a presentation sign by the account's own
-    mapping rule (see statements._signed). Skipping that flip here would
-    print revenue as a positive this year and a negative last year on the
-    same line - not merely wrong, but wrong in the way that is obvious to
-    anyone who opens the document, on the client's largest number.
+    DEBIT-POSITIVE, not presentation sign - every other source in this
+    module returns the same, and every caller of balances() and sources()
+    converts once, at the point a figure is actually printed (see
+    statements.py, which flips a credit-balance key and nowhere else).
+
+    An earlier version applied the account's own mapping-rule sign here
+    too, mirroring how statements._signed() reaches a PRESENTATION figure
+    for the current year. It reasoned correctly about _signed() and wrongly
+    about this function: the two are not answering the same question.
+    _signed() runs once, at the moment a figure is about to be shown, and
+    nothing downstream of it touches the sign again. This function feeds
+    balances(), which every caller then treats as debit-positive and flips
+    accordingly - so applying the mapping sign here was a second
+    conversion stacked on the one statements.py already performs. For a
+    line statements.py also flips (revenue, every liability, equity) the
+    two cancelled and the figure came out right by accident. For one it
+    does not flip - accumulated depreciation, whose GROUP sits with the
+    assets it reduces rather than with the credit-balance groups - nothing
+    cancelled the extra flip, and a credit balance printed as a positive
+    deduction instead of a negative one, adding depreciation onto cost
+    instead of taking it off.
     """
     rows = (TrialBalanceAccount.query
             .filter_by(financial_year_id=financial_year.id)
@@ -195,10 +208,7 @@ def _from_tb_comparative(financial_year):
         if row.prior_debit is None and row.prior_credit is None:
             continue                      # no comparative for this account
         net = (row.prior_debit or ZERO) - (row.prior_credit or ZERO)
-        rule = match_label(row.account_name, financial_year.customer_id,
-                           account_type=row.account_type)
-        sign = rule["sign"] if rule else 1
-        totals[row.standard_key] = totals.get(row.standard_key, ZERO) + net * sign
+        totals[row.standard_key] = totals.get(row.standard_key, ZERO) + net
     return totals
 
 
@@ -372,11 +382,24 @@ def balances(financial_year):
     Returns (figures, source_name) - or ({}, None) when last year is simply
     not available, which is the honest answer and the one the readiness check
     reports rather than papering over.
+
+    A TRIAL BALANCE source is folded before it goes out - see
+    _fold_result. A year-end trial balance states retained earnings at
+    its OPENING value, the year's result still sitting across revenue
+    and expenses; a balance sheet states it after appropriation, and a
+    comparative column built from the unfolded figure is short by
+    exactly last year's profit, on the equity side only, so the sheet no
+    longer balances. opening_check already folds a TRIAL_BALANCE_SOURCES
+    member before comparing it against the signed set; this is the same
+    fold, applied where every OTHER caller of balances() also needs it.
     """
     available = sources(financial_year)
     for name in SOURCE_ORDER:
         if name in available:
-            return available[name], name
+            figures = available[name]
+            if name in TRIAL_BALANCE_SOURCES:
+                figures = _fold_result(figures)
+            return figures, name
     return {}, None
 
 
