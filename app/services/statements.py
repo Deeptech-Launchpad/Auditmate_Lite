@@ -396,8 +396,32 @@ def _build_context(financial_year_id: int, statement_type: str) -> dict:
         # Opening and closing cash are facts, not derivations: closing cash
         # IS the balance sheet figure. Deriving it from movements and hoping
         # it agrees would let an unexplained gap pass unnoticed.
-        context["opening_cash"] = prior_value("balance_sheet",
-                                              "cash_and_equivalents")
+        #
+        # prior_value only ever looks at an earlier engagement BUILT IN
+        # AUDITMATE, which a first-year client has none of by definition -
+        # every one of them, not an edge case. The balance sheet's own
+        # comparative column already has an answer for exactly this
+        # situation (see build_statement's own `prior` dict), and this
+        # falls back to the same source it does: last year's signed
+        # accounts, or its trial balance comparative, read through
+        # prior_year.balances() directly, since that dict lives in the
+        # caller and is not in scope here.
+        #
+        # cash_and_equivalents needs no sign correction the way a
+        # credit-balance key would - it is never one - so the figure
+        # balances() returns is already the presentation figure.
+        # Without this, a first-year cash flow's opening balance was
+        # read as nil and the entire year's movement fell through to
+        # "Movement not yet analysed" - not the missing opening figure
+        # alone, everything downstream of it too.
+        opening_cash = prior_value("balance_sheet", "cash_and_equivalents")
+        if not opening_cash and financial_year:
+            from .prior_year import balances as _prior_balances
+
+            fallback_figures, _source = _prior_balances(financial_year)
+            opening_cash = (fallback_figures or {}).get(
+                "cash_and_equivalents", ZERO)
+        context["opening_cash"] = opening_cash
         context["closing_cash"] = statement_value("balance_sheet",
                                                   "cash_and_equivalents")
         # What tax cost, and how much of it is still owed. cf_tax_paid
