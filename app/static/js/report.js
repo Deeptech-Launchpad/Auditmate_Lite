@@ -723,7 +723,14 @@
     panel.className = 'src-panel';
 
     let body;
-    if (data.kind === 'computed') {
+    if (data.kind === 'computed' && data.depends_on && data.depends_on.length) {
+      body = data.depends_on.map(group =>
+        '<div class="src-group"><div class="src-group-label">' + group.via + '</div>'
+        + '<ul class="src-list">' + group.accounts.map(sourceRow).join('') + '</ul></div>'
+      ).join('')
+      + (data.formula ? '<p class="src-none">Totalled by <code>' + data.formula
+                        + '</code>.</p>' : '');
+    } else if (data.kind === 'computed') {
       body = '<p class="src-none">Calculated from other lines'
            + (data.formula ? ' <code>' + data.formula + '</code>' : '')
            + '. It has no accounts of its own - change the lines it adds up.</p>';

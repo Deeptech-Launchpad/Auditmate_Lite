@@ -90,6 +90,170 @@ def _account_detail(account):
     }
 
 
+# --------------------------------------------------------------------------
+# Computed lines - resolving a formula down to the real accounts behind it
+#
+# Most subtotals sum sibling lines in their own statement by group_key -
+# sum_group_operating_expenses, sum_group_current_assets and every other
+# sum_group_* formula follow this one shape, and the group is simply the
+# formula's own name with the prefix stripped, so no listing is needed for
+# them. What is left is the handful of formulas that name specific lines
+# by key instead of by group - some on their own statement, several
+# reaching into another one, a few reaching into last year's. Those are
+# listed explicitly, because there is no naming pattern to derive them
+# from the way there is for sum_group_*.
+#
+# A formula not listed here, or one reading a context figure this does not
+# recognise (an opening balance with no earlier AuditMate engagement to
+# read it from, say), simply contributes nothing - the panel falls back to
+# naming the formula, exactly as it did before this existed. Silence is
+# the honest answer for a chain this cannot fully trace, not a guess.
+# --------------------------------------------------------------------------
+
+# Each entry: (statement_type or None for "this line's own statement",
+#              line_key, "current" or "prior").
+_LINE_DEPENDS = {
+    "gross_profit": [(None, "revenue", "current"),
+                     (None, "cost_of_sales", "current")],
+    "profit_before_tax": [(None, "gross_profit", "current"),
+                          (None, "operating_expenses", "current")],
+    "profit_for_year": [(None, "profit_before_tax", "current"),
+                        (None, "tax_expense", "current")],
+    "total_comprehensive_income": [
+        (None, "profit_for_year", "current"),
+        (None, "other_comprehensive_income", "current")],
+    "total_assets": [(None, "total_non_current_assets", "current"),
+                     (None, "total_current_assets", "current")],
+    "total_equity_and_liabilities": [
+        (None, "total_equity", "current"),
+        (None, "total_non_current_liabilities", "current"),
+        (None, "total_current_liabilities", "current")],
+    "retained_earnings": [("profit_and_loss", "profit_for_year", "current"),
+                          ("balance_sheet", "retained_earnings", "prior")],
+    "cf_profit_before_tax": [("profit_and_loss", "profit_before_tax", "current")],
+    "cf_depreciation": [("profit_and_loss", "depreciation", "current")],
+    "cf_receivables": [("balance_sheet", "trade_receivables", "current"),
+                       ("balance_sheet", "prepayments", "current"),
+                       ("balance_sheet", "trade_receivables", "prior"),
+                       ("balance_sheet", "prepayments", "prior")],
+    "cf_payables": [("balance_sheet", "trade_payables", "current"),
+                    ("balance_sheet", "trade_payables", "prior")],
+    "cf_tax_paid": [("profit_and_loss", "tax_expense", "current"),
+                    ("balance_sheet", "tax_payable", "current"),
+                    ("balance_sheet", "tax_payable", "prior")],
+    "cf_operating_total": [(None, "cf_operations", "current"),
+                           (None, "cf_tax_paid", "current"),
+                           (None, "cf_expenses_paid", "current")],
+    "cf_share_capital": [("balance_sheet", "share_capital", "current"),
+                         ("balance_sheet", "working_capital", "current"),
+                         ("balance_sheet", "share_capital", "prior"),
+                         ("balance_sheet", "working_capital", "prior")],
+    "cf_unexplained": [(None, "cf_operating_total", "current"),
+                       (None, "cf_investing_total", "current"),
+                       (None, "cf_financing_total", "current"),
+                       ("balance_sheet", "cash_and_equivalents", "current"),
+                       ("balance_sheet", "cash_and_equivalents", "prior")],
+    "cf_net_change": [("balance_sheet", "cash_and_equivalents", "current"),
+                      ("balance_sheet", "cash_and_equivalents", "prior")],
+    "cf_opening_cash": [("balance_sheet", "cash_and_equivalents", "prior")],
+    "cf_closing_cash": [("balance_sheet", "cash_and_equivalents", "current")],
+    "soce_open_total": [(None, "soce_open_share", "current"),
+                        (None, "soce_open_accum", "current")],
+    "soce_move_total": [(None, "soce_issue_share", "current"),
+                        (None, "soce_income_accum", "current")],
+    "soce_close_share": [(None, "soce_open_share", "current"),
+                         (None, "soce_issue_share", "current")],
+    "soce_close_accum": [(None, "soce_open_accum", "current"),
+                         (None, "soce_income_accum", "current")],
+    "soce_close_total": [(None, "soce_close_share", "current"),
+                         (None, "soce_close_accum", "current")],
+    "soce_issue_share": [("balance_sheet", "share_capital", "current"),
+                         ("balance_sheet", "working_capital", "current"),
+                         ("balance_sheet", "share_capital", "prior"),
+                         ("balance_sheet", "working_capital", "prior")],
+    "soce_income_accum": [("profit_and_loss", "profit_for_year", "current"),
+                          ("profit_and_loss", "other_comprehensive_income",
+                           "current")],
+}
+
+
+def _statement_for(financial_year_id, statement_type):
+    return FinancialStatement.query.filter_by(
+        financial_year_id=financial_year_id,
+        statement_type=statement_type).first()
+
+
+def _find_line(statement, line_key):
+    if not statement:
+        return None
+    for candidate in statement.lines:
+        if candidate.line_key == line_key:
+            return candidate
+    return None
+
+
+def _group_for_formula(formula):
+    """sum_group_operating_expenses -> "operating_expenses", the group
+    every one of these formulas sums - see the block comment above."""
+    prefix = "sum_group_"
+    if formula and formula.startswith(prefix):
+        return formula[len(prefix):]
+    return None
+
+
+def _computed_contributions(line, depth=0, seen=None):
+    """Every real account behind a computed line, traced through its
+    formula's own inputs - possibly several statements and years deep."""
+    if depth > 4 or line is None or not line.formula:
+        return []
+    seen = seen or set()
+    if line.id in seen:
+        return []
+    seen = seen | {line.id}
+
+    financial_year = line.statement.financial_year
+    targets = []  # (StatementLine, "current"/"prior")
+
+    group = _group_for_formula(line.formula)
+    if group:
+        for sibling in line.statement.lines:
+            if (sibling.group_key == group and sibling.id != line.id
+                    and not sibling.is_subtotal and not sibling.is_total):
+                targets.append((sibling, "current"))
+    else:
+        for stype, key, when in _LINE_DEPENDS.get(line.formula, []):
+            if when == "prior":
+                if not financial_year.previous_year_id:
+                    continue
+                statement = _statement_for(financial_year.previous_year_id,
+                                           stype or line.statement.statement_type)
+            elif stype and stype != line.statement.statement_type:
+                statement = _statement_for(financial_year.id, stype)
+            else:
+                statement = line.statement
+            target = _find_line(statement, key)
+            if target and target.id not in seen:
+                targets.append((target, when))
+
+    contributions = []
+    for target, when in targets:
+        label = (("Last year's " if when == "prior" else "")
+                + target.effective_label + " (" + target.statement.type_label + ")")
+        if target.source_line_item_ids:
+            accounts = [_account_detail(a) for a in
+                       TrialBalanceAccount.query.filter(
+                           TrialBalanceAccount.id.in_(target.source_line_item_ids)
+                       ).order_by(TrialBalanceAccount.account_code,
+                                 TrialBalanceAccount.account_name).all()]
+            if accounts:
+                contributions.append({"via": label, "accounts": accounts})
+        elif target.is_computed:
+            for nested in _computed_contributions(target, depth + 1, seen):
+                contributions.append({"via": label + " → " + nested["via"],
+                                     "accounts": nested["accounts"]})
+    return contributions
+
+
 def for_statement_line(line):
     """Everything behind one printed statement figure."""
     ids = line.source_line_item_ids or []
@@ -102,6 +266,27 @@ def for_statement_line(line):
                     .all())
 
     details = [_account_detail(a) for a in accounts]
+
+    # A computed line usually has no accounts of its own directly - but its
+    # formula sums or reaches other lines that do, and the client feedback
+    # that started this was plain: a printed figure should be traceable to
+    # a document, not left as "trust the engine's arithmetic". Traced
+    # wherever the formula's inputs are known (see _LINE_DEPENDS above);
+    # left empty for the few it cannot fully chain through, which the panel
+    # then explains rather than pretending to answer.
+    #
+    # retained_earnings is the one line that is both: computed (opening
+    # balance plus this year's profit) AND carrying its OWN direct account
+    # (the opening balance itself, read straight off the trial balance).
+    # Leading with that account, then the formula's own inputs, answers
+    # both halves instead of showing only whichever happened to be checked
+    # first.
+    depends_on = []
+    if line.is_computed:
+        if details:
+            depends_on.append({"via": "Opening balance, from the trial balance",
+                              "accounts": details})
+        depends_on += _computed_contributions(line)
 
     return {
         "line_id": line.id,
@@ -119,6 +304,7 @@ def for_statement_line(line):
                  else "accounts" if details else "empty"),
         "formula": line.formula,
         "accounts": details,
+        "depends_on": depends_on,
         "total_from_accounts": float(sum((Decimal(str(d["amount"]))
                                           for d in details), ZERO)),
     }

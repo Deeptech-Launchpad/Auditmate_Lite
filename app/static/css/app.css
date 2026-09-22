@@ -1106,6 +1106,8 @@ tr.row-doc-total input.cell { font-weight: 600; }
   z-index: 60;
   width: 340px;
   max-width: calc(100vw - 24px);
+  max-height: 70vh;
+  overflow-y: auto;
   background: #fff;
   border: 1px solid #ccd2da;
   border-radius: 3px;
@@ -1114,6 +1116,12 @@ tr.row-doc-total input.cell { font-weight: 600; }
   font-size: 12px;
   font-family: var(--ui-font, system-ui, -apple-system, "Segoe UI", sans-serif);
   color: #26303c;
+}
+.src-group + .src-group { margin-top: 10px; }
+.src-group-label {
+  font-weight: 600;
+  color: #55606f;
+  margin-bottom: 2px;
 }
 .src-head {
   font-weight: 600;
