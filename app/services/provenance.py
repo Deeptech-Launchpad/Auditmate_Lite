@@ -174,6 +174,15 @@ _LINE_DEPENDS = {
     "soce_income_accum": [("profit_and_loss", "profit_for_year", "current"),
                           ("profit_and_loss", "other_comprehensive_income",
                            "current")],
+    # The opening row of the statement of changes in equity - last year's
+    # closing balance, brought forward. _build_context() falls back further
+    # still (to a first year's zero, or to base_amount with no comparative
+    # on file) when there is no prior AuditMate engagement to read from;
+    # this covers the ordinary case, a prior year that IS one, and leaves
+    # the rest to the same honest silence as everything else not listed.
+    "soce_open_share": [("balance_sheet", "share_capital", "prior"),
+                        ("balance_sheet", "working_capital", "prior")],
+    "soce_open_accum": [("balance_sheet", "retained_earnings", "prior")],
 }
 
 
