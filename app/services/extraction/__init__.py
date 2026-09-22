@@ -248,6 +248,19 @@ def auto_verify(document) -> tuple:
     from ...models import TrialBalanceAccount
     from .base import looks_like_total_label
 
+    # A row the extractor itself was not confident about outranks every
+    # category rule below - "supporting evidence" and "already in the
+    # trial balance" both assume the row was read correctly, which is
+    # exactly what a flagged row has not yet established. Signed accounts
+    # is the sharpest case: it is excluded from STATES_BALANCES below
+    # because it is not evidence to corroborate THIS year's accounts, but
+    # that is precisely what let a flagged row in it verify itself
+    # silently - it fed the comparative column and last year's mapping
+    # with a figure nobody had actually confirmed.
+    if any(item.needs_review and item.status == "auto"
+           for item in document.line_items):
+        return False, None
+
     # Only the trial balance itself. A balance sheet or P&L can BUILD the
     # accounts when no trial balance was sent, but it is a presented
     # statement rather than the ledger's own listing, so it still gets a
