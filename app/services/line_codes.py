@@ -103,6 +103,24 @@ def allowed_codes(standard_key, categories=None):
     return list(spec.get("codes") or [])
 
 
+def standard_key_for_code(code, categories=None):
+    """The one statement line a note code belongs to, or None.
+
+    Most codes name exactly one statement line and this is safe for them -
+    BS-RPP only ever means trade_payables. But several name a shared
+    concept several lines can carry - PL-ADM alone covers a dozen expense
+    lines, PL-COS four - and for those, which statement line is meant is
+    still the preparer's to say. None is the honest answer for a code this
+    cannot settle, the same as an account no rule can place.
+    """
+    if not code:
+        return None
+    categories = load_categories() if categories is None else categories
+    matches = {key for key, spec in categories.items()
+              if code in ((spec or {}).get("codes") or [])}
+    return matches.pop() if len(matches) == 1 else None
+
+
 def _side(account):
     net = (account.debit or 0) - (account.credit or 0)
     if net > 0:

@@ -234,6 +234,15 @@ def accept(suggestion, user_id=None, commit=True):
     marked manual, because that is what it now is: somebody read it and
     agreed. What the model said is kept beside it, so the origin of the
     choice stays legible.
+
+    The model is asked for a note code, not a statement line - see the
+    module docstring - but `unmapped()` offers it exactly the accounts
+    that have no statement line either, so accepting a code that settles
+    one is also the answer to that. Most codes do: BS-RPP only ever means
+    trade_payables. Where a code covers several lines - PL-ADM alone
+    covers a dozen - which one is meant is still unsettled, and the
+    account stays in the unmapped list for a person to place, the same as
+    before this looked.
     """
     from datetime import datetime
 
@@ -243,6 +252,10 @@ def accept(suggestion, user_id=None, commit=True):
     account.line_code = suggestion.code
     account.line_code_source = "ai-accepted"
     account.mapping_is_manual = True
+    if not account.standard_key:
+        resolved = line_codes.standard_key_for_code(suggestion.code)
+        if resolved:
+            account.standard_key = resolved
     suggestion.decision = "accepted"
     suggestion.decided_by = user_id
     suggestion.decided_at = datetime.utcnow()

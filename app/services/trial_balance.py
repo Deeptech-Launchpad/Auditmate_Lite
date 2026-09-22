@@ -244,12 +244,15 @@ def build(financial_year_id: int, user_id=None) -> dict:
     # The same for finer categories, and for the same reason: only a person's
     # choice survives a rebuild. Kept with the statement line it was chosen
     # under - a category chosen for one statement line means nothing once the
-    # account maps somewhere else.
+    # account maps somewhere else. An accepted AI suggestion counts as a
+    # person's choice too - it is marked mapping_is_manual for the same
+    # reason - so it is carried forward the same way; only a still-pending
+    # or rejected suggestion is not.
     chosen_categories = {
         (a.account_code or "", (a.account_name or "").lower()):
             (a.standard_key, a.line_code)
         for a in financial_year.tb_accounts
-        if a.line_code and a.line_code_source == "manual"
+        if a.line_code and a.line_code_source in ("manual", "ai-accepted")
         and a.source not in PROTECTED_SOURCES
     }
 
