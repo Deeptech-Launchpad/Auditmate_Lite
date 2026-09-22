@@ -801,18 +801,49 @@ def _rows_from_layout(page, page_no):
     if len(words) < 8:
         return []
 
-    bounds = _columns_from_words(words, page.width)
+    lines = _lines_from_words(words)
+
+    # Column boundaries are read only from lines that carry a genuine
+    # figure. A title or section heading is free to run through exactly
+    # where a numbered row's own gap sits - "UNAUDITED STATEMENT OF
+    # FINANCIAL POSITION" printed straight across the space between a
+    # balance sheet's captions and its Note column, on a page where every
+    # actual figure lined up in clean columns either side of it - and
+    # merging the title's words into the page-wide picture erased a gap
+    # no data row itself ever bridges. Every row of a real balance sheet
+    # or income statement then reads as one wide, single-column smear
+    # and the whole page is refused as prose, which is the one thing it
+    # was not.
+    #
+    # The header row needs no separate exemption for this: it aligns
+    # with the same columns the figures below it use, so whatever
+    # boundary the figures establish already covers it.
+    numbered_lines = [line for line in lines
+                      if any(parse_amount(word["text"]) is not None
+                             for word in line)]
+    numbered_words = [word for line in numbered_lines for word in line]
+    bounds = _columns_from_words(numbered_words or words, page.width)
     if len(bounds) < 3:
         return []                     # one column: prose, not a table
 
-    lines = _lines_from_words(words)
     tops = [min(word["top"] for word in line) for line in lines]
     grid = [_cells_from_line(line, bounds) for line in lines]
 
     # Where the figures start. A row carrying two or more amounts is data;
     # everything above it is the title block and the column headings.
+    #
+    # A header row is skipped even when it also passes _is_data_row - a
+    # header of nothing but the two years, "2024 | 2023", has exactly
+    # two numeric-looking cells and would otherwise be read as the FIRST
+    # row of the table rather than as the row naming its columns. That
+    # left the real header search, which only looks above this point,
+    # never finding it - the header stayed unidentified, every column
+    # went unmapped, and the actual figures a line below it were then
+    # placed by blind position instead of by the header that names them.
     first_data = None
     for index, cells in enumerate(grid):
+        if looks_like_header(cells):
+            continue
         if _is_data_row(cells):
             first_data = index
             break
