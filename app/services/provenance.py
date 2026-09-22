@@ -33,6 +33,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
+from ..extensions import db
 from ..models import (FinancialStatement, FinancialYear, TrialBalanceAccount)
 
 log = logging.getLogger(__name__)
@@ -88,6 +89,139 @@ def _account_detail(account):
         "needs_review": account.needs_review,
         "is_adjustment": account.is_adjustment,
     }
+
+
+def _account_detail_prior(account):
+    """The same account, read for its PRIOR-year column instead of its
+    current one - what fed the comparative when the source that won was
+    this year's own trial balance carrying last year's figures beside it."""
+    net = (account.prior_debit or ZERO) - (account.prior_credit or ZERO)
+    document = account.source_document
+    return {
+        "id": account.id,
+        "code": account.account_code or "",
+        "name": account.account_name,
+        "debit": float(account.prior_debit or 0),
+        "credit": float(account.prior_credit or 0),
+        "amount": float(net),
+        "standard_key": account.standard_key,
+        "source": account.source,
+        "document": document.original_filename if document else None,
+        "category": (document.category_label
+                     if document and hasattr(document, "category_label")
+                     else (document.category if document else None)),
+        "mapped_by": "auditor" if account.mapping_is_manual else "auto",
+        "confidence": account.confidence,
+        "needs_review": account.needs_review,
+        "is_adjustment": account.is_adjustment,
+    }
+
+
+def _extracted_row_detail(row, document):
+    """A raw row read off a prior-year document - a signed set, a Xero
+    pull, an uploaded prior trial balance - shaped like _account_detail so
+    the same panel can show either without knowing which it got."""
+    debit = row.debit if row.debit is not None else None
+    credit = row.credit if row.credit is not None else None
+    if debit is None and credit is None and row.amount is not None:
+        amount = float(row.amount)
+    else:
+        amount = float((debit or 0) - (credit or 0))
+    return {
+        "id": row.id,
+        "code": row.account_code or "",
+        "name": row.label,
+        "debit": float(debit or 0),
+        "credit": float(credit or 0),
+        "amount": amount,
+        "standard_key": None,
+        "source": "document",
+        "document": document.original_filename,
+        "category": document.category_label,
+        "mapped_by": "auto",
+        "confidence": row.confidence,
+        "needs_review": row.needs_review,
+        "is_adjustment": False,
+    }
+
+
+def _prior_line_detail(financial_year, line_key):
+    """Real evidence behind one prior-year figure - from whichever source
+    actually supplies it.
+
+    Reads the exact same precedence prior_year.balances() itself uses
+    (SOURCE_ORDER), so this traces the number the comparative column
+    actually printed, never a second, independently-derived guess. A
+    figure genuinely typed by the preparer is named as that, not padded
+    out to look like an account - "the client's own feedback: don't
+    calculate, don't invent a document that isn't there" applies to this
+    panel as much as it does to the figure itself.
+    """
+    from . import prior_year as py
+    from ..models import ExtractedLineItem
+    from .mapping import match_label
+
+    available = py.sources(financial_year)
+    winning = next((name for name in py.SOURCE_ORDER
+                    if name in available and available[name].get(line_key)),
+                   None)
+    if not winning:
+        return None
+    via = "Last year (" + py.SOURCE_LABELS.get(winning, winning) + ")"
+
+    if winning == "auditmate":
+        previous = py.previous_year(financial_year)
+        rows = (TrialBalanceAccount.query
+               .filter_by(financial_year_id=previous.id, standard_key=line_key)
+               .order_by(TrialBalanceAccount.account_code,
+                        TrialBalanceAccount.account_name).all())
+        accounts = [_account_detail(a) for a in rows]
+        return {"via": via, "accounts": accounts} if accounts else None
+
+    if winning == "tb_comparative":
+        rows = (TrialBalanceAccount.query
+               .filter_by(financial_year_id=financial_year.id,
+                         standard_key=line_key)
+               .filter(db.or_(TrialBalanceAccount.prior_debit.isnot(None),
+                              TrialBalanceAccount.prior_credit.isnot(None)))
+               .order_by(TrialBalanceAccount.account_code,
+                        TrialBalanceAccount.account_name).all())
+        accounts = [_account_detail_prior(a) for a in rows]
+        return {"via": via, "accounts": accounts} if accounts else None
+
+    if winning in ("signed_accounts", "xero", "prior_trial_balance"):
+        category = "prior_trial_balance" if winning == "xero" else winning
+        file_type = "xero_prior" if winning == "xero" else None
+        document = py._document_of(financial_year, category, file_type=file_type)
+        if not document:
+            return None
+        rows = (ExtractedLineItem.query.filter_by(document_id=document.id)
+               .filter(ExtractedLineItem.status != "discarded").all())
+        matches = []
+        for row in rows:
+            if row.period == "previous" or not (row.label or "").strip():
+                continue
+            rule = match_label(row.label, financial_year.customer_id)
+            if rule and rule["line_key"] == line_key:
+                matches.append(row)
+        if not matches:
+            return None
+        return {"via": via,
+               "accounts": [_extracted_row_detail(r, document) for r in matches]}
+
+    if winning == "entered":
+        amount = available["entered"].get(line_key)
+        if amount is None:
+            return None
+        return {"via": via, "accounts": [{
+            "id": None, "code": "", "name": "Typed by the preparer",
+            "debit": 0.0, "credit": 0.0, "amount": float(amount),
+            "standard_key": line_key, "source": "entered", "document": None,
+            "category": None, "mapped_by": "auditor", "confidence": None,
+            "needs_review": False, "is_adjustment": False,
+        }]}
+
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -221,33 +355,36 @@ def _computed_contributions(line, depth=0, seen=None):
     seen = seen | {line.id}
 
     financial_year = line.statement.financial_year
-    targets = []  # (StatementLine, "current"/"prior")
+    targets = []  # (StatementLine, "current")
+    contributions = []
 
     group = _group_for_formula(line.formula)
     if group:
         for sibling in line.statement.lines:
             if (sibling.group_key == group and sibling.id != line.id
                     and not sibling.is_subtotal and not sibling.is_total):
-                targets.append((sibling, "current"))
+                targets.append(sibling)
     else:
         for stype, key, when in _LINE_DEPENDS.get(line.formula, []):
             if when == "prior":
-                if not financial_year.previous_year_id:
-                    continue
-                statement = _statement_for(financial_year.previous_year_id,
-                                           stype or line.statement.statement_type)
-            elif stype and stype != line.statement.statement_type:
-                statement = _statement_for(financial_year.id, stype)
-            else:
-                statement = line.statement
+                # Resolved through prior_year.py's own source precedence,
+                # not by walking a sibling engagement's statement lines -
+                # last year's evidence is as often a document as it is
+                # another AuditMate engagement, and only prior_year.py
+                # knows which one actually won for THIS figure.
+                detail = _prior_line_detail(financial_year, key)
+                if detail:
+                    contributions.append(detail)
+                continue
+            statement = (_statement_for(financial_year.id, stype)
+                        if stype and stype != line.statement.statement_type
+                        else line.statement)
             target = _find_line(statement, key)
             if target and target.id not in seen:
-                targets.append((target, when))
+                targets.append(target)
 
-    contributions = []
-    for target, when in targets:
-        label = (("Last year's " if when == "prior" else "")
-                + target.effective_label + " (" + target.statement.type_label + ")")
+    for target in targets:
+        label = target.effective_label + " (" + target.statement.type_label + ")"
         if target.source_line_item_ids:
             accounts = [_account_detail(a) for a in
                        TrialBalanceAccount.query.filter(
