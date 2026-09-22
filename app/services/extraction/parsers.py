@@ -952,6 +952,26 @@ def extract_pdf(path: Path) -> ExtractionResult:
             if result.rows:
                 result.engine = "pdfplumber-layout"
 
+        # How much of the document's own text sits on a page that
+        # produced not one row. A page contributing nothing might
+        # genuinely have nothing to give - a signature page, a blank
+        # divider - or it might be a balance sheet, an income statement,
+        # three pages of notes: real content neither pass above is built
+        # to read, because neither one reads a full narrative set of
+        # signed accounts, only a page shaped like one flat table.
+        # Measured rather than assumed, so a document where one page in
+        # the middle happens to have ruled lines and the other
+        # twenty-three were never touched reads as what it is, instead
+        # of as "some rows were found, so this document is done."
+        covered_pages = {row.source_ref.get("page") for row in result.rows
+                         if row.source_ref}
+        total_chars = sum(len(chunk) for chunk in text_chunks)
+        if total_chars:
+            uncovered_chars = sum(
+                len(chunk) for page_no, chunk in enumerate(text_chunks, start=1)
+                if page_no not in covered_pages)
+            result.unread_content_ratio = uncovered_chars / total_chars
+
     result.raw_text = "\n".join(text_chunks)
 
     # A PDF with no extractable text is a scan. Signal that so the dispatcher

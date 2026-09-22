@@ -53,6 +53,15 @@ class ExtractionResult:
     # Raw text kept so the AI fallback can re-read the document without
     # touching disk again.
     raw_text: str = ""
+    # The share of the document's own text that sits on pages which
+    # produced not one row - set by extract_pdf, left at its default
+    # everywhere else. A row count alone cannot tell a fully-read
+    # two-page trial balance from a 24-page signed set where one page
+    # happened to have ruled lines and the other twenty-three, the
+    # balance sheet and income statement among them, were never
+    # touched: both can show "found some rows, all with good
+    # confidence." This is what actually distinguishes them.
+    unread_content_ratio: float = 0.0
 
     @property
     def confidence(self) -> float:

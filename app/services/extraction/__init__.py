@@ -67,6 +67,24 @@ def _should_use_ai(result: ExtractionResult, file_type: str) -> tuple:
     if result.confidence < AI_FALLBACK_THRESHOLD:
         return True, f"low rule-based confidence ({result.confidence:.2f})"
 
+    # A row count and its confidence describe what WAS read; neither says
+    # anything about what was not. A 24-page signed set with one page of
+    # genuinely ruled cash flow figures can pass every check above -
+    # several rows, every one of them read correctly - while the balance
+    # sheet, the income statement and every note sit untouched, because
+    # nothing here is built to read a full narrative set of accounts,
+    # only a page shaped like one flat table. unread_content_ratio is
+    # the measure that actually distinguishes the two: how much of the
+    # document's own text sits on a page that produced nothing at all.
+    # Half is a wide margin - the document that surfaced this measured
+    # 97%, not a near miss either way - so a two-page trial balance with
+    # a mostly-blank signature page never crosses it.
+    if result.unread_content_ratio > 0.5:
+        return True, (f"{result.unread_content_ratio:.0%} of this "
+                      f"document's content is on pages that produced no "
+                      f"rows at all — likely a multi-page set of signed "
+                      f"accounts rather than a single table")
+
     return False, "rule-based extraction was reliable"
 
 
