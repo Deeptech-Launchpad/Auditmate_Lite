@@ -9,14 +9,14 @@ from flask_login import current_user, login_required
 
 from ..extensions import db
 from ..models import (DOCUMENT_CATEGORIES, PRIOR_YEAR_TWIN, Document,
-                      ExtractedLineItem, FinancialYear, PriorYearNote,
-                      TrialBalanceAccount, category_for_year)
+                      ExtractedLineItem, FinancialYear, FixedAssetRegisterItem,
+                      PriorYearNote, TrialBalanceAccount, category_for_year)
 from ..services import storage
 from ..services.audit import record
 from ..services.categorise import detect_category
 from ..services.extraction.base import reconcile_trial_balance
 from ..services.jobs import enqueue
-from ..services.trial_balance import choose_sources
+from ..services.trial_balance import choose_sources, detach_account_dependents
 
 bp = Blueprint("documents", __name__, url_prefix="/documents")
 
@@ -950,8 +950,21 @@ def delete(document_id):
     # come back on the next build; leaving them would strand rows pointing
     # at a document that no longer exists, which the database refuses.
     if contributed_count:
+        detach_account_dependents(contributed.with_entities(TrialBalanceAccount.id))
         contributed.delete(synchronize_session=False)
         db.session.flush()
+
+    # A note or a fixed-asset row keeps its own content - the note's words,
+    # the asset's cost and dates - independent of the document it was read
+    # off, exactly so it survives this. Only the now-dangling pointer back
+    # to that document is cleared; left set, it is what stops the document
+    # itself being deleted at all.
+    (PriorYearNote.query
+     .filter_by(source_document_id=document.id)
+     .update({"source_document_id": None}, synchronize_session=False))
+    (FixedAssetRegisterItem.query
+     .filter_by(source_document_id=document.id)
+     .update({"source_document_id": None}, synchronize_session=False))
 
     # Remove the file from disk too, not just the row.
     if not document.storage_path.startswith("("):

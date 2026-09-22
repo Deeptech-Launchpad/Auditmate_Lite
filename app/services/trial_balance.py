@@ -25,7 +25,7 @@ from decimal import Decimal
 from ..extensions import db
 from ..models import (TB_SOURCE_PAIRED, TB_SOURCE_PRECEDENCE,
                       AiMappingSuggestion, ExtractedLineItem, FinancialYear,
-                      TrialBalanceAccount)
+                      TrialBalanceAccount, TrialBalanceChange)
 from .audit import record
 from .classify import is_credit_balance
 from .extraction.base import looks_like_total_label
@@ -184,6 +184,31 @@ def _prior_by_account(financial_year_id, sources):
     return prior
 
 
+def detach_account_dependents(account_ids_query):
+    """Clear what only points at an account for provenance, before deleting it.
+
+    Two tables reference `trial_balance_accounts.id` besides the account's
+    own statement mapping, and neither depends on the account continuing to
+    exist for ITS OWN meaning to hold - left in place, either one's foreign
+    key stops the account being removed at all, whether that removal is a
+    trial balance rebuild replacing it or a document taking it down with it.
+
+    A suggestion's value is exhausted the moment its decision is acted on -
+    the mapping itself already lives on past a rebuild through `build()`'s
+    own `remembered`, the same way every other automatic mapping does - so
+    it is deleted outright. A customer's proposed change keeps its own
+    `account_code`/`account_name`, recorded for exactly this reason ("the
+    change still reads correctly if the account is later removed"), so only
+    the now-dangling pointer is cleared, never the change itself.
+    """
+    (AiMappingSuggestion.query
+     .filter(AiMappingSuggestion.account_id.in_(account_ids_query))
+     .delete(synchronize_session=False))
+    (TrialBalanceChange.query
+     .filter(TrialBalanceChange.tb_account_id.in_(account_ids_query))
+     .update({"tb_account_id": None}, synchronize_session=False))
+
+
 def build(financial_year_id: int, user_id=None) -> dict:
     """(Re)build the standard trial balance from all current sources."""
     financial_year = db.session.get(FinancialYear, financial_year_id)
@@ -228,27 +253,11 @@ def build(financial_year_id: int, user_id=None) -> dict:
         and a.source not in PROTECTED_SOURCES
     }
 
-    # A suggestion row references the account it was made about, and a
-    # rebuild is about to remove that account - it is replaced, by name and
-    # code, with a freshly inserted row further down, not kept, so nothing
-    # can carry the old id forward for a suggestion to still point at.
-    # Left in place, the account's own foreign key stops the rebuild from
-    # running at all.
-    #
-    # This loses only the "which model proposed it and what it said"
-    # record for a source-derived account - never the mapping decision
-    # itself, which survives the same rebuild through `remembered` above,
-    # the same way every other automatic mapping does. An accepted
-    # suggestion's `state()` view already went stale the moment its account
-    # was replaced, for the same reason; this only stops it from also
-    # breaking the rebuild.
     stale_accounts = (TrialBalanceAccount.query
                       .filter_by(financial_year_id=financial_year_id)
                       .filter(~TrialBalanceAccount.source.in_(PROTECTED_SOURCES))
                       .with_entities(TrialBalanceAccount.id))
-    (AiMappingSuggestion.query
-     .filter(AiMappingSuggestion.account_id.in_(stale_accounts))
-     .delete(synchronize_session=False))
+    detach_account_dependents(stale_accounts)
 
     # Replace source-derived rows only; auditor rows are preserved.
     (TrialBalanceAccount.query
