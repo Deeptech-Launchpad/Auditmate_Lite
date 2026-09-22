@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% macro v(field, fallback='') -%}
+  {{- (form.get(field) if form else None) or fallback -}}
+{%- endmacro %}
+{% block title %}Edit {{ user.name }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('users.index') }}">Users</a>
+  <span class="sep">/</span>
+  <span class="current">Edit {{ user.name }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Edit login</h1>
+    <p class="subtitle">Role is changed from the list, not here - this is
+      name, email and password only.</p>
+  </div>
+</div>
+
+<form method="post" style="max-width:480px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card">
+    <div class="card-body">
+      <div class="form-grid" style="grid-template-columns:1fr">
+        <div class="field">
+          <label for="name">Full name</label>
+          <input id="name" name="name" value="{{ v('name', user.name) }}" required>
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email"
+                 value="{{ v('email', user.email) }}" required>
+          <span class="help">This is what they sign in with</span>
+        </div>
+        <div class="field">
+          <label for="password">New password</label>
+          <input id="password" name="password" type="password" minlength="8"
+                 autocomplete="new-password">
+          <span class="help">Leave blank to keep their current password.
+            At least 8 characters if you do set one.</span>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <a href="{{ url_for('users.index') }}" class="btn">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save changes</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

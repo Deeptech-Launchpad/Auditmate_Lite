@@ -65,7 +65,8 @@
               <td class="small muted">
                 {{ user.last_login_at|datefmt('%d %b %Y, %H:%M') if user.last_login_at else 'never' }}
               </td>
-              <td class="right nowrap">
+              <td class="right nowrap" style="display:flex;gap:6px;justify-content:flex-end">
+                <a href="{{ url_for('users.edit', user_id=user.id) }}" class="btn btn-sm">Edit</a>
                 {% if user.id != current_user.id %}
                   {% if user.is_active_flag %}
                     <form method="post" action="{{ url_for('users.deactivate', user_id=user.id) }}"
@@ -80,6 +81,18 @@
                       <button type="submit" class="btn btn-sm btn-primary">Reactivate</button>
                     </form>
                   {% endif %}
+                  {# Deactivate is the everyday tool and stays the default
+                     action - delete is for a login that never did
+                     anything real, and the route itself refuses to
+                     remove one that did, so offering it here costs
+                     nothing even when it turns out to be the wrong
+                     button. #}
+                  <form method="post" action="{{ url_for('users.delete', user_id=user.id) }}"
+                        data-confirm="Permanently delete {{ user.name }}'s login? This cannot be undone. If they have ever done anything in Auditmate, this will be refused and you should Deactivate instead."
+                        onsubmit="return confirm(this.dataset.confirm);" style="display:inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                  </form>
                 {% endif %}
               </td>
             </tr>

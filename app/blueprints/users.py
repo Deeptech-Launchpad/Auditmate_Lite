@@ -1,4 +1,4 @@
-"""Managing logins - creating them, and switching one off.
+"""Managing logins - creating them, changing them, and switching one off.
 
 Partner-only throughout. Giving staff the ability to create a login -
 including a partner login - would be a bigger privilege than anything else
@@ -7,6 +7,7 @@ permanently deleting a customer is. See services.permissions.
 """
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models import ROLES, ROLE_PARTNER, User
@@ -60,6 +61,106 @@ def create():
         return redirect(url_for("users.index"))
 
     return render_template("users/form.html", form={})
+
+
+@bp.route("/<int:user_id>/edit", methods=["GET", "POST"])
+@login_required
+@partner_required
+def edit(user_id):
+    """Change an existing login's name, email, or password.
+
+    Role has its own control already - the dropdown right on the list -
+    and is not duplicated here. Password is optional on this form:
+    leaving it blank keeps the one the person already has, so a partner
+    fixing a typo in someone's name is not forced to also hand them a
+    new password they did not ask for.
+    """
+    user = db.session.get(User, user_id) or abort(404)
+
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password") or ""
+
+        if not name or not email:
+            flash("Name and email are required.", "error")
+            return render_template("users/edit.html", user=user,
+                                   form=request.form), 400
+
+        clash = User.query.filter(User.email == email,
+                                  User.id != user.id).first()
+        if clash:
+            flash(f"“{email}” already has a login.", "error")
+            return render_template("users/edit.html", user=user,
+                                   form=request.form), 400
+
+        if password and len(password) < 8:
+            flash("The password needs to be at least 8 characters.", "error")
+            return render_template("users/edit.html", user=user,
+                                   form=request.form), 400
+
+        before = {"name": user.name, "email": user.email}
+        user.name = name
+        user.email = email
+        password_changed = bool(password)
+        if password_changed:
+            user.set_password(password)
+
+        record("user", user.id, "edit", before=before,
+              after={"name": name, "email": email,
+                     "password_changed": password_changed})
+        db.session.commit()
+
+        flash(f"{name}'s login has been updated."
+             + (" Password changed too." if password_changed else ""),
+             "success")
+        return redirect(url_for("users.index"))
+
+    return render_template("users/edit.html", user=user, form={})
+
+
+@bp.route("/<int:user_id>/delete", methods=["POST"])
+@login_required
+@partner_required
+def delete(user_id):
+    """Permanently remove a login that has never actually done anything.
+
+    Deactivate is the everyday tool for a login that is done, and stays
+    one: every action a person took keeps their name on it, which is the
+    whole point of an audit trail, and around thirty different tables
+    point at a user for exactly that reason - an upload, a mapping
+    decision, an override, an approval. Erasing the person would either
+    orphan that history or, worse, silently take it with them.
+
+    So this exists only for the login that was never real - created by
+    mistake, a typo, a test account nobody used - and the database
+    itself decides which one that is, not a guess made here: if anything
+    anywhere still points at this row, the delete is refused rather than
+    forced through.
+    """
+    user = db.session.get(User, user_id) or abort(404)
+
+    if user.id == current_user.id:
+        flash("You cannot delete your own login while signed in with it.",
+              "error")
+        return redirect(url_for("users.index"))
+
+    name, email = user.name, user.email
+    try:
+        db.session.delete(user)
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        flash(f"{name}'s login cannot be deleted - there is work recorded "
+              f"against it somewhere in the system, and an audit trail "
+              f"cannot lose that. Deactivate it instead.", "error")
+        return redirect(url_for("users.index"))
+
+    record("user", user_id, "delete", before={"name": name, "email": email})
+    db.session.commit()
+
+    flash(f"{name}'s login has been permanently deleted.", "success")
+    return redirect(url_for("users.index"))
 
 
 @bp.route("/<int:user_id>/role", methods=["POST"])
