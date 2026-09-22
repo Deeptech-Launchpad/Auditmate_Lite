@@ -235,6 +235,15 @@ def looks_like_total_label(label) -> bool:
         "gross loss", "net assets", "net current assets"))
 
 
+# A cell that is nothing but a plausible year - "2025", or "2025.0" as
+# some exports render a whole number. Kept separate from parsers.py's own
+# _YEAR, which finds a year INSIDE a longer heading ("31 Dec 2024"); this
+# one only matches a cell that is a year and nothing else, which is what a
+# column actually looks like when a two-year statement labels its columns
+# with nothing but the years themselves.
+_HEADER_YEAR = re.compile(r"^(19|20)\d{2}(\.0)?$")
+
+
 def looks_like_header(cells: list) -> bool:
     """True if a row reads like a column header rather than data.
 
@@ -243,12 +252,27 @@ def looks_like_header(cells: list) -> bool:
     columns "Dr." and "Cr." rather than "Debit" and "Credit"; without the
     abbreviations such a header is not recognised at all, and every column
     then has to be guessed by position.
+
+    A column headed by nothing but its own year - "Account | 2025 | 2024" -
+    is an entirely ordinary way to label a two-year statement, and this
+    used to fail it twice over: a bare year counted as neither of the two
+    header words this function otherwise requires, and it counted AGAINST
+    being a header, on the has_numbers check below - which exists to catch
+    the opposite case, a row of real figures, and could not tell a heading
+    year from a balance. The whole document then fell back to guessing
+    every column by position, which read the wrong year as "current" for
+    every single row and lost the other year completely - not a header
+    formatting quirk, a document whose figures were silently read as the
+    wrong year throughout.
     """
     joined = " ".join(str(c or "").lower() for c in cells)
     has_words = sum(1 for w in HEADER_WORDS if w in joined)
     has_words += sum(1 for c in cells
                      if str(c or "").strip().lower() in HEADER_TOKENS)
-    has_numbers = any(parse_amount(c) is not None for c in cells)
+    year_cells = [c for c in cells if _HEADER_YEAR.match(str(c or "").strip())]
+    has_words += len(year_cells)
+    has_numbers = any(parse_amount(c) is not None for c in cells
+                      if c not in year_cells)
     filled = sum(1 for c in cells if str(c or "").strip())
     return has_words >= 2 and not has_numbers and filled >= 2
 
