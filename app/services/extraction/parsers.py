@@ -156,26 +156,38 @@ def _comparative_row(cells, cols, source_ref, current):
     if value is None:
         return None
 
-    # Which side last year's figure sits on is not stated by a bare
-    # comparative column, so it follows this year's row for the same
-    # account - the only evidence available, and right whenever the account
-    # has not changed sides.
-    #
     # debit/credit are magnitudes, the same as this year's own debit and
     # credit columns - never signed, the side itself is what carries the
     # sign. A comparative column brackets a credit balance the way the
     # rest of this codebase brackets one everywhere else, so parsing
     # "(25,133.34)" back to -25,133.34 is right, and writing that
-    # STRAIGHT into credit was not: it stored a credit-side balance as a
-    # negative credit, which read back through prior_year.py as a second,
-    # contradicting sign on top of the one the credit side already means.
-    # The bracket confirms the side a bare column cannot state; it is not
-    # licence to carry the minus into a field that has no minus of its own.
+    # STRAIGHT into credit was wrong twice over: once for carrying a sign
+    # into a field that has none of its own, and once for using it to
+    # decide WHICH field at all.
+    #
+    # An earlier version fixed only the first half - stripped the sign
+    # for the magnitude, but still chose debit vs credit by copying
+    # whichever side THIS year's row happens to sit on. That is right
+    # whenever the account has not changed sides, which is most of them
+    # - and wrong for the one that has, which the copy can never detect
+    # because it never looks at the value it is placing. A real trial
+    # balance turned up four in one file: a levy posted as a small
+    # credit adjustment where it is normally a debit expense, a
+    # related-party loan that flipped from owed-to owed-by, a term loan
+    # run down to a credit no-balance, and retained earnings, which this
+    # client's own software exports as a debit figure. All four sit on
+    # the correct side of THIS document; the copy just checked the wrong
+    # document's opinion of what "correct" is.
+    #
+    # The sign already says which side, on its own, for every account -
+    # that is what the bracket convention is FOR. So it decides, not the
+    # current row.
     debit = credit = amount = None
-    if current.debit is not None:
-        debit = abs(value)
-    elif current.credit is not None:
-        credit = abs(value)
+    if current.debit is not None or current.credit is not None:
+        if value < 0:
+            credit = abs(value)
+        else:
+            debit = value
     else:
         amount = value
 
