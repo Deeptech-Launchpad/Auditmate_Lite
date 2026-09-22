@@ -115,6 +115,71 @@ def statement_for_account_type(account_type):
     return None
 
 
+# Which SIDE of the balance sheet an account's own stated type puts it on.
+# Narrower than _BALANCE_SHEET_TYPE_WORDS above, and answering a different
+# question: that list decides P&L against balance sheet; this one decides
+# asset against liability against equity, which "balance sheet" alone
+# cannot - Xero's own type names say it plainly ("Current Asset", "Current
+# Liability"), so this reads them the same direct way.
+_ASSET_TYPE_WORDS = ("current asset", "fixed asset", "non-current asset",
+                     "non current asset", "other asset", "inventory")
+_LIABILITY_TYPE_WORDS = ("current liability", "non-current liability",
+                         "non current liability", "long-term liability",
+                         "long term liability", "other liability")
+_EQUITY_TYPE_WORDS = ("equity",)
+
+
+def side_for_account_type(account_type):
+    """asset / liability / equity, read from the account's own stated
+    type - or None when the type does not say or does not distinguish.
+
+    "Balance sheet" is not narrow enough on its own: an asset account and
+    a liability account are both on it, so a rule can be on the right
+    STATEMENT and still land an account on the wrong SIDE of it. That is
+    what let "Amount Due from Director", typed Current Liability by the
+    client's own books, match a rule written for money owed TO a
+    company - a liability read onto an asset line, printed as a
+    negative deduction from receivables, until nothing in the accounts
+    balanced any more. The client's own type already said which side;
+    nothing was reading it at this resolution before.
+    """
+    text = (account_type or "").strip().lower()
+    if not text:
+        return None
+    if any(word in text for word in _LIABILITY_TYPE_WORDS):
+        return "liability"
+    if any(word in text for word in _EQUITY_TYPE_WORDS):
+        return "equity"
+    if any(word in text for word in _ASSET_TYPE_WORDS):
+        return "asset"
+    return None
+
+
+_ASSET_GROUPS = {"current_assets", "non_current_assets", "assets_total"}
+_LIABILITY_GROUPS = {"current_liabilities", "non_current_liabilities",
+                     "liabilities_total"}
+_EQUITY_GROUPS = {"equity"}
+
+
+def _side_of_line(line_key):
+    """asset / liability / equity for a STATEMENT LINE - a candidate rule's
+    destination, not an account's own type. Deferred import: classify.py
+    imports statements.py, which imports this module back for _signed(),
+    the same reason that import is already deferred there.
+    """
+    from .classify import classify
+
+    entry = classify(line_key)
+    group = (entry or {}).get("group")
+    if group in _LIABILITY_GROUPS:
+        return "liability"
+    if group in _EQUITY_GROUPS:
+        return "equity"
+    if group in _ASSET_GROUPS:
+        return "asset"
+    return None
+
+
 def match_label(label: str, customer_id: int, statement_type: str = None,
                 account_type: str = None):
     """Find the best rule for one label without calling the AI.
@@ -152,9 +217,20 @@ def match_label(label: str, customer_id: int, statement_type: str = None,
         return None
     normalised = label.lower().strip()
     side = statement_for_account_type(account_type)
+    bs_side = side_for_account_type(account_type)
 
     def fits(rule):
-        return side is None or rule["statement_type"] == side
+        if side is not None and rule["statement_type"] != side:
+            return False
+        # Only meaningful on the balance sheet - a P&L rule has no
+        # asset/liability side of its own to disagree with, and
+        # checking bs_side there would refuse every one of them the
+        # moment an account's type happened to say "Expense".
+        if bs_side is not None and rule["statement_type"] == "balance_sheet":
+            rule_side = _side_of_line(rule["line_key"])
+            if rule_side is not None and rule_side != bs_side:
+                return False
+        return True
 
     # Customer rules first -- a correction made for this client beats a
     # generic seed rule every time. Both lists are already priority-sorted,
