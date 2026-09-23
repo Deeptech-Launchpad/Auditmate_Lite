@@ -31,6 +31,23 @@ def model_name() -> str:
     return current_app.config.get("GEMINI_MODEL", "gemini-3.6-flash")
 
 
+def fallback_model() -> str:
+    """A model to retry on when the main one is overloaded, or "" for none.
+
+    Named by the operator in .env and never chosen here: a fallback picked
+    in code could quietly be a dearer model than the one being paid for.
+    Leave it empty and an overloaded model simply fails, as before.
+    """
+    return (current_app.config.get("GEMINI_FALLBACK_MODEL") or "").strip()
+
+
+def _overloaded(exc) -> bool:
+    """True for "busy right now" (503) and rate limits (429) - the failures
+    another model can get past. A bad key or a malformed request would fail
+    the same way on any model, so those are not retried."""
+    return getattr(exc, "code", None) in (429, 500, 502, 503, 504)
+
+
 def _client():
     api_key = current_app.config.get("GEMINI_API_KEY")
     if not api_key:
@@ -65,18 +82,29 @@ def structured_call(system, parts, schema_model, max_tokens=16000):
     if client is None:
         raise RuntimeError("GEMINI_API_KEY is not set")
 
-    response = client.models.generate_content(
-        model=model_name(),
-        contents=_to_contents(parts),
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            response_mime_type="application/json",
-            response_schema=schema_model,
-            max_output_tokens=max_tokens,
-            # Extraction is a reading task, not a creative one.
-            temperature=0.0,
-        ),
-    )
+    def call(model):
+        return client.models.generate_content(
+            model=model,
+            contents=_to_contents(parts),
+            config=types.GenerateContentConfig(
+                system_instruction=system,
+                response_mime_type="application/json",
+                response_schema=schema_model,
+                max_output_tokens=max_tokens,
+                # Extraction is a reading task, not a creative one.
+                temperature=0.0,
+            ),
+        )
+
+    try:
+        response = call(model_name())
+    except Exception as exc:                       # noqa: BLE001
+        backup = fallback_model()
+        if not (_overloaded(exc) and backup and backup != model_name()):
+            raise
+        log.warning("%s unavailable (%s); retrying on %s",
+                    model_name(), getattr(exc, "code", "?"), backup)
+        response = call(backup)
 
     # Prefer the SDK's own parsed object; fall back to parsing the JSON text.
     parsed = getattr(response, "parsed", None)

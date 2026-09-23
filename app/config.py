@@ -63,6 +63,9 @@ class Config:
 
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+    # Optional: a model of the same tier or cheaper, tried once when the main
+    # one is overloaded. Empty means no fallback.
+    GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "").strip()
 
     # Gemma, called through the same Google AI Studio API as Gemini above -
     # not switched on by AI_PROVIDER, only used by `flask compare-gemma`
