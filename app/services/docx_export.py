@@ -479,53 +479,59 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
     # Load custom template if provided
     if template_path and template_path != "STANDARD":
         document = _load_template(template_path)
+        is_custom = True
     else:
         document = DocxDocument()
+        is_custom = False
 
-    # A4 portrait with 20 mm margins. python-docx starts from Word's own
-    # default template, which is US Letter at one inch - so a Singapore set
-    # came out on American paper with margins an inch and a quarter wide,
-    # and the first thing anyone did was change the page setup by hand.
-    section = document.sections[0]
-    section.orientation = WD_ORIENT.PORTRAIT
-    section.page_width = Mm(210)
-    section.page_height = Mm(297)
-    for edge in ("left_margin", "right_margin", "top_margin", "bottom_margin"):
-        setattr(section, edge, Mm(20))
-    _page_numbers(section)
+    # For standard or no template, apply default page setup and styles.
+    # Custom templates should retain their own layout, margins, and heading
+    # styles, so we skip these adjustments when a custom template is loaded.
+    if not is_custom:
+        # A4 portrait with 20 mm margins. python-docx starts from Word's own
+        # default template, which is US Letter at one inch - so a Singapore set
+        # came out on American paper with margins an inch and a quarter wide,
+        # and the first thing anyone did was change the page setup by hand.
+        section = document.sections[0]
+        section.orientation = WD_ORIENT.PORTRAIT
+        section.page_width = Mm(210)
+        section.page_height = Mm(297)
+        for edge in ("left_margin", "right_margin", "top_margin", "bottom_margin"):
+            setattr(section, edge, Mm(20))
+        _page_numbers(section)
 
-    if draft:
-        header = document.sections[0].header.paragraphs[0]
-        header.alignment = 1                                   # centre
-        stamp = header.add_run("DRAFT \u2014 INCOMPLETE")
-        stamp.bold = True
-        stamp.font.size = Pt(12)
+        if draft:
+            header = document.sections[0].header.paragraphs[0]
+            header.alignment = 1                                   # centre
+            stamp = header.add_run("DRAFT \u2014 INCOMPLETE")
+            stamp.bold = True
+            stamp.font.size = Pt(12)
 
-    # Times New Roman 11pt, black - measured off the firm's own annual report
-    # template rather than chosen here, and the same size the PDF is set in.
-    normal = document.styles["Normal"]
-    normal.font.name = "Times New Roman"
-    normal.font.size = Pt(11)
+        # Times New Roman 11pt, black - measured off the firm's own annual report
+        # template rather than chosen here, and the same size the PDF is set in.
+        normal = document.styles["Normal"]
+        normal.font.name = "Times New Roman"
+        normal.font.size = Pt(11)
 
-    # Word's built-in heading styles are a blue sans-serif (Heading 1 is
-    # 365F91, the rest 4F81BD) inherited from its default template, so every
-    # heading in the delivered accounts came out blue and in the wrong face
-    # while the body around it was black Times.
-    #
-    # Restyled rather than abandoned in favour of hand-formatted paragraphs:
-    # keeping the real heading styles is what gives the document its
-    # navigation pane and lets Word build a table of contents from it, which
-    # a set of accounts someone is about to edit wants to keep.
-    for level, size in ((0, 14), (1, 13), (2, 12), (3, 11), (4, 11)):
-        style = document.styles["Title" if level == 0 else f"Heading {level}"]
-        style.font.name = "Times New Roman"
-        style.font.size = Pt(size)
-        style.font.bold = True
-        style.font.color.rgb = RGBColor(0, 0, 0)
-        # A heading stranded at the foot of a page, with the table it
-        # introduces starting the next one, was the other half of the
-        # "headings move before the page" report.
-        style.paragraph_format.keep_with_next = True
+        # Word's built-in heading styles are a blue sans-serif (Heading 1 is
+        # 365F91, the rest 4F81BD) inherited from its default template, so every
+        # heading in the delivered accounts came out blue and in the wrong face
+        # while the body around it was black Times.
+        #
+        # Restyled rather than abandoned in favour of hand-formatted paragraphs:
+        # keeping the real heading styles is what gives the document its
+        # navigation pane and lets Word build a table of contents from it, which
+        # a set of accounts someone is about to edit wants to keep.
+        for level, size in ((0, 14), (1, 13), (2, 12), (3, 11), (4, 11)):
+            style = document.styles["Title" if level == 0 else f"Heading {level}"]
+            style.font.name = "Times New Roman"
+            style.font.size = Pt(size)
+            style.font.bold = True
+            style.font.color.rgb = RGBColor(0, 0, 0)
+            # A heading stranded at the foot of a page, with the table it
+            # introduces starting the next one, was the other half of the
+            # "headings move before the page" report.
+            style.paragraph_format.keep_with_next = True
 
     if title:
         document.add_heading(title, level=0)
