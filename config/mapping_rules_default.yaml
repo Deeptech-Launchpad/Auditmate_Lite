@@ -173,7 +173,11 @@
 - {pattern: "accounts receivable",  statement: balance_sheet, line: trade_receivables, priority: 8}
 - {pattern: "accounts payable",     statement: balance_sheet, line: trade_payables, priority: 8, sign: -1}
 - {pattern: "superannuation",       statement: profit_and_loss, line: cpf, priority: 10}
-- {pattern: "other revenue",        statement: profit_and_loss, line: other_income, priority: 10, sign: -1}
+# Priority 5, not 10: "revenue" (10) also matches this name and, tied, was
+# listed first, so other revenue was booked as revenue and overstated it.
+# No sign: other_income sits in the operating-expenses block as a credit
+# (see statement_templates.yaml), like "other income" above.
+- {pattern: "other revenue",        statement: profit_and_loss, line: other_income, priority: 5}
 
 # --- gaps found testing a real Singapore SME's management accounts ----------
 # Lower priority number wins. These sit BELOW the generic rules they need to
@@ -229,6 +233,7 @@
 # account and a real client's signed set presents it there.
 - {pattern: "subcontractor",        statement: profit_and_loss, line: subcontractor_costs, priority: 7}
 - {pattern: "sub-contractor",       statement: profit_and_loss, line: subcontractor_costs, priority: 7}
+- {pattern: "sub contract",         statement: profit_and_loss, line: subcontractor_costs, priority: 7}
 - {pattern: "consultanc",           statement: profit_and_loss, line: consulting_fee, priority: 10}
 - {pattern: "auditor",              statement: profit_and_loss, line: accounting_charges, priority: 6}
 - {pattern: "audit and tax",        statement: profit_and_loss, line: accounting_charges, priority: 5}

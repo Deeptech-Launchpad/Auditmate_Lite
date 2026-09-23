@@ -9,8 +9,8 @@ from flask_login import current_user, login_required
 from sqlalchemy import func, or_
 
 from ..extensions import db
-from ..models import (Customer, CustomerDocument, Document, FinancialStatement,
-                      FinancialYear)
+from ..models import (AccountMapping, Customer, CustomerDocument, Document,
+                      FinancialStatement, FinancialYear)
 from ..services import storage
 from ..services.audit import record
 from ..services.permissions import partner_required
@@ -465,6 +465,11 @@ def delete(customer_id):
     year_count = len(customer.financial_years)
     record("customer", customer.id, "delete",
            before={"name": name, "financial_years": year_count})
+    # What the firm taught the app about this client's account names is the
+    # client's own data, and nothing cascades to it - the delete failed on
+    # account_mappings_customer_id_fkey for any customer that had ever had
+    # an account mapped by hand.
+    AccountMapping.query.filter_by(customer_id=customer.id).delete()
     db.session.delete(customer)
     db.session.commit()
 

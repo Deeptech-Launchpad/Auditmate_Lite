@@ -289,6 +289,24 @@ def sources(financial_year):
         if figures:
             found["prior_trial_balance"] = figures
 
+    # A signed set that was only partly read is a fragment, not last year.
+    # When the reader could get one page of a 24-page document - the AI was
+    # down and only a cash-flow page has ruled lines - the one or two figures
+    # it produced still outrank every complete source under SOURCE_ORDER, and
+    # every other line then reads as absent: a blank comparative column with
+    # one wrong cash figure in it. A signed source under a quarter the size
+    # of the best complete alternative is treated as not read, so the fuller
+    # source is used and the fragment is left to be re-extracted.
+    if "signed_accounts" in found:
+        fullest = max((len(figures) for name, figures in found.items()
+                       if name != "signed_accounts"), default=0)
+        if len(found["signed_accounts"]) * 4 < fullest:
+            log.warning("FY %s: signed accounts hold only %d line(s) against "
+                        "%d elsewhere - treated as unread",
+                        financial_year.id, len(found["signed_accounts"]),
+                        fullest)
+            del found["signed_accounts"]
+
     # Figures a person read out of the signed set are a CORRECTION LAYER,
     # not a source of their own. Somebody who retypes one line because the
     # signed accounts disagree with the books has said nothing about the

@@ -147,6 +147,18 @@ def build_statement(financial_year_id: int, statement_type: str,
         rule = match_label(account.account_name, financial_year.customer_id,
                            account_type=account.account_type)
         sign = rule["sign"] if rule else 1
+        if sign == 1:
+            # Either no name rule matched, or the rule is one learned from
+            # a hand mapping - which is stored with sign=1 whatever the
+            # account is (see classify.is_credit_balance). Both left every
+            # credit balance such as "Amount Due from Director" or a bank
+            # loan printing as a negative liability, which unbalanced the
+            # balance sheet. The line the account was mapped to says which
+            # side it lives on, so that decides. A rule that says -1 is
+            # left alone: that is a contra account, deliberately flipped.
+            from .classify import is_credit_balance
+            if is_credit_balance(account.standard_key):
+                sign = -1
         return net * sign
 
     # ---- Comparatives ------------------------------------------------------
