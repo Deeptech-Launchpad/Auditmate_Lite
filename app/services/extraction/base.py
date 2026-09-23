@@ -244,13 +244,28 @@ def looks_like_total_label(label) -> bool:
         "gross loss", "net assets", "net current assets"))
 
 
-# A cell that is nothing but a plausible year - "2025", or "2025.0" as
-# some exports render a whole number. Kept separate from parsers.py's own
-# _YEAR, which finds a year INSIDE a longer heading ("31 Dec 2024"); this
-# one only matches a cell that is a year and nothing else, which is what a
-# column actually looks like when a two-year statement labels its columns
-# with nothing but the years themselves.
-_HEADER_YEAR = re.compile(r"^(19|20)\d{2}(\.0)?$")
+# A cell that is nothing but a plausible year or a date built around one -
+# "2025", "2025.0" as some exports render a whole number, or "31 Dec 2025"
+# / "As at 31 December 2025" as a printed statement usually heads its
+# columns instead. Kept separate from parsers.py's own _YEAR, which finds
+# a year INSIDE a longer heading for a different purpose (deciding which
+# dated COLUMN is current); this one only matches a cell that reads as a
+# date and nothing else, whole-cell anchored, so a data row that merely
+# mentions a date in passing is never caught by it.
+#
+# A bare year alone used to be all this recognised - "Account | 2025 |
+# 2024" passed, but "Account | 31 Dec 2025 | 31 Dec 2024" did not, because
+# "31 Dec 2025" matches neither a header word nor a bare year. That header
+# row was then missed entirely: column identification fell back to
+# guessing by position, which read the wrong year as current for every
+# row and dropped the other year's figures completely - not a formatting
+# quirk, a real balance sheet silently read one year out of step.
+_HEADER_YEAR = re.compile(
+    r"^(as\s+at\s+)?"
+    r"(\d{1,2}\s*(st|nd|rd|th)?[\s./-]+)?"
+    r"([a-z]{3,9}[\s./-]+)?"
+    r"(19|20)\d{2}(\.0)?$",
+    re.IGNORECASE)
 
 
 def looks_like_header(cells: list) -> bool:
