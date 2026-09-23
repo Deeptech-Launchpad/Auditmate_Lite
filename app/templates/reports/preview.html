@@ -14,12 +14,12 @@
          where the page breaks will fall before exporting. */
       body { background: #e9ecef; margin: 0; padding: 26px 16px 60px; }
       .print-bar {
-        max-width: 210mm; margin: 0 auto 18px; display: flex;
+        max-width: {{ '%.1fmm'|format(look.page_mm[0]) if look else '210mm' }}; margin: 0 auto 18px; display: flex;
         justify-content: space-between; align-items: center; gap: 12px;
       }
-      .rpt-doc { max-width: 210mm; margin: 0 auto; }
+      .rpt-doc { max-width: {{ '%.1fmm'|format(look.page_mm[0]) if look else '210mm' }}; margin: 0 auto; }
       .rpt-page {
-        background: #fff; padding: 20mm 18mm; margin-bottom: 18px;
+        background: #fff; padding: {{ ('%.1fmm %.1fmm %.1fmm %.1fmm'|format(look.top, look.right, look.bottom, look.left)) if look else '20mm 18mm' }}; margin-bottom: 18px;
         box-shadow: 0 1px 4px rgba(0,0,0,.18);
         min-height: 120mm;
       }

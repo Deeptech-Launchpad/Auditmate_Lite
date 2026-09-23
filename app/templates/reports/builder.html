@@ -568,13 +568,16 @@
           application chrome around this panel.
         #}
         <style>
-          {% with for_pdf = False, scope = '.rpt-mini' %}
+          {% with for_pdf = False, scope = '.rpt-mini', look = look|default(none) %}
             {% include "reports/_styles.html" %}
           {% endwith %}
           .rpt-mini { max-height: 680px; overflow: auto; background: #e9ecef;
                       padding: 14px; border-radius: 6px; }
-          .rpt-mini .rpt-doc { font-size: 12px; }
-          .rpt-mini .rpt-page { background: #fff; padding: 26px 30px;
+          {# The customer's template, scaled down to this panel: text size and
+             page margins follow it, so the preview reads like their report. #}
+          .rpt-mini .rpt-doc { font-size: {{ '%.1f'|format(look.body_pt * 1.09) if look else 12 }}px; }
+          .rpt-mini .rpt-page { background: #fff;
+                                padding: {{ '%.0fpx %.0fpx'|format(look.top * 1.6 + 8, look.left * 1.6) if look else '26px 30px' }};
                                 margin-bottom: 12px;
                                 box-shadow: 0 1px 3px rgba(0,0,0,.15); }
           /* A shut panel still has to look like a thing you can open. */

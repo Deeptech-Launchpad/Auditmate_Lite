@@ -97,6 +97,7 @@ def builder(fy_id):
 
     return render_template("reports/builder.html",
                            report=report, fy=financial_year,
+                           look=_template_look(financial_year.customer),
                            editable=editable,
                            incomplete=incomplete,
                            payloads=payloads,
