@@ -406,6 +406,22 @@ class FinancialYear(db.Model):
     # balances of nil.
     is_first_year = db.Column(db.Boolean, default=False, nullable=False)
 
+    # Which generation pipeline this engagement is built by: "legacy" (the
+    # existing HTML/PDF statements) or "frs_v2" (the notes-library-v3.10
+    # architecture - GL-mandatory, mapped cash flow, the two Word templates,
+    # the blocking gates).
+    #
+    # Set once, at creation, and never changed on an engagement that has
+    # already started - the two pipelines produce different documents from
+    # different source data, and moving one partway through would mean
+    # re-collecting what was already uploaded under different rules. Every
+    # engagement created before frs_v2 existed is "legacy" by default, and
+    # stays that way permanently: nothing here ever reaches back and moves
+    # a live engagement to a pipeline it did not start on.
+    REPORT_ARCHITECTURES = ("legacy", "frs_v2")
+    report_architecture = db.Column(db.String(20), default="legacy",
+                                    nullable=False)
+
     shared_at = db.Column(db.DateTime)
     approved_at = db.Column(db.DateTime)
     approved_by_name = db.Column(db.String(160))
