@@ -659,7 +659,10 @@ def reextract(document_id):
         if result.get("notes"):
             parts.append(f"{result['notes']} note(s) of wording")
         what = " and ".join(parts) or "no line items"
-        flash(f"Re-read this document: {what}, using {engine}.", "success")
+        if result.get("partial_read"):
+            flash(f"Incomplete read: {result['partial_read']}", "warning")
+        else:
+            flash(f"Re-read this document: {what}, using {engine}.", "success")
     else:
         flash(f"Extraction failed: {result.get('error')}", "error")
 

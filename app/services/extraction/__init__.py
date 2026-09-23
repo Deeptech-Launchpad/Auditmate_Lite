@@ -342,6 +342,10 @@ def extract_document(document_id: int) -> dict:
     engine_used = result.engine
     ai_used = False
     ai_error = None
+    # Set when the AI was needed because most of the document went unread,
+    # and could not deliver. The few rows the rules did read are kept - but
+    # they are a fragment, and "5 rows read" alone says the document is done.
+    partial_read = None
 
     # The rule-based read of the document's own text, kept aside from
     # `result` because Stage 2 below can replace `result` wholesale with a
@@ -364,6 +368,11 @@ def extract_document(document_id: int) -> dict:
             result = ai_result
             engine_used = ai_result.engine or "ai"
             ai_used = True
+        elif result.rows and ai_result.error:
+            partial_read = (
+                f"Only {len(result.rows)} row(s) could be read without the "
+                f"AI, from part of the document - the rest was not read. "
+                f"{ai_result.error} Press Re-extract to try again.")
         elif ai_result.error and not result.rows:
             # A set of signed accounts is read for its WORDING, and carries no
             # figures at all - so failing to find figures in one is not a
@@ -498,6 +507,7 @@ def extract_document(document_id: int) -> dict:
         "engine": engine_used,
         "ai_used": ai_used,
         "ai_reason": reason if use_ai else None,
+        "partial_read": partial_read,
         "confidence": round(result.confidence, 3),
         "flagged": sum(1 for r in result.rows if r.needs_review),
         "balance": balance,
