@@ -26,6 +26,10 @@ def get_provider(name=None):
         from . import gemini_ as provider
     elif name == "anthropic":
         from . import anthropic_ as provider
+    elif name == "gemma":
+        # Evaluation only - not a valid AI_PROVIDER setting, only reached
+        # when `flask compare-gemma` asks for it explicitly by name.
+        from . import gemma_ as provider
     else:
         raise ValueError(
             f"Unknown AI_PROVIDER {name!r} - expected 'anthropic' or 'gemini'")

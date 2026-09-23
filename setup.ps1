@@ -28,13 +28,26 @@ Section "1. Python 3.12"
 $pythonOk = $false
 try {
     $v = & py -3.12 --version 2>$null
-    if ($v -match "3\.12") { $pythonOk = $true; Write-Host "Found: $v" }
+    if ($v -match "3\.12") { $pythonOk = $true; Write-Host "Found (py launcher): $v" }
 } catch {}
 
 if (-not $pythonOk) {
+    try {
+        $v = & python --version 2>$null
+        if ($v -match "3\.12") { $pythonOk = $true; Write-Host "Found (python.exe): $v" }
+    } catch {}
+}
+
+if (-not $pythonOk) {
     Write-Host "Installing Python 3.12 via winget (may prompt for admin rights)..."
-    winget install --id Python.Python.3.12 -e --source winget --accept-package-agreements --accept-source-agreements
-    Write-Host "Python installed. Restart this terminal for PATH changes to apply."
+    try {
+        winget install --id Python.Python.3.12 -e --source winget --accept-package-agreements --accept-source-agreements
+        Write-Host "Python installed. Restart this terminal for PATH changes to apply."
+    } catch {
+        Write-Host "winget is not available on this machine. Install Python 3.12 manually" -ForegroundColor Yellow
+        Write-Host "from https://www.python.org/downloads/ (check 'Add python.exe to PATH')," -ForegroundColor Yellow
+        Write-Host "then re-run this script." -ForegroundColor Yellow
+    }
 } else {
     Write-Host "Python 3.12 already present. Skipping."
 }
@@ -46,9 +59,14 @@ if (-not (Test-Cmd "psql")) {
     Write-Host "Installing PostgreSQL 16 via winget..."
     Write-Host "IMPORTANT: the installer asks you to set a password for the"
     Write-Host "'postgres' user. Write it down - you need it further below."
-    winget install --id PostgreSQL.PostgreSQL.16 -e --source winget --accept-package-agreements --accept-source-agreements
-    Write-Host "PostgreSQL installed. Restart this terminal, or add its bin folder"
-    Write-Host "to PATH: C:\Program Files\PostgreSQL\16\bin"
+    try {
+        winget install --id PostgreSQL.PostgreSQL.16 -e --source winget --accept-package-agreements --accept-source-agreements
+        Write-Host "PostgreSQL installed. Restart this terminal, or add its bin folder"
+        Write-Host "to PATH: C:\Program Files\PostgreSQL\16\bin"
+    } catch {
+        Write-Host "winget is not available on this machine. Install PostgreSQL 16 manually" -ForegroundColor Yellow
+        Write-Host "from https://www.postgresql.org/download/windows/, then re-run this script." -ForegroundColor Yellow
+    }
 } else {
     Write-Host "PostgreSQL already present. Skipping."
 }

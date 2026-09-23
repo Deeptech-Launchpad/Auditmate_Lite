@@ -64,6 +64,13 @@ class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
 
+    # Gemma, called through the same Google AI Studio API as Gemini above -
+    # not switched on by AI_PROVIDER, only used by `flask compare-gemma`
+    # while we evaluate it as a self-hosting candidate. Falls back to the
+    # Gemini key since Google AI Studio issues one key for both.
+    GEMMA_API_KEY = os.getenv("GEMMA_API_KEY", "").strip() or GEMINI_API_KEY
+    GEMMA_MODEL = os.getenv("GEMMA_MODEL", "").strip()
+
     # --- Xero (accounting software connection) ---
     # Registered at developer.xero.com. The secret is a server-side secret:
     # Auditmate is a web app that can keep one, so it uses the standard

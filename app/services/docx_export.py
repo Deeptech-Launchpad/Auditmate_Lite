@@ -480,6 +480,14 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
     if template_path and template_path != "STANDARD":
         document = _load_template(template_path)
         is_custom = True
+
+        # We only want the custom template's margins, styles, headers and footers.
+        # We DO NOT want the old document's text/tables clogging up the report.
+        # Clear the document body but keep the final section properties (sectPr).
+        body = document.element.body
+        for child in list(body):
+            if not child.tag.endswith('sectPr'):
+                body.remove(child)
     else:
         document = DocxDocument()
         is_custom = False
