@@ -10,7 +10,8 @@ from flask_login import current_user, login_required
 from ..extensions import db
 from ..models import (DOCUMENT_CATEGORIES, PRIOR_YEAR_TWIN, Document,
                       ExtractedLineItem, FinancialYear, FixedAssetRegisterItem,
-                      PriorYearNote, TrialBalanceAccount, category_for_year)
+                      PriorYearNote, TrialBalanceAccount, category_for_year,
+                      label_for)
 from ..services import storage
 from ..services.audit import record
 from ..services.categorise import detect_category
@@ -1055,9 +1056,93 @@ def sheets(document_id):
         return redirect(url_for("documents.index",
                                 fy_id=document.financial_year_id))
 
+    # A guess at what each sheet IS, the same name-matching the upload
+    # screen already uses for a whole file - "Trial Balance" and "Balance
+    # Sheet" read the same way whether they are two files or two tabs in
+    # one. Shown as a hint on every sheet, and reused as the starting
+    # value if the auditor chooses to split the workbook below.
+    for sheet in available:
+        sheet["category"] = detect_category(sheet["name"])
+        sheet["category_label"] = label_for(DOCUMENT_CATEGORIES, sheet["category"])
+
+    # Sheets whose own name says nothing distinguish the ordinary case
+    # (one workbook, one document) from a genuine multi-category file -
+    # offering to split a plain trial balance workbook into one document
+    # per sheet would be a solution to a problem this file does not have.
+    distinct_categories = {s["category"] for s in available
+                           if s["category"] != "other"}
+
     return render_template("documents/sheets.html",
                            document=document,
                            fy=document.financial_year,
                            customer=document.financial_year.customer,
                            sheets=available,
-                           chosen=set(document.source_sheets or []))
+                           chosen=set(document.source_sheets or []),
+                           offer_split=len(distinct_categories) > 1)
+
+
+@bp.route("/<int:document_id>/split", methods=["POST"])
+@login_required
+def split(document_id):
+    """Split one workbook into several documents, one per sheet, each in
+    its own category - see the Upload doubt this answers: a client's file
+    can hold a trial balance on one tab and a balance sheet on another,
+    and today's upload treats the whole file as a single category.
+
+    The original document is left exactly as it was. Splitting adds new
+    documents; it never removes or changes what was already there, so a
+    split that turns out wrong costs nothing to undo - delete the new
+    ones and the original is untouched.
+    """
+    document = _load_document(document_id)
+    fy_id = document.financial_year_id
+
+    if document.financial_year.tb_is_approved:
+        flash("The trial balance is approved and locked. Reopen it before "
+              "splitting a document.", "error")
+        return redirect(url_for("documents.index", fy_id=fy_id))
+
+    if (document.file_type or "").lower() not in ("xlsx", "xls"):
+        flash("Splitting by sheet applies to spreadsheets only.", "error")
+        return redirect(url_for("documents.index", fy_id=fy_id))
+
+    sheet_names = request.form.getlist("sheets")
+    if not sheet_names:
+        flash("Tick at least one sheet to split off.", "error")
+        return redirect(url_for("documents.sheets", document_id=document.id))
+
+    valid_categories = {key for key, _label in DOCUMENT_CATEGORIES}
+    created = []
+    for name in sheet_names:
+        category = request.form.get(f"category_{name}") or "other"
+        if category not in valid_categories:
+            category = "other"
+        meta = storage.duplicate_upload(document)
+        new_document = Document(
+            financial_year_id=fy_id,
+            category=category,
+            category_source="sheet_name",
+            source_sheets=[name],
+            uploaded_by=current_user.id,
+            extraction_status="queued",
+            review_status="pending",
+            **meta,
+        )
+        db.session.add(new_document)
+        db.session.flush()
+        record("document", new_document.id, "split_from_sheet",
+              after={"filename": new_document.original_filename,
+                     "sheet": name, "category": category,
+                     "split_from": document.id})
+        created.append((name, category))
+
+    db.session.commit()
+
+    summary = ", ".join(f"“{n}” as {label_for(DOCUMENT_CATEGORIES, c)}"
+                        for n, c in created)
+    flash(f"Created {len(created)} document(s) from "
+          f"{document.original_filename}: {summary}. The original document "
+          f"is unchanged and still reads its own selected sheets - delete "
+          f"it once you have checked the split documents, so its figures "
+          f"are not counted twice.", "success")
+    return redirect(url_for("documents.index", fy_id=fy_id))

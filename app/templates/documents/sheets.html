@@ -52,6 +52,11 @@
                   named like a trial balance
                 </span>
               {% endif %}
+              {% if sheet.category != 'other' %}
+                <span class="pill pill-grey" style="font-size:10px">
+                  reads as {{ sheet.category_label }}
+                </span>
+              {% endif %}
               <div class="muted small" style="margin-top:3px">
                 {{ sheet.rows }} row(s) with content
                 {% if sheet.headers %}
@@ -79,6 +84,45 @@
     </div>
   </div>
 </form>
+
+{% if offer_split %}
+<div class="card" style="margin-top:16px">
+  <div class="card-head">
+    <h2>This looks like more than one document</h2>
+    <span class="hint">split by sheet</span>
+  </div>
+  <div class="card-body">
+    <p class="muted small">
+      More than one sheet in this workbook reads as a different kind of
+      document. If that is right, tick the sheets below, check or change
+      what each one is, and create a separate document for each &mdash;
+      one per sheet, correctly categorised, instead of one document
+      covering all of them.
+    </p>
+    <form method="post" action="{{ url_for('documents.split', document_id=document.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="stack" style="gap:10px">
+        {% for sheet in sheets %}
+          <div class="pick-row">
+            <input type="checkbox" name="sheets" value="{{ sheet.name }}">
+            <span class="strong" style="min-width:160px">{{ sheet.name }}</span>
+            <select name="category_{{ sheet.name }}" class="small">
+              {% for key, label in DOCUMENT_CATEGORIES if key not in CURRENT_YEAR_TWIN %}
+                <option value="{{ key }}" {% if sheet.category == key %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+          Create separate documents from ticked sheets
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <div class="notice warn" style="margin-top:16px">
   <span>&#9888;</span>

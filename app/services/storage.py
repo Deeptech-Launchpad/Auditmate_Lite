@@ -142,6 +142,37 @@ def save_upload(file_storage, customer_id: int, financial_year_id: int) -> dict:
     }
 
 
+def duplicate_upload(document) -> dict:
+    """Copy an already-uploaded file to a fresh path, for splitting one
+    workbook into several separately-categorised documents.
+
+    Each resulting Document owns its own physical file rather than sharing
+    one - documents.delete() unlinks a document's file from disk when the
+    row goes, and two rows pointing at the same file would mean deleting
+    either one breaks the other. The duplicate costs one more copy of a
+    spreadsheet on disk, which is cheap next to that risk.
+    """
+    import shutil
+
+    from .extraction import file_sha256
+
+    source = assert_within_storage(document.storage_path)
+    destination = build_path(document.financial_year.customer_id,
+                             document.financial_year_id,
+                             document.original_filename)
+    shutil.copy2(source, destination)
+
+    return {
+        "original_filename": document.original_filename,
+        "stored_filename": destination.name,
+        "storage_path": str(destination),
+        "file_type": document.file_type,
+        "mime_type": document.mime_type,
+        "size_bytes": destination.stat().st_size,
+        "sha256": file_sha256(destination),
+    }
+
+
 def is_allowed(filename: str) -> bool:
     suffix = Path(filename or "").suffix.lower()
     return suffix in current_app.config.get("ALLOWED_EXTENSIONS", set())
