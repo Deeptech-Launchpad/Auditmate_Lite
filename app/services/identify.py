@@ -61,6 +61,15 @@ LEDGER_MIN_ROWS = 250
 # engagement 2,308 of 2,339 ledger rows matched nothing at all.
 LEDGER_MAX_MAPPED = 0.35
 
+# The mapped share alone missed real ledgers. A ledger lists the same
+# account again for every transaction - "UOB Bank" 540 times in one of
+# 2,121 rows - so its distinct labels are a small fraction of its rows (0.30
+# to 0.32 on the two seen), while a trial balance names each account about
+# once (0.50, from an account listed under both its income and balance
+# sides). Those ledgers matched 54% and 57% of their rows against account
+# names, cleared the mapped test above, and were filed as trial balances.
+LEDGER_MAX_DISTINCT = 0.60
+
 # A trial balance states each account as a debit or a credit. A printed
 # statement states one signed amount. Extraction preserves that difference,
 # so the proportion of rows carrying a debit or credit separates them.
@@ -88,6 +97,7 @@ def _signals(rows, customer_id):
     """Measure the four things that tell these documents apart."""
     total = paired = mapped = 0
     groups = set()
+    labels = set()
 
     for row in rows:
         label = (row.label or "").strip()
@@ -95,6 +105,7 @@ def _signals(rows, customer_id):
             continue
 
         total += 1
+        labels.add(label.lower())
         if row.debit is not None or row.credit is not None:
             paired += 1
 
@@ -113,6 +124,7 @@ def _signals(rows, customer_id):
         "rows": total,
         "paired": paired / total,
         "mapped": mapped / total,
+        "distinct": len(labels) / total,
         "balance_sheet": bool(groups & BALANCE_SHEET_GROUPS),
         "profit_loss": bool(groups & PROFIT_LOSS_GROUPS),
     }
@@ -140,6 +152,11 @@ def identify(rows, customer_id):
         return "general_ledger", (
             f"{s['rows']} rows and only {s['mapped']:.0%} match an account "
             f"name - transactions, not balances")
+    if s["rows"] >= LEDGER_MIN_ROWS and s["distinct"] < LEDGER_MAX_DISTINCT:
+        return "general_ledger", (
+            f"{s['rows']} rows but only {s['distinct']:.0%} are different "
+            f"names - the same accounts repeated, which is transactions, "
+            f"not balances")
 
     if s["paired"] >= PAIRED_MIN:
         return "trial_balance", (

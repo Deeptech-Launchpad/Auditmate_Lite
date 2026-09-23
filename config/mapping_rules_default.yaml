@@ -191,6 +191,12 @@
 # its wording about security and covenants, for a company with no bank loan.
 - {pattern: "loan from director",   statement: balance_sheet, line: trade_payables, priority: 2, sign: -1}
 - {pattern: "loan to director",     statement: balance_sheet, line: prepayments, priority: 2}
+# "Amount Due from Director" was claimed by the catch-all "director" rule
+# (priority 5) and booked as director's remuneration - an expense. On a
+# balance sheet that put an income-statement line into a document with none,
+# which is what made the balance sheet read as a trial balance.
+- {pattern: "due from director",    statement: balance_sheet, line: prepayments, priority: 2}
+- {pattern: "due to director",      statement: balance_sheet, line: trade_payables, priority: 2, sign: -1}
 - {pattern: "repayment of loan",    statement: balance_sheet, line: short_term_borrowings, priority: 3, sign: -1}
 - {pattern: "loan to 3rd part",     statement: balance_sheet, line: prepayments, priority: 3}
 - {pattern: "loan to third part",   statement: balance_sheet, line: prepayments, priority: 3}
