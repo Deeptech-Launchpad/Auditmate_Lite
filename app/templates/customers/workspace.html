@@ -22,6 +22,7 @@
     </div>
     <div class="modal-body">
       <form id="templateForm" method="POST" action="{{ url_for('customers.upload_template', customer_id=customer.id) }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="form-section" style="margin-bottom: 24px;">
           <h3 style="font-size: 16px; margin-bottom: 12px;">Option 1: Use Your Custom Template</h3>
