@@ -32,7 +32,7 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Mm, Pt, RGBColor
+from docx.shared import Emu, Mm, Pt, RGBColor
 
 log = logging.getLogger(__name__)
 
@@ -404,59 +404,95 @@ def _write_runs(paragraph, runs):
         run.italic = italic
 
 
-def _load_template(template_path: str):
-    """Load a customer's custom template file as a DocxDocument.
+_KNOWN_FACES = (("times", "Times New Roman"), ("arial", "Arial"),
+                ("helvetica", "Arial"), ("calibri", "Calibri"),
+                ("cambria", "Cambria"), ("georgia", "Georgia"),
+                ("garamond", "Garamond"), ("verdana", "Verdana"),
+                ("tahoma", "Tahoma"), ("courier", "Courier New"))
 
-    Handles multiple formats:
-    - .docx: Load directly
-    - .pdf: Convert to .docx first using pdf2docx library
-    - Other formats: Attempt conversion or fall back to standard template
 
-    Returns a DocxDocument with the template's styling/structure intact.
+def _pdf_look(path):
+    """The layout a customer's signed PDF is set in, read off the PDF itself.
+
+    A PDF carries no styles - converting it to Word (pdf2docx) gave back a
+    document whose Normal style was blank, so the "template" contributed
+    nothing and the export looked like the standard one. What a PDF does
+    carry is measurable: the page size, how far the text sits from each
+    edge, the size the body is set in, and the font's name. Those are what
+    make one firm's accounts look different from another's, so they are
+    read here and applied to the export.
+
+    Returns None when the PDF cannot be read, so the caller falls back to
+    the standard layout rather than failing the export.
     """
+    import collections
+    import statistics
+
+    try:
+        import pdfplumber
+        with pdfplumber.open(str(path)) as pdf:
+            pages = [pg for pg in pdf.pages[:12] if pg.chars]
+            if not pages:
+                return None
+            width, height = pages[0].width, pages[0].height
+            sizes, faces = collections.Counter(), collections.Counter()
+            left, right, top, bottom = [], [], [], []
+            for pg in pages:
+                for ch in pg.chars:
+                    sizes[round(ch["size"] * 2) / 2] += 1
+                    faces[ch["fontname"].split("+")[-1]] += 1
+                left.append(min(c["x0"] for c in pg.chars))
+                right.append(pg.width - max(c["x1"] for c in pg.chars))
+                top.append(min(c["top"] for c in pg.chars))
+                bottom.append(pg.height - max(c["bottom"] for c in pg.chars))
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not read the layout of PDF template %s", path)
+        return None
+
+    def mm(points):
+        return points * 25.4 / 72
+
+    face = "Times New Roman"
+    lowered = faces.most_common(1)[0][0].lower()
+    for needle, name in _KNOWN_FACES:
+        if needle in lowered:
+            face = name
+            break
+
+    # Text measured from the edge is the margin, but a page's first line can
+    # be a running header sitting closer in; the median across pages ignores
+    # a stray title page. Clamped so a badly scanned file cannot produce a
+    # page with no room to write on.
+    def margin(values, low, high):
+        return min(max(mm(statistics.median(values)), low), high)
+
+    return {
+        "page_mm": (mm(width), mm(height)),
+        "left": margin(left, 15, 45), "right": margin(right, 15, 45),
+        "top": margin(top, 15, 35), "bottom": margin(bottom, 15, 35),
+        "body_pt": min(max(sizes.most_common(1)[0][0], 8), 12),
+        "face": face,
+    }
+
+
+def _load_docx_template(template_path):
+    """A customer's own Word file, emptied of its text but keeping the page
+    setup, styles, headers and footers it is built on. None if unusable."""
     from pathlib import Path
 
     path = Path(template_path)
-    if not path.exists():
-        log.warning(f"Custom template not found: {template_path}, using standard")
-        return DocxDocument()
-
-    suffix = path.suffix.lower()
-
-    if suffix == ".docx":
-        # Load DOCX template directly
-        try:
-            return DocxDocument(str(path))
-        except Exception as e:
-            log.error(f"Failed to load DOCX template {template_path}: {e}")
-            return DocxDocument()
-
-    elif suffix == ".pdf":
-        # Convert PDF to DOCX first
-        try:
-            from pdf2docx import Converter
-            import tempfile
-
-            with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
-                tmp_docx = tmp.name
-
-            cv = Converter(str(path))
-            cv.convert(tmp_docx)
-            cv.close()
-
-            doc = DocxDocument(tmp_docx)
-            Path(tmp_docx).unlink(missing_ok=True)
-            return doc
-        except ImportError:
-            log.warning("pdf2docx not installed, cannot convert PDF template")
-            return DocxDocument()
-        except Exception as e:
-            log.error(f"Failed to convert PDF template {template_path}: {e}")
-            return DocxDocument()
-
-    else:
-        log.warning(f"Unsupported template format {suffix}, using standard")
-        return DocxDocument()
+    if path.suffix.lower() != ".docx" or not path.exists():
+        return None
+    try:
+        document = DocxDocument(str(path))
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not open DOCX template %s", template_path)
+        return None
+    body = document.element.body
+    for child in list(body):
+        if not child.tag.endswith("sectPr"):
+            body.remove(child)
+    return document
 
 
 def build(html: str, title: str = None, draft: bool = False, template_path: str = None) -> bytes:
@@ -476,50 +512,46 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
     reader.feed(html)
     instructions = reader.close()
 
-    # Load custom template if provided
+    # A customer's own template. A Word file supplies the whole document
+    # shell; a PDF supplies only its measured layout, applied below to a
+    # fresh document (see _pdf_look).
+    document = None
+    look = None
     if template_path and template_path != "STANDARD":
-        document = _load_template(template_path)
-        is_custom = True
-
-        # We only want the custom template's margins, styles, headers and footers.
-        # We DO NOT want the old document's text/tables clogging up the report.
-        # Clear the document body but keep the final section properties (sectPr).
-        body = document.element.body
-        for child in list(body):
-            if not child.tag.endswith('sectPr'):
-                body.remove(child)
-    else:
+        document = _load_docx_template(template_path)
+        if document is None:
+            look = _pdf_look(template_path) if str(template_path).lower().endswith(".pdf") else None
+    keep_own_layout = document is not None
+    if document is None:
         document = DocxDocument()
-        is_custom = False
 
-    # For standard or no template, apply default page setup and styles.
-    # Custom templates should retain their own layout, margins, and heading
-    # styles, so we skip these adjustments when a custom template is loaded.
-    if not is_custom:
-        # A4 portrait with 20 mm margins. python-docx starts from Word's own
-        # default template, which is US Letter at one inch - so a Singapore set
-        # came out on American paper with margins an inch and a quarter wide,
-        # and the first thing anyone did was change the page setup by hand.
+    if not keep_own_layout:
+        # A4 portrait with 20 mm margins by default. python-docx starts from
+        # Word's own template, which is US Letter at one inch - so a
+        # Singapore set came out on American paper. A customer's PDF template
+        # overrides all of this with what it measured.
         section = document.sections[0]
         section.orientation = WD_ORIENT.PORTRAIT
-        section.page_width = Mm(210)
-        section.page_height = Mm(297)
-        for edge in ("left_margin", "right_margin", "top_margin", "bottom_margin"):
-            setattr(section, edge, Mm(20))
+        page_w, page_h = look["page_mm"] if look else (210, 297)
+        section.page_width = Mm(page_w)
+        section.page_height = Mm(page_h)
+        for edge, key in (("left_margin", "left"), ("right_margin", "right"),
+                          ("top_margin", "top"), ("bottom_margin", "bottom")):
+            setattr(section, edge, Mm(look[key] if look else 20))
         _page_numbers(section)
 
         if draft:
             header = document.sections[0].header.paragraphs[0]
             header.alignment = 1                                   # centre
-            stamp = header.add_run("DRAFT \u2014 INCOMPLETE")
+            stamp = header.add_run("DRAFT — INCOMPLETE")
             stamp.bold = True
             stamp.font.size = Pt(12)
 
-        # Times New Roman 11pt, black - measured off the firm's own annual report
-        # template rather than chosen here, and the same size the PDF is set in.
+        face = look["face"] if look else "Times New Roman"
+        body_pt = look["body_pt"] if look else 11
         normal = document.styles["Normal"]
-        normal.font.name = "Times New Roman"
-        normal.font.size = Pt(11)
+        normal.font.name = face
+        normal.font.size = Pt(body_pt)
 
         # Word's built-in heading styles are a blue sans-serif (Heading 1 is
         # 365F91, the rest 4F81BD) inherited from its default template, so every
@@ -530,10 +562,11 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
         # keeping the real heading styles is what gives the document its
         # navigation pane and lets Word build a table of contents from it, which
         # a set of accounts someone is about to edit wants to keep.
-        for level, size in ((0, 14), (1, 13), (2, 12), (3, 11), (4, 11)):
+        offsets = ((0, 3), (1, 2), (2, 1), (3, 0), (4, 0))
+        for level, plus in offsets:
             style = document.styles["Title" if level == 0 else f"Heading {level}"]
-            style.font.name = "Times New Roman"
-            style.font.size = Pt(size)
+            style.font.name = face
+            style.font.size = Pt(body_pt + plus)
             style.font.bold = True
             style.font.color.rgb = RGBColor(0, 0, 0)
             # A heading stranded at the foot of a page, with the table it
@@ -577,7 +610,9 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
                 # takes what is left, which is what stops "Net cash flow
                 # (used in)/generated from operating activities" wrapping
                 # onto three lines.
-                usable = 170                                   # mm, A4 - 20/20
+                page = document.sections[0]
+                usable = Emu(page.page_width - page.left_margin
+                             - page.right_margin).mm
                 amounts = max(width - 1, 1)
                 label_mm = max(usable - amounts * AMOUNT_COLUMN_MM,
                                MIN_LABEL_MM)
