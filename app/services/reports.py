@@ -489,8 +489,34 @@ def ensure_report(financial_year) -> AuditReport:
             previous_period=previous_period, financial_year=financial_year))
         order += 1
 
+    db.session.flush()
+    _match_customer_template(report, financial_year)
+
     db.session.commit()
     return report
+
+
+def _match_customer_template(report, financial_year):
+    """Shape a NEW report like the customer's own template, and say so.
+
+    Only at creation: after that the preparer owns the section switches, and
+    a rebuild must not undo a choice they made on purpose.
+    """
+    from . import template_outline
+
+    try:
+        changed = template_outline.apply_to_report(
+            report, financial_year.customer.report_template_path)
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not match the report to the customer's template")
+        return
+    if changed:
+        log.info("Report %s follows the customer's template: %s",
+                 report.id, changed)
+        from flask import flash, has_request_context
+        if has_request_context():
+            flash(f"Sections follow this customer's template: {changed}. "
+                  f"Switch any back on in the Sections list.", "info")
 
 
 # --------------------------------------------------------------------------
