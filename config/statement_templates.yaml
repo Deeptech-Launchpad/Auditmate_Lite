@@ -170,12 +170,12 @@ cash_flow:
     - {key: cf_expenses_paid,     label: "Expenses paid", group: operating_after, indent: 1}
     - {key: cf_operating_total,   label: "Net cash flow (used in)/generated from operating activities", group: operating_after, subtotal: true, formula: cf_operating_total}
 
-    - {key: cf_purchase_ppe,      label: "Purchase of fixed assets", group: investing, indent: 1}
+    - {key: cf_purchase_ppe,      label: "Purchase of fixed assets", group: investing, indent: 1, formula: cf_purchase_ppe}
     - {key: cf_investing_other,   label: "Other investing activities", group: investing, indent: 1}
     - {key: cf_investing_total,   label: "Net cash flow used in investing activities", group: investing, subtotal: true, formula: sum_group_investing}
 
     - {key: cf_share_capital,     label: "Share Capital", group: financing, indent: 1, formula: cf_share_capital}
-    - {key: cf_borrowings,        label: "Proceeds from / (repayment of) borrowings", group: financing, indent: 1}
+    - {key: cf_borrowings,        label: "Proceeds from / (repayment of) borrowings", group: financing, indent: 1, formula: cf_borrowings}
     - {key: cf_dividends,         label: "Dividends paid", group: financing, indent: 1}
     - {key: cf_financing_total,   label: "Net cash flow from financing activities", group: financing, subtotal: true, formula: sum_group_financing}
 

@@ -273,6 +273,18 @@ def cf_share_capital(lines, ctx):
             - Decimal(str(ctx.get("opening_share_capital", 0))))
 
 
+def cf_borrowings(lines, ctx):
+    """Loans taken less loans repaid: the rise in borrowings is cash in."""
+    return Decimal(str(ctx.get("borrowings_movement", 0)))
+
+
+def cf_purchase_ppe(lines, ctx):
+    """Fixed assets bought: the rise in net book value plus the year's
+    depreciation, as an outflow."""
+    return -(Decimal(str(ctx.get("ppe_net_movement", 0)))
+             + Decimal(str(ctx.get("depreciation", 0))))
+
+
 def cf_operating_total(lines, ctx):
     return (_value(lines, "cf_operations")
             + _value(lines, "cf_tax_paid")
@@ -298,6 +310,8 @@ FORMULAS = {
     "total_equity_and_liabilities": total_equity_and_liabilities,
     "cf_profit_before_tax": cf_profit_before_tax,
     "cf_depreciation": cf_depreciation,
+    "cf_borrowings": cf_borrowings,
+    "cf_purchase_ppe": cf_purchase_ppe,
     "cf_tax_paid": cf_tax_paid,
     "sum_group_operating": sum_group_operating,
     "sum_group_investing": sum_group_investing,

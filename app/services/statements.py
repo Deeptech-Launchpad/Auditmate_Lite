@@ -436,23 +436,59 @@ def _build_context(financial_year_id: int, statement_type: str) -> dict:
         context["opening_cash"] = opening_cash
         context["closing_cash"] = statement_value("balance_sheet",
                                                   "cash_and_equivalents")
+        # Last year's balance for a line, for working out movements.
+        #
+        # prior_value only reads an earlier engagement BUILT in Auditmate,
+        # which most clients do not have. With none, every prior balance read
+        # as nil and the whole closing balance was reported as this year's
+        # movement - receivables, payables and tax alike - leaving hundreds
+        # of thousands in "Movement not yet analysed". So where there is no
+        # earlier engagement the same fallback the opening cash uses applies:
+        # last year's signed accounts or trial-balance comparative.
+        has_earlier = bool(
+            financial_year and financial_year.previous_year_id
+            and FinancialStatement.query.filter_by(
+                financial_year_id=financial_year.previous_year_id,
+                statement_type="balance_sheet").first())
+        earlier_figures = {}
+        if not has_earlier and financial_year:
+            from .prior_year import balances as _prior_balances
+            from .classify import is_credit_balance
+            raw, _src = _prior_balances(financial_year)
+            # balances() is debit-positive; statements print credit lines
+            # positive, as in build_statement's own comparatives.
+            earlier_figures = {
+                key: (-value if is_credit_balance(key) else value)
+                for key, value in (raw or {}).items()}
+
+        def prior_balance(line_key):
+            if has_earlier:
+                return prior_value("balance_sheet", line_key)
+            return Decimal(str(earlier_figures.get(line_key, 0) or 0))
+
+        def moved(*keys):
+            return sum((statement_value("balance_sheet", k) - prior_balance(k)
+                        for k in keys), ZERO)
+
         # What tax cost, and how much of it is still owed. cf_tax_paid
         # reads the difference: the charge less the rise in the provision
         # is the cash that went.
         context["tax_expense"] = statement_value("profit_and_loss",
                                                  "tax_expense")
-        context["tax_provision_movement"] = (
-            statement_value("balance_sheet", "tax_payable")
-            - prior_value("balance_sheet", "tax_payable"))
+        context["tax_provision_movement"] = moved("tax_payable")
         # Working-capital movements: this year's balance less last year's.
-        context["receivables_movement"] = (
-            statement_value("balance_sheet", "trade_receivables")
-            + statement_value("balance_sheet", "prepayments")
-            - prior_value("balance_sheet", "trade_receivables")
-            - prior_value("balance_sheet", "prepayments"))
-        context["payables_movement"] = (
-            statement_value("balance_sheet", "trade_payables")
-            - prior_value("balance_sheet", "trade_payables"))
+        context["receivables_movement"] = moved(
+            "trade_receivables", "prepayments", "inventories",
+            "contract_assets")
+        context["payables_movement"] = moved(
+            "trade_payables", "accruals", "contract_liabilities")
+        # Financing and investing, which had no formula and so never filled.
+        context["borrowings_movement"] = moved(
+            "short_term_borrowings", "long_term_borrowings")
+        # Net book value of fixed assets rose by what was bought less what
+        # was depreciated, so purchases = the rise plus the charge. A
+        # disposal would need its own line; none is modelled here.
+        context["ppe_net_movement"] = moved("ppe", "accumulated_depreciation")
 
     return context
 
