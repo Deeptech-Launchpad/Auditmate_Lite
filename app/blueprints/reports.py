@@ -1106,6 +1106,16 @@ def reopen(fy_id):
     return redirect(url_for("reports.builder", fy_id=fy_id))
 
 
+def _template_look(customer):
+    """The customer's own report layout, or None for the standard one.
+
+    Handed to the preview, PDF and Word export alike - see
+    docx_export.template_look.
+    """
+    from ..services import docx_export
+    return docx_export.template_look(customer.report_template_path)
+
+
 @bp.route("/<int:report_id>/preview")
 @login_required
 def preview(report_id):
@@ -1122,6 +1132,7 @@ def preview(report_id):
                            note_numbers=report_service.note_number_map(report),
                            checks=checks_service.build(
                                report, report.financial_year, payloads),
+                           look=_template_look(report.financial_year.customer),
                            for_pdf=False)
 
 
@@ -1153,6 +1164,7 @@ def export_word(report_id):
                            note_numbers=report_service.note_number_map(report),
                            checks=checks_service.build(
                                report, financial_year, payloads),
+                           look=_template_look(report.financial_year.customer),
                            for_pdf=True)
 
     try:
@@ -1204,6 +1216,7 @@ def export(report_id):
                            note_numbers=report_service.note_number_map(report),
                            checks=checks_service.build(
                                report, report.financial_year, payloads),
+                           look=_template_look(report.financial_year.customer),
                            for_pdf=True)
 
     if not report_service.weasyprint_available():

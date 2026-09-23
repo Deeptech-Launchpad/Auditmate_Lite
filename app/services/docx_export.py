@@ -475,6 +475,53 @@ def _pdf_look(path):
     }
 
 
+def _docx_look(path):
+    """The same measurements as _pdf_look, read from a Word template."""
+    try:
+        document = DocxDocument(str(path))
+        section = document.sections[0]
+        normal = document.styles["Normal"].font
+        return {
+            "page_mm": (Emu(section.page_width).mm, Emu(section.page_height).mm),
+            "left": Emu(section.left_margin).mm,
+            "right": Emu(section.right_margin).mm,
+            "top": Emu(section.top_margin).mm,
+            "bottom": Emu(section.bottom_margin).mm,
+            "body_pt": normal.size.pt if normal.size else 11,
+            "face": normal.name or "Times New Roman",
+        }
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not read the layout of DOCX template %s", path)
+        return None
+
+
+_LOOK_CACHE = {}
+
+
+def template_look(template_path):
+    """Layout of a customer's template, or None for the standard one.
+
+    The preview, the PDF and the Word file all read this one answer, so
+    they cannot disagree about what the customer's report looks like.
+    Cached on the file's modification time: measuring a 24-page PDF on
+    every page view would make the preview noticeably slow.
+    """
+    from pathlib import Path
+
+    if not template_path or template_path == "STANDARD":
+        return None
+    path = Path(template_path)
+    if not path.exists():
+        return None
+    key = (str(path), path.stat().st_mtime)
+    if key not in _LOOK_CACHE:
+        suffix = path.suffix.lower()
+        _LOOK_CACHE[key] = (_pdf_look(path) if suffix == ".pdf"
+                            else _docx_look(path) if suffix == ".docx"
+                            else None)
+    return _LOOK_CACHE[key]
+
+
 def _load_docx_template(template_path):
     """A customer's own Word file, emptied of its text but keeping the page
     setup, styles, headers and footers it is built on. None if unusable."""

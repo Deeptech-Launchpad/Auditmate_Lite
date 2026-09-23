@@ -7,6 +7,16 @@
   preview cannot leak these styles into the application chrome around it.
 #}
 {% set S = scope|default('') %}
+{#
+  The customer's own template, when they uploaded one - measured off it by
+  docx_export.template_look and passed in as `look`. Absent, every value
+  below is the standard Auditmate one.
+#}
+{% set L = look|default(none) %}
+{% set page_size = ('%.1fmm %.1fmm'|format(L.page_mm[0], L.page_mm[1])) if L else 'A4' %}
+{% set page_margin = ('%.1fmm %.1fmm %.1fmm %.1fmm'|format(L.top, L.right, L.bottom, L.left)) if L else '20mm 18mm 18mm' %}
+{% set body_face = ('"' ~ L.face ~ '", "Times New Roman", Times, serif') if L else '"Times New Roman", Times, Georgia, serif' %}
+{% set body_size = ('%gpt'|format(L.body_pt)) if L else '11pt' %}
 
 {#
   Paged-media rules, under @media print rather than gated on `for_pdf`.
@@ -25,11 +35,11 @@
 #}
 @media print {
 @page {
-  size: A4;
-  margin: 20mm 18mm 18mm;
+  size: {{ page_size }};
+  margin: {{ page_margin }};
   @bottom-center {
     content: counter(page);
-    font-family: "Times New Roman", Times, serif;
+    font-family: {{ body_face|safe }};
     font-size: 9pt;
     color: #000;
   }
@@ -79,12 +89,12 @@
 }
 
 {{ S }} .rpt-doc {
-  font-family: "Times New Roman", Times, Georgia, serif;
+  font-family: {{ body_face|safe }};
   /* 11pt, black, Times - what the firm's own annual report template is set
      in, measured off it rather than chosen here. Stated in points for the
      screen as well as the page so the preview is the size that comes out of
      the export, instead of a 13.5px approximation of it. */
-  font-size: 11pt;
+  font-size: {{ body_size }};
   line-height: 1.45;
   color: #000;
   text-align: justify;
