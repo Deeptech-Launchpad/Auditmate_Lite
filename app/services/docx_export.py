@@ -404,17 +404,83 @@ def _write_runs(paragraph, runs):
         run.italic = italic
 
 
-def build(html: str, title: str = None, draft: bool = False) -> bytes:
+def _load_template(template_path: str):
+    """Load a customer's custom template file as a DocxDocument.
+
+    Handles multiple formats:
+    - .docx: Load directly
+    - .pdf: Convert to .docx first using pdf2docx library
+    - Other formats: Attempt conversion or fall back to standard template
+
+    Returns a DocxDocument with the template's styling/structure intact.
+    """
+    from pathlib import Path
+
+    path = Path(template_path)
+    if not path.exists():
+        log.warning(f"Custom template not found: {template_path}, using standard")
+        return DocxDocument()
+
+    suffix = path.suffix.lower()
+
+    if suffix == ".docx":
+        # Load DOCX template directly
+        try:
+            return DocxDocument(str(path))
+        except Exception as e:
+            log.error(f"Failed to load DOCX template {template_path}: {e}")
+            return DocxDocument()
+
+    elif suffix == ".pdf":
+        # Convert PDF to DOCX first
+        try:
+            from pdf2docx import Converter
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+                tmp_docx = tmp.name
+
+            cv = Converter(str(path))
+            cv.convert(tmp_docx)
+            cv.close()
+
+            doc = DocxDocument(tmp_docx)
+            Path(tmp_docx).unlink(missing_ok=True)
+            return doc
+        except ImportError:
+            log.warning("pdf2docx not installed, cannot convert PDF template")
+            return DocxDocument()
+        except Exception as e:
+            log.error(f"Failed to convert PDF template {template_path}: {e}")
+            return DocxDocument()
+
+    else:
+        log.warning(f"Unsupported template format {suffix}, using standard")
+        return DocxDocument()
+
+
+def build(html: str, title: str = None, draft: bool = False, template_path: str = None) -> bytes:
     """The report's HTML as a .docx file, returned as bytes.
 
     `draft` stamps DRAFT - INCOMPLETE in the header of every page: accounts
     with anything incomplete can be reviewed, never issued as a clean copy.
+
+    `template_path` is an optional path to a customer's custom template file.
+    When provided:
+    - If DOCX: loads the template's styling/structure and inserts our content
+    - If PDF/other: converts to DOCX first, then uses its styling
+    - If "STANDARD" sentinel: uses built-in template (user declined custom)
+    - If None: uses built-in template (backward compat)
     """
     reader = _Reader()
     reader.feed(html)
     instructions = reader.close()
 
-    document = DocxDocument()
+    # Load custom template if provided
+    if template_path and template_path != "STANDARD":
+        document = _load_template(template_path)
+    else:
+        document = DocxDocument()
 
     # A4 portrait with 20 mm margins. python-docx starts from Word's own
     # default template, which is US Letter at one inch - so a Singapore set

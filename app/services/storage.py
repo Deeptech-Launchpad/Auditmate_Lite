@@ -176,3 +176,33 @@ def duplicate_upload(document) -> dict:
 def is_allowed(filename: str) -> bool:
     suffix = Path(filename or "").suffix.lower()
     return suffix in current_app.config.get("ALLOWED_EXTENSIONS", set())
+
+
+def save_template(file_storage, customer_id: int) -> str:
+    """Save a custom report template for a customer.
+
+    Layout: storage/<customer_id>/templates/<uuid>__<safe_name>
+
+    Accepts any file type (PDF, DOCX, etc.) since the customer's existing
+    template may be in any format. PDF files will be converted to editable
+    format later when generating reports.
+
+    Returns the storage_path as a string.
+    """
+    original = file_storage.filename or "template"
+    safe = sanitize_filename(original)
+    unique = uuid.uuid4().hex[:12]
+    directory = storage_root() / str(customer_id) / "templates"
+    directory.mkdir(parents=True, exist_ok=True)
+    destination = directory / f"{unique}__{safe}"
+
+    file_storage.save(destination)
+
+    size = destination.stat().st_size
+    max_size = current_app.config.get("MAX_FILE_SIZE", 25 * 1024 * 1024)
+    if size > max_size:
+        destination.unlink(missing_ok=True)
+        raise ValueError(
+            f"File exceeds the {max_size // (1024 * 1024)} MB limit")
+
+    return str(destination)

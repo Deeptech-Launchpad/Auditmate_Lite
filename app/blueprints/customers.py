@@ -699,6 +699,12 @@ def workspace(customer_id, fy_id):
 
     verified = sum(1 for d in documents if d.review_status == "verified")
 
+    # Show template upload prompt when:
+    # 1. Customer has no template set yet, AND
+    # 2. No documents uploaded for this FY yet
+    # This appears as a popup blocking document upload until template choice is made.
+    show_template_prompt = (not customer.report_template_path and len(documents) == 0)
+
     from ..services import xero as xero_service
 
     return render_template(
@@ -706,8 +712,60 @@ def workspace(customer_id, fy_id):
         customer=customer, fy=financial_year,
         documents=documents, statements=statements,
         verified_count=verified,
+        show_template_prompt=show_template_prompt,
         # The engagement landing page has to show both routes in, or a
         # connected client looks like one with no data.
         xero_available=xero_service.available(),
         xero_conn=xero_service.get_connection(customer.id),
     )
+
+
+@bp.route("/<int:customer_id>/upload-template", methods=["POST"])
+@login_required
+def upload_template(customer_id):
+    """Upload or decline a custom report template for this customer.
+
+    Called from the template selection popup shown when a new FY is created
+    and no documents have been uploaded yet. The customer chooses either:
+    - Upload their custom template (PDF/DOCX/etc.), OR
+    - Use Auditmate's standard built-in template
+
+    The choice is stored at Customer level so all future FYs inherit it.
+    """
+    customer = db.session.get(Customer, customer_id) or abort(404)
+
+    # User declined custom template → use standard template going forward
+    if request.form.get("use_standard"):
+        customer.report_template_path = "STANDARD"  # sentinel value
+        db.session.commit()
+        flash("Using Auditmate's standard report template.", "success")
+        return redirect(request.referrer or url_for("customers.detail",
+                                                     customer_id=customer.id))
+
+    # User uploaded a file
+    if "template_file" not in request.files:
+        flash("No file selected.", "error")
+        return redirect(request.referrer or url_for("customers.detail",
+                                                     customer_id=customer.id))
+
+    file = request.files["template_file"]
+    if not file or file.filename == "":
+        flash("No file selected.", "error")
+        return redirect(request.referrer or url_for("customers.detail",
+                                                     customer_id=customer.id))
+
+    from ..services import storage
+
+    try:
+        # Save template file to uploads/templates/{customer_id}/
+        saved_path = storage.save_template(file, customer.id)
+        customer.report_template_path = saved_path
+        customer.report_template_uploaded_at = datetime.utcnow()
+        db.session.commit()
+        flash(f"Custom template '{file.filename}' uploaded successfully.", "success")
+    except Exception as e:
+        log.error(f"Template upload failed for customer {customer.id}: {e}")
+        flash("Template upload failed. Please try again.", "error")
+
+    return redirect(request.referrer or url_for("customers.detail",
+                                                 customer_id=customer.id))

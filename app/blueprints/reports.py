@@ -1156,7 +1156,9 @@ def export_word(report_id):
                            for_pdf=True)
 
     try:
-        data = docx_export.build(html, draft=bool(incomplete))
+        # Use customer's custom template if they uploaded one
+        template_path = financial_year.customer.report_template_path
+        data = docx_export.build(html, draft=bool(incomplete), template_path=template_path)
     except Exception as exc:                        # noqa: BLE001
         flash(f"Word export failed: {exc}", "error")
         return redirect(url_for("reports.preview", report_id=report.id))

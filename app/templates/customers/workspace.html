@@ -9,6 +9,111 @@
 {% endblock %}
 
 {% block content %}
+
+{# Template selection modal - shown only when customer has no template and no documents uploaded yet #}
+{% if show_template_prompt %}
+<div class="modal-overlay" id="templateModal" style="display: flex;">
+  <div class="modal-dialog" style="max-width: 600px;">
+    <div class="modal-header">
+      <h2>Report Template Selection</h2>
+      <p style="margin-top: 8px; color: #666;">
+        Before uploading documents, please choose which report template to use for <strong>{{ customer.name }}</strong>.
+      </p>
+    </div>
+    <div class="modal-body">
+      <form id="templateForm" method="POST" action="{{ url_for('customers.upload_template', customer_id=customer.id) }}" enctype="multipart/form-data">
+
+        <div class="form-section" style="margin-bottom: 24px;">
+          <h3 style="font-size: 16px; margin-bottom: 12px;">Option 1: Use Your Custom Template</h3>
+          <p style="color: #666; font-size: 14px; margin-bottom: 12px;">
+            Upload your company's existing report template (PDF, DOCX, or any format). We'll use its structure and styling for all reports.
+          </p>
+          <input type="file" name="template_file" id="templateFile" accept=".pdf,.docx,.doc" style="margin-bottom: 8px;">
+          <button type="button" class="btn btn-primary" onclick="submitTemplate(false)" id="uploadBtn">
+            Upload Template
+          </button>
+        </div>
+
+        <div style="text-align: center; margin: 20px 0; color: #999; font-weight: bold;">OR</div>
+
+        <div class="form-section">
+          <h3 style="font-size: 16px; margin-bottom: 12px;">Option 2: Use Auditmate's Standard Template</h3>
+          <p style="color: #666; font-size: 14px; margin-bottom: 12px;">
+            Use our built-in Singapore unaudited report template for all reports.
+          </p>
+          <button type="button" class="btn btn-secondary" onclick="submitTemplate(true)">
+            Use Standard Template
+          </button>
+        </div>
+
+        <input type="hidden" name="use_standard" id="useStandard" value="">
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-dialog {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-header {
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.modal-body {
+  padding: 24px;
+}
+.form-section {
+  padding: 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #f9f9f9;
+}
+</style>
+
+<script>
+function submitTemplate(useStandard) {
+  const form = document.getElementById('templateForm');
+  const fileInput = document.getElementById('templateFile');
+  const useStandardInput = document.getElementById('useStandard');
+
+  if (useStandard) {
+    // User clicked "Use Standard Template"
+    useStandardInput.value = '1';
+    form.submit();
+  } else {
+    // User clicked "Upload Template"
+    if (!fileInput.files || fileInput.files.length === 0) {
+      alert('Please select a file first');
+      return;
+    }
+    useStandardInput.value = '';
+    form.submit();
+  }
+}
+</script>
+{% endif %}
+
 {#
   The accounts' own state, in words - never a dash. A dash in this business
   means nil; "we have not looked" and "not finished" must not look like it.

@@ -341,6 +341,12 @@ class Customer(db.Model):
     ai_allowed_at = db.Column(db.DateTime)
     ai_allowed_note = db.Column(db.String(255))
 
+    # Custom report template uploaded by the customer. When set, final reports
+    # for this customer use their template's structure/styling instead of the
+    # built-in standard template. Stored at the Customer level so all their
+    # financial years inherit the same template, per the firm's workflow.
+    report_template_path = db.Column(db.String(500))
+    report_template_uploaded_at = db.Column(db.DateTime)
 
     # Archived, not deleted: hidden from the customer list, every document
     # and figure kept. Reusing this existing flag rather than adding a new
