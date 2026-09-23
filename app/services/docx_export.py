@@ -320,14 +320,19 @@ def _keep_row_whole(row):
     properties.append(_element("w:cantSplit", val="true"))
 
 
-def _page_numbers(section):
+def _page_numbers(section, own_paragraph=False):
     """PAGE of NUMPAGES, centred in the footer.
 
     Added as real Word fields rather than typed text, so they stay right
     when the preparer edits the document - which is the whole premise of
     delivering it in Word.
+
+    `own_paragraph` is for a customer's Word template: its footer already
+    says something ("Confidential"), so the numbers go on a new line under
+    it and the template's own font is left alone.
     """
-    paragraph = section.footer.paragraphs[0]
+    paragraph = (section.footer.add_paragraph() if own_paragraph
+                 else section.footer.paragraphs[0])
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     def field(instruction):
@@ -345,9 +350,15 @@ def _page_numbers(section):
     field("PAGE")
     paragraph.add_run(" of ")
     field("NUMPAGES")
-    for run in paragraph.runs:
-        run.font.name = "Times New Roman"
-        run.font.size = Pt(9)
+    if not own_paragraph:
+        for run in paragraph.runs:
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(9)
+
+
+def _footer_has_page_field(section):
+    return any("PAGE" in (node.text or "")
+               for node in section.footer._element.iter(qn("w:instrText")))
 
 
 def _bookmark(paragraph, name, number):
@@ -620,6 +631,26 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
             # introduces starting the next one, was the other half of the
             # "headings move before the page" report.
             style.paragraph_format.keep_with_next = True
+
+    else:
+        # A customer's own Word template keeps its page setup, styles,
+        # header and footer. Two things are still ours to guarantee: a copy
+        # with anything incomplete is stamped on EVERY page - not only in
+        # the body, where it prints once - and a set of accounts has page
+        # numbers, which a template's footer may not carry.
+        section = document.sections[0]
+        if draft:
+            header = section.header
+            paragraph = (header.paragraphs[0].insert_paragraph_before()
+                         if header.paragraphs and header.paragraphs[0].text
+                         else (header.paragraphs[0] if header.paragraphs
+                               else header.add_paragraph()))
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            stamp = paragraph.add_run("DRAFT — INCOMPLETE")
+            stamp.bold = True
+            stamp.font.size = Pt(12)
+        if not _footer_has_page_field(section):
+            _page_numbers(section, own_paragraph=True)
 
     if title:
         document.add_heading(title, level=0)

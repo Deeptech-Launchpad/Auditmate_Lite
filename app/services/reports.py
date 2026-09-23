@@ -568,6 +568,9 @@ def _note_triggered(note, present):
 
 TABLE_FORMS = {"Table", "Figure in note", "Narrative + table"}
 
+# A blank in library wording that only a person can fill: {ITEM}, ${AMOUNT}.
+_OPEN_BLANK = re.compile(r"\$?\{[A-Z][A-Z_]*\}")
+
 TABLE_PLACEHOLDER = re.compile(r"^\s*\[table ([^\]]+)\]\s*$")
 
 
@@ -804,7 +807,13 @@ def _assemble_note_content(note, present, first_year=False, period=None,
         that reaches a client's financial statements is then one a person
         put there - the same rule the figures already follow.
         """
-        if piece.get("review_status") != "unreviewed":
+        # Wording with a blank nobody has filled - "{ITEM} of ${AMOUNT}" - is
+        # held back for the same reason as unreviewed wording, and more
+        # plainly: it is not a sentence yet. Printed as it stood, the raw
+        # braces reached the delivered accounts. Held, the preparer is shown
+        # it as a draft to complete or drop.
+        if (piece.get("review_status") != "unreviewed"
+                and not _OPEN_BLANK.search(piece.get("wording") or "")):
             return False
         if piece.get("wording"):
             drafts.append({
