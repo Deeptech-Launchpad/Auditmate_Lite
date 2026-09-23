@@ -30,7 +30,6 @@ def register_cli(app):
     app.cli.add_command(note_library)
     app.cli.add_command(load_test_engagement)
     app.cli.add_command(assign_line_codes)
-    app.cli.add_command(set_architecture)
     app.cli.add_command(activate_note_library)
     app.cli.add_command(drop_note_library)
     app.cli.add_command(move_to_library)
@@ -1417,30 +1416,6 @@ def assign_line_codes(financial_year_id):
     summary = line_codes.assign_year(financial_year)
     click.echo(f"{financial_year.customer.name} {financial_year.year_label}")
     _echo_line_codes(summary)
-
-
-@click.command("set-architecture")
-@click.argument("financial_year_id", type=int)
-@click.argument("architecture", type=click.Choice(["legacy", "frs_v2"]))
-@with_appcontext
-def set_architecture(financial_year_id, architecture):
-    """Move ONE engagement onto a report pipeline, for development testing.
-
-    Everything else is untouched - every other engagement stays on
-    whatever it already had. There is no screen for this yet; the frs_v2
-    pipeline does not exist yet either, so today this only proves the
-    switch itself works.
-    """
-    from .models import FinancialYear
-
-    financial_year = db.session.get(FinancialYear, financial_year_id)
-    if financial_year is None:
-        raise click.ClickException(f"No financial year {financial_year_id}")
-    before = financial_year.report_architecture
-    financial_year.report_architecture = architecture
-    db.session.commit()
-    click.echo(f"{financial_year.customer.name} {financial_year.year_label}: "
-              f"{before} -> {architecture}")
 
 
 
