@@ -108,6 +108,48 @@ def _from_auditmate(financial_year):
     return totals
 
 
+# Lines that only ever appear on a face statement, and only once each. The
+# last page carrying one of them is where the statements stop and the notes
+# begin.
+_FACE_ANCHORS = ("total assets", "total equity and liabilities",
+                 "total liabilities and equity")
+
+# Income lines that the statement template files under the expense block, as
+# credits (see statement_templates.yaml). Printed positive, they are income.
+_INCOME_KEYS = {"other_income", "interest_income"}
+
+
+# The expense side of a profit and loss, by template group.
+_PL_EXPENSE_GROUPS = {"cost_of_sales", "operating_expenses"}
+
+
+def _face_statement_rows(rows):
+    """The rows read from the face statements, without the notes behind them.
+
+    A set of signed accounts prints each figure twice: once on a statement
+    and again in the note that breaks it down. Cash of 48,365 appeared on
+    the statement of financial position, in note 9, and as "Cash at bank" -
+    and every one of them was added to the same line, so last year's cash
+    read as 201,215.
+
+    The statements come first and end at the balance sheet, so rows past the
+    last page carrying a balance-sheet total are notes. Only applied where
+    the rows say which page they came from; without that there is nothing to
+    cut on, and every row is kept as before.
+    """
+    paged = [(row, (row.source_ref or {}).get("page")) for row in rows]
+    if sum(1 for _row, page in paged if page) * 2 < len(paged):
+        return rows
+
+    anchor_pages = [page for row, page in paged
+                    if page and any(
+                        a in (row.label or "").lower() for a in _FACE_ANCHORS)]
+    if not anchor_pages:
+        return rows
+    last_face_page = max(anchor_pages)
+    return [row for row, page in paged if not page or page <= last_face_page]
+
+
 def _from_document(document, customer_id):
     """One document's figures, mapped to statement lines.
 
@@ -121,6 +163,12 @@ def _from_document(document, customer_id):
             .filter_by(document_id=document.id)
             .filter(ExtractedLineItem.status != "discarded")
             .all())
+    return _figures_from_rows(rows, customer_id, document.category)
+
+
+def _figures_from_rows(rows, customer_id, category=None):
+    if category == "signed_accounts":
+        rows = _face_statement_rows(rows)
 
     totals = {}
     for row in rows:
@@ -146,10 +194,21 @@ def _from_document(document, customer_id):
             # the two conventions would report a liability of 20,000 against
             # one of 23,000 as a difference of 43,000.
             amount = Decimal(str(row.amount))
-            on_credit = is_credit_balance(key)
-            if amount < 0:
-                amount, on_credit = -amount, not on_credit
-            amount = -amount if on_credit else amount
+            entry = classify(key) or {}
+            if (entry.get("group") in _PL_EXPENSE_GROUPS
+                    and key not in _INCOME_KEYS):
+                # An expense on a printed income statement is shown in
+                # brackets - "Cost of sales (279,235)" - as the normal way
+                # of subtracting it, not as a credit. Reading the minus as
+                # "the other side" turned every expense into income.
+                amount = abs(amount)
+            else:
+                on_credit = is_credit_balance(key)
+                if key in _INCOME_KEYS:
+                    on_credit = True
+                if amount < 0:
+                    amount, on_credit = -amount, not on_credit
+                amount = -amount if on_credit else amount
         else:
             continue
         totals[key] = totals.get(key, ZERO) + amount

@@ -178,11 +178,33 @@ def identify(rows, customer_id):
         f"{s['rows']} rows, {s['mapped']:.0%} recognised - nothing decisive")
 
 
-def identify_document(document):
+# A set of signed accounts is a long document that carries the statements AND
+# the notes to them. Rows cannot tell it from a trial balance - a face
+# statement holds assets and income both - so it is recognised by what it
+# says, which no other document in this list says.
+SIGNED_MIN_PAGES = 8
+
+
+def looks_like_signed_accounts(raw_text, page_count):
+    text = " ".join((raw_text or "").lower().split())
+    if not text or not page_count or page_count < SIGNED_MIN_PAGES:
+        return False
+    has_notes = ("notes to the financial statements" in text
+                 or "notes to the accounts" in text)
+    has_position = ("statement of financial position" in text
+                    or "balance sheet" in text)
+    has_result = ("profit or loss" in text or "comprehensive income" in text
+                  or "income statement" in text)
+    return has_notes and has_position and has_result
+
+
+def identify_document(document, raw_text="", page_count=None):
     """Set a document's category from its contents, unless a human set it.
 
     Returns (category, reason, changed). Called at the end of extraction,
-    where the rows exist for the first time.
+    where the rows exist for the first time. `raw_text` and `page_count`
+    are the document's own text and length, for the one kind of document
+    the rows alone cannot recognise - see looks_like_signed_accounts.
     """
     from ..models import ExtractedLineItem
 
@@ -199,7 +221,12 @@ def identify_document(document):
             .all())
 
     customer_id = document.financial_year.customer_id
-    category, reason = identify(rows, customer_id)
+    if looks_like_signed_accounts(raw_text, page_count):
+        category, reason = ("signed_accounts",
+                            f"{page_count} pages with the statements and the "
+                            f"notes to them - a set of signed accounts")
+    else:
+        category, reason = identify(rows, customer_id)
 
     if category is None:
         # The contents did not settle it, so whatever the file name decided

@@ -196,7 +196,15 @@
 # balance sheet that put an income-statement line into a document with none,
 # which is what made the balance sheet read as a trial balance.
 - {pattern: "due from director",    statement: balance_sheet, line: prepayments, priority: 2}
-- {pattern: "due to director",      statement: balance_sheet, line: trade_payables, priority: 2, sign: -1}
+# "Amount due from a director" as the signed accounts word it.
+- {pattern: "due from (a |the )?director", match: regex, statement: balance_sheet, line: prepayments, priority: 1}
+- {pattern: "due to (a |the )?director", match: regex, statement: balance_sheet, line: trade_payables, priority: 1, sign: -1}
+# Signed accounts word these as a face statement does.
+- {pattern: "loan from a bank",       statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
+- {pattern: "loan from bank",         statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
+- {pattern: "bank loan",              statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
+- {pattern: "trade and other receivable", statement: balance_sheet, line: trade_receivables, priority: 12}
+- {pattern: "administrative expense", statement: profit_and_loss, line: other_expenses, priority: 12}
 - {pattern: "repayment of loan",    statement: balance_sheet, line: short_term_borrowings, priority: 3, sign: -1}
 - {pattern: "loan to 3rd part",     statement: balance_sheet, line: prepayments, priority: 3}
 - {pattern: "loan to third part",   statement: balance_sheet, line: prepayments, priority: 3}

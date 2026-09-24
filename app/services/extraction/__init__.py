@@ -424,7 +424,8 @@ def extract_document(document_id: int) -> dict:
     identified = identified_reason = None
     if result.rows:
         from ..identify import identify_document
-        identified, identified_reason, _changed = identify_document(document)
+        identified, identified_reason, _changed = identify_document(
+            document, raw_text=document_text, page_count=result.page_count)
 
     # --- Stage 3b: last year's words, not just its figures ------------------
     # Only for the signed accounts, and only when they carry narrative. The
