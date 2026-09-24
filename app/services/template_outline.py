@@ -310,6 +310,10 @@ def apply_to_report(report, template_path):
         key = section.section_key
         if key in ALWAYS_KEPT or key not in outline:
             continue
+        if key == "directors_statement" and any(
+                x.section_key == "note__S01_DIRECTORS_STATEMENT"
+                and x.is_enabled for x in report.sections):
+            continue        # the library's replaces it; see _arrange_statutory
         wanted = outline[key]
         if section.is_enabled and not wanted:
             section.is_enabled = False

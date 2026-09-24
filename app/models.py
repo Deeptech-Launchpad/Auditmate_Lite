@@ -435,6 +435,12 @@ class FinancialYear(db.Model):
                                  cascade="all, delete-orphan")
     reports = db.relationship("AuditReport", back_populates="financial_year",
                               cascade="all, delete-orphan")
+    # Figures taken from documents the engine does not read (the tax
+    # computation, last year's signed notes). Without a cascade the year
+    # could not be deleted once any had been stored.
+    document_figures = db.relationship(
+        "DocumentFigure", back_populates="financial_year",
+        cascade="all, delete-orphan")
     review_links = db.relationship(
         "CustomerReviewLink", back_populates="financial_year",
         cascade="all, delete-orphan",
@@ -1714,7 +1720,8 @@ class DocumentFigure(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow,
                            onupdate=datetime.utcnow)
 
-    financial_year = db.relationship("FinancialYear")
+    financial_year = db.relationship("FinancialYear",
+                                     back_populates="document_figures")
     author = db.relationship("User")
 
     @property

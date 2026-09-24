@@ -61,6 +61,14 @@ class Config:
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
     ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-5").strip()
 
+    # The firm's own particulars, for the compilation report (SSRS 4410 needs
+    # the practitioner's name and address, and where and when it was signed).
+    # Not in any client document, so set once per deployment in .env.
+    FIRM_PRACTITIONER_NAME = os.getenv("FIRM_PRACTITIONER_NAME", "").strip()
+    FIRM_PRACTITIONER_ADDRESS = os.getenv("FIRM_PRACTITIONER_ADDRESS", "").strip()
+    FIRM_PLACE_OF_SIGNATURE = os.getenv("FIRM_PLACE_OF_SIGNATURE",
+                                        "Singapore").strip()
+
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
     # Optional: a model of the same tier or cheaper, tried once when the main

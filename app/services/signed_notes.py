@@ -188,7 +188,123 @@ def plan(financial_year, rows=None):
                     by_code.setdefault(code, ZERO)
         for code, amount in by_code.items():
             accepted[code] = (amount, f"{PROVENANCE} {note}, {title}")
+
+    _from_trial_balance(financial_year, face, done_keys, accepted,
+                        categories, known)
     return accepted
+
+
+def _from_trial_balance(financial_year, face, done_keys, accepted,
+                        categories, known):
+    """The split of a line from this year's trial balance's last-year column.
+
+    The trial balance carries last year per account, which is the grain the
+    notes need; the signed accounts are what was actually reported. Used only
+    where the two agree - the account-level figures for a statement line add
+    up to the signed set's figure for it - so the split is one the signed
+    accounts vouch for. Where they differ (the books and the signed set do,
+    on staff medical and a few others) nothing is taken and the cells stay
+    Incomplete, rather than print a split that contradicts what was filed.
+    """
+    from ..models import TrialBalanceAccount
+    from . import bindings
+
+    figures = bindings.Figures(financial_year)
+    by_key = {}
+    for account in TrialBalanceAccount.query.filter_by(
+            financial_year_id=financial_year.id).all():
+        if not account.standard_key:
+            continue
+        if account.prior_debit is None and account.prior_credit is None:
+            continue
+        by_key.setdefault(account.standard_key, []).append(account)
+
+    # Lines the signed accounts print as ONE caption but the books hold as
+    # several: "Other income" is other revenue, interest income and rebates.
+    grouped = [{"other_income", "interest_income", "iras_rebate"}]
+    clusters, used = [], set()
+    for group in grouped:
+        members = group & (set(by_key) | set(face))
+        if len(members) > 1:
+            clusters.append(members)
+            used |= members
+    clusters += [{key} for key in by_key if key not in used]
+
+    for cluster in clusters:
+        keys = {k for k in cluster if k in by_key}
+        if not keys or keys & done_keys:
+            continue
+        shown = sum((face.get(k, ZERO) for k in cluster), ZERO)
+        if not shown:
+            continue
+        accounts = [a for k in keys for a in by_key[k]]
+        net = sum((Decimal(str(a.prior_debit or 0))
+                   - Decimal(str(a.prior_credit or 0)) for a in accounts), ZERO)
+        if abs(net - shown) > TOLERANCE:
+            continue
+        options = {k: [c for c in (categories.get(k) or {}).get("codes") or []
+                       if known is None or c in known] for k in cluster}
+        by_code, ok = {}, True
+        for account in accounts:
+            opts = options.get(account.standard_key) or []
+            code = account.line_code or (opts[0] if len(opts) == 1 else None)
+            if code is None:
+                ok = False
+                break
+            # As the library prints the line: credit-positive lines (income,
+            # liabilities, equity) as positive figures.
+            sign = -1 if figures._credit_positive(code) else 1
+            amount = (Decimal(str(account.prior_debit or 0))
+                      - Decimal(str(account.prior_credit or 0)))
+            by_code[code] = by_code.get(code, ZERO) + sign * amount
+        if not ok:
+            continue
+        # One code carries the whole caption: state the signed set's own
+        # figure, not the books' cents, so the note and the statement agree.
+        carrying = [c for c, amount in by_code.items() if amount]
+        if len(carrying) == 1:
+            code = carrying[0]
+            by_code[code] = (-1 if figures._credit_positive(code) else 1) * shown
+        for k in cluster:
+            for code in options.get(k) or []:
+                by_code.setdefault(code, ZERO)
+        for code, amount in by_code.items():
+            accepted.setdefault(
+                code, (amount, "Last year's trial balance column, "
+                               "agreeing with the signed accounts"))
+        done_keys |= cluster
+
+
+_HOLDING = re.compile(
+    r"^(?P<name>[A-Z][A-Za-z'\u2019.\- ]{2,}?)\s+(?P<a>\d[\d,]*)\s+(?P<b>\d[\d,]*)$")
+
+
+def read_shareholdings(path):
+    """[(director, shares at the beginning, shares at the end)] from the
+    directors' statement of a signed set, or []."""
+    import pdfplumber
+
+    found = []
+    try:
+        with pdfplumber.open(str(path)) as pdf:
+            armed = False
+            for page in pdf.pages[:6]:
+                for line in (page.extract_text() or "").splitlines():
+                    line = line.strip()
+                    low = line.lower()
+                    if "name of director" in low:
+                        armed = True
+                        continue
+                    if armed and re.match(r"^5\.\s", line):
+                        return found
+                    match = _HOLDING.match(line) if armed else None
+                    if match:
+                        found.append((match.group("name").strip(),
+                                      _amount(match.group("a")),
+                                      _amount(match.group("b"))))
+    except Exception:                                        # noqa: BLE001
+        log.exception("Could not read the shareholdings of %s", path)
+    return found
 
 
 def _signed_document(financial_year):
@@ -212,9 +328,39 @@ def fill(financial_year):
     figures = plan(financial_year)
     DocumentFigure.query.filter_by(financial_year_id=financial_year.id,
                                    token=TOKEN).delete()
+    _fill_shareholdings(financial_year)
     for code, (amount, where) in figures.items():
         db.session.add(DocumentFigure(
             financial_year_id=financial_year.id, token=TOKEN, field=code,
             scope="", member="", amount=amount, found_at=where[:255]))
     db.session.flush()
     return len(figures)
+
+
+def _fill_shareholdings(financial_year):
+    """The directors' holdings from the signed set, where none are on file.
+
+    The library reads them from the share register or the business profile;
+    a client's signed accounts print the same table. Never over a figure a
+    person entered.
+    """
+    from ..extensions import db
+    from ..models import DocumentFigure
+
+    existing = DocumentFigure.query.filter_by(
+        financial_year_id=financial_year.id, token="REG").first()
+    signed = _signed_document(financial_year)
+    if existing is not None or signed is None:
+        return 0
+    path = Path(signed.storage_path)
+    if not path.exists() or path.suffix.lower() != ".pdf":
+        return 0
+    holdings = read_shareholdings(path)
+    for name, opened, closed in holdings:
+        for field, amount in (("shares_open", opened), ("shares_close", closed)):
+            db.session.add(DocumentFigure(
+                financial_year_id=financial_year.id, token="REG", field=field,
+                scope="", member=name, amount=amount,
+                found_at="Signed accounts, directors' statement"))
+    db.session.flush()
+    return len(holdings)

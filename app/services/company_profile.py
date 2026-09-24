@@ -128,6 +128,8 @@ def to_form(profile: dict) -> dict:
         import re
         line2 = re.sub(r"[,\s]*(singapore)?\s*" + re.escape(postal) + r"\s*$",
                        "", line2, flags=re.IGNORECASE).strip(" ,")
+    if line2.lower() == "singapore":
+        line2 = ""              # the country alone; the cover adds it itself
     profile = {**profile, "address_line2": line2}
 
     values = {

@@ -132,6 +132,18 @@
   {%- else -%}{{ labels.get(key, default) }}{%- endif -%}
 {% endmacro %}
 
+{# A company fact on the cover. Working copy: typed in place and saved to the
+   customer record, which is where the fact lives. Clean copy: plain text. #}
+{% macro cover_field(section, key, value, multiline=false) %}
+  {%- if editable -%}
+    <span class="ed-cover" contenteditable="true"
+          data-section-id="{{ section.id }}" data-cover-field="{{ key }}"
+          data-placeholder="[not provided]">{% if multiline %}{{ (value or '')|e|replace('\n', '<br>'|safe) }}{% else %}{{ value or '' }}{% endif %}</span>
+  {%- elif value -%}
+    {% if multiline %}{{ value|e|replace('\n', '<br>'|safe) }}{% else %}{{ value }}{% endif %}
+  {%- else -%}<span class="missing-binding">[not provided]</span>{%- endif -%}
+{% endmacro %}
+
 {% macro stmt_label(line) %}
   {% if editable and line.id %}
     <span class="ed-label{{ ' is-edited' if line.label_is_overridden }}"
@@ -186,11 +198,14 @@
 {% for payload in payloads %}
   {% set section = payload.section %}
   {% set is_cover = section.section_key == 'cover_page' %}
-  {% set is_note = section.section_key.startswith('note_')
+  {% set is_note = (section.section_key.startswith('note_')
+                    and not section.section_key.startswith('note__S0'))
        or section.section_key.startswith('custom_') %}
   {# The first note still starts a page; the ones after it follow on. #}
+  {# The signature block follows the directors' statement on its page. #}
   {% set starts_page = not loop.first
-       and (not is_note or not nsdoc.notes_started) %}
+       and (not is_note or not nsdoc.notes_started)
+       and not section.section_key.startswith('note__S03') %}
   {% if is_note %}{% set nsdoc.notes_started = true %}{% endif %}
 
   <div class="rpt-page{% if starts_page %} page-break{% endif %}
@@ -206,8 +221,8 @@
          end. The company and the dates are this customer's and this year's;
          only the wording is the template's. #}
       <div class="cover">
-        <h2 class="cover-co">{{ (customer.legal_name or customer.name)|upper }}</h2>
-        <p class="cover-uen">({{ cover_labels.get('registration_label', 'Registration No') }}: {{ customer.uen or '—' }})</p>
+        <h2 class="cover-co">{{ cover_field(section, 'legal_name', (customer.legal_name or customer.name)|upper) }}</h2>
+        <p class="cover-uen">({{ cover_labels.get('registration_label', 'Registration No') }}: {{ cover_field(section, 'uen', customer.uen) }})</p>
         <h1>{{ cover_label(section, 'title', '') }}</h1>
         <p class="cover-date">{{ cover_label(section, 'date_prefix', '') }}
           {% set _d = fy.end_date|datefmt('%d %B %Y') %}{{ _d|upper if cover_labels.get('upper_date') else _d }}</p>
@@ -217,8 +232,8 @@
         <h1>{{ cover_label(section, 'title', 'ANNUAL REPORT') }} {{ fy.year_label }}</h1>
         <p class="cover-sub">{{ cover_label(section, 'subtitle',
              'Financial Statements and Other Financial Information') }}</p>
-        <h2 class="cover-co">{{ (customer.legal_name or customer.name)|upper }}</h2>
-        <p class="cover-uen">(Registration No: {{ customer.uen or '—' }})</p>
+        <h2 class="cover-co">{{ cover_field(section, 'legal_name', (customer.legal_name or customer.name)|upper) }}</h2>
+        <p class="cover-uen">(Registration No: {{ cover_field(section, 'uen', customer.uen) }})</p>
         <p class="cover-date">{{ fy.end_date|datefmt('%d %B %Y') }}</p>
       </div>
       {% endif %}
@@ -230,25 +245,27 @@
         <div class="corp-label">{{ cover_label(section, 'directors',
                                    'THE BOARD OF DIRECTORS') }}</div>
         <div class="corp-value">
-          {% if customer.directors %}
-            {{ customer.directors|replace('\n', '<br>')|safe }}
-          {% else %}<span class="missing-binding">[not provided]</span>{% endif %}
+          {{ cover_field(section, 'directors', customer.directors, true) }}
         </div>
 
         <div class="corp-label">{{ cover_label(section, 'secretary',
                                    'COMPANY SECRETARY') }}</div>
         <div class="corp-value">
-          {% if customer.company_secretary %}{{ customer.company_secretary }}
-          {% else %}<span class="missing-binding">[not provided]</span>{% endif %}
+          {{ cover_field(section, 'company_secretary', customer.company_secretary) }}
         </div>
 
         <div class="corp-label">{{ cover_label(section, 'office',
                                    'REGISTERED OFFICE') }}</div>
         <div class="corp-value">
-          {% for part in [customer.address_line1, customer.address_line2,
+          {% set office = [] %}
+          {% for part in [customer.address_line1,
+                          (customer.address_line2
+                           if (customer.address_line2 or '')|trim|lower != 'singapore'
+                           else None),
                           ('Singapore ' ~ customer.postal_code) if customer.postal_code else None] %}
-            {% if part %}{{ part }}<br>{% endif %}
+            {% if part %}{% set _ = office.append(part) %}{% endif %}
           {% endfor %}
+          {{ cover_field(section, 'office', office|join('\n'), true) }}
         </div>
       </div>
 
@@ -265,7 +282,8 @@
       #}
       {% set note_keys = [] %}
       {% for other in payloads %}
-        {% if other.section.section_key.startswith('note_') %}
+        {% if other.section.section_key.startswith('note_')
+              and not other.section.section_key.startswith('note__S0') %}
           {% set _ = note_keys.append(other.section.section_key) %}
         {% endif %}
       {% endfor %}
@@ -274,7 +292,8 @@
         {% for other in payloads %}
           {% set key = other.section.section_key %}
           {% if key != 'cover_page' %}
-            {% if not key.startswith('note_') %}
+            {% if key.startswith('note__S03') %}
+            {% elif not key.startswith('note_') or key.startswith('note__S0') %}
               <tr>
                 <td class="c-title">{{ other.section.title }}</td>
                 <td class="c-dots"><span class="leader"></span></td>
@@ -490,6 +509,30 @@
                         ' unsourced' if cell is none }}">{{ cell|stmt }}</td>
                   {% endif %}
                 {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% elif table.shareholdings %}
+        <table class="fin note-table">
+          <thead>
+            <tr class="hdr-dates">
+              <th class="lbl">Name of director</th>
+              <th class="num">At the beginning<br>of the year</th>
+              <th class="num">At the end<br>of the year</th>
+            </tr>
+            <tr class="hdr-ccy">
+              <th class="lbl">Number of ordinary shares</th>
+              <th class="num"></th>
+              <th class="num"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in table.rows %}
+              <tr>
+                <td class="lbl">{{ row.label }}</td>
+                <td class="num">{{ '{:,.0f}'.format(row.open) if row.open is not none else '—' }}</td>
+                <td class="num">{{ '{:,.0f}'.format(row.close) if row.close is not none else '—' }}</td>
               </tr>
             {% endfor %}
           </tbody>

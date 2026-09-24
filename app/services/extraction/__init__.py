@@ -111,6 +111,9 @@ _HEADING_SYNONYMS = {
         "financial risk management objectives and policies",
     "capital management policies and objectives": "capital management",
     "assets pledged": "assets pledged as security",
+    "trade and other receivables": "trade receivables",
+    "other receivables": "trade receivables",
+    "other payables": "trade and other payables",
 }
 
 

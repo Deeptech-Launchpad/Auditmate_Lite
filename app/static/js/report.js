@@ -244,9 +244,17 @@
         || field.classList.contains('ed-label');
   }
 
+  /* A company fact on the cover (directors, registered office...). Its text is
+     read with line breaks, and it is saved to the customer record. */
+  const MULTILINE_COVER = ['directors', 'office'];
+
   report.addEventListener('focusin', event => {
     const field = event.target.closest('[contenteditable="true"]');
     if (!field) return;
+    if (field.dataset.coverField) {
+      original.set(field, field.innerText.trim());
+      return;
+    }
     const plain = field.dataset.field === 'title'
                || field.dataset.labelKey || isCell(field);
     original.set(field, plain ? field.textContent.trim() : serialise(field));
@@ -255,6 +263,25 @@
   report.addEventListener('focusout', async event => {
     const field = event.target.closest('[contenteditable="true"]');
     if (!field) return;
+
+    if (field.dataset.coverField) {
+      const text = field.innerText.trim();
+      if (text === original.get(field)) return;
+      say('Saving…', 'saving');
+      try {
+        const response = await fetch(
+          '/reports/api/section/' + field.dataset.sectionId + '/cover-field',
+          { method: 'PATCH', headers: csrfHeaders(),
+            body: JSON.stringify({ field: field.dataset.coverField,
+                                   value: text }) });
+        if (!response.ok) throw new Error('save failed');
+        original.set(field, text);
+        say('Saved to the customer record', 'saved');
+      } catch (err) {
+        say('Could not save — your text is still here', 'failed');
+      }
+      return;
+    }
 
     /* A fixed caption on the cover page: stored on the section, not on any
        statement line, so it is handled here rather than by the cell hook. */
@@ -398,7 +425,9 @@
     const field = event.target.closest('[contenteditable="true"]');
     if (!field) return;
     if (event.key === 'Enter'
-        && (field.dataset.field === 'title' || field.dataset.labelKey)) {
+        && (field.dataset.field === 'title' || field.dataset.labelKey
+            || (field.dataset.coverField
+                && !MULTILINE_COVER.includes(field.dataset.coverField)))) {
       event.preventDefault();
       field.blur();
     }

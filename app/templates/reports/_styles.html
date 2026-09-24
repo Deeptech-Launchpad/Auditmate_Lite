@@ -378,14 +378,17 @@
    ---------------------------------------------------------------------- */
 
 {{ S }} .ed-label,
+{{ S }} .ed-cover,
 {{ S }} .ed-amount {
   outline: none;
   border-radius: 2px;
   padding: 0 2px;
 }
 {{ S }}.is-editing .ed-label:hover,
+{{ S }}.is-editing .ed-cover:hover,
 {{ S }}.is-editing .ed-amount:hover { background: rgba(0, 90, 200, .07); }
 {{ S }}.is-editing .ed-label:focus,
+{{ S }}.is-editing .ed-cover:focus,
 {{ S }}.is-editing .ed-amount:focus {
   background: #fffbe6;
   box-shadow: 0 0 0 2px rgba(200, 150, 0, .45);
@@ -419,8 +422,14 @@
 /* Everything editable gets a faint dotted keyline, so it is obvious at a
    glance what can be clicked without having to hunt for it. */
 {{ S }}.is-editing .ed-amount,
+{{ S }}.is-editing .ed-cover,
 {{ S }}.is-editing .ed-label {
   border-bottom: 1px dotted rgba(0, 0, 0, .22);
+}
+{{ S }}.is-editing .ed-cover:empty::before {
+  content: attr(data-placeholder);
+  color: #9aa3af;
+  font-style: italic;
 }
 
 /* The circled i that opens the sources panel. */

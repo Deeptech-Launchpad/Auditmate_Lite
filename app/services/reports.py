@@ -266,6 +266,25 @@ def render_bindings(text: str, customer, financial_year,
 
     values.update(input_service.values_for_bindings(financial_year))
 
+    # The library's statutory documents name fields the client and firm
+    # records answer. None had a source, so the directors' statement printed
+    # "[members not provided]" and "[signing directors not provided]" although
+    # the customer record held the director.
+    directors = [d.strip() for d in (customer.directors or "").splitlines()
+                 if d.strip()]
+    names = (", ".join(directors[:-1]) + " and " + directors[-1]
+             if len(directors) > 1 else "".join(directors))
+    values["field.director_names"] = names
+    values["field.signing_directors"] = names
+    values["field.members"] = _members_word(financial_year)
+    values["field.report_date"] = date.today().strftime("%d %B %Y")
+    values["field.place_of_signature"] = (
+        current_app.config.get("FIRM_PLACE_OF_SIGNATURE") or "Singapore")
+    values["field.practitioner_name"] = (
+        current_app.config.get("FIRM_PRACTITIONER_NAME") or "")
+    values["field.practitioner_address"] = (
+        current_app.config.get("FIRM_PRACTITIONER_ADDRESS") or "")
+
     from . import related_parties as related_service
 
     confirmed = related_service.parties_in_play(financial_year)
@@ -325,6 +344,20 @@ def render_bindings(text: str, customer, financial_year,
         return f'<span class="{css}">{body}</span>' if css else body
 
     return re.sub(r"\{\{\s*([\w.]+)\s*\}\}", replace, text)
+
+
+def _members_word(financial_year):
+    """"member" for a company with one shareholder, otherwise "members".
+
+    Read from the share capital accounts on the trial balance - one account,
+    one holder, as in the signed set this replaces ("to the member of the
+    Company") - until a share register says otherwise.
+    """
+    holders = (TrialBalanceAccount.query
+               .filter_by(financial_year_id=financial_year.id)
+               .filter(TrialBalanceAccount.standard_key == "share_capital")
+               .count())
+    return "member" if holders == 1 else "members"
 
 
 # A firm setting whose value carries its own unit, dropped into a sentence
@@ -483,6 +516,7 @@ def ensure_report(financial_year) -> AuditReport:
         signed_notes.fill(financial_year)
     except Exception:                                      # noqa: BLE001
         log.exception("Could not read last year's note figures")
+    _rematch_prior_notes(financial_year)
 
     present = _present_keys(financial_year)
 
@@ -508,10 +542,36 @@ def ensure_report(financial_year) -> AuditReport:
         order += 1
 
     db.session.flush()
+    _arrange_statutory(report)
     _match_customer_template(report, financial_year)
 
     db.session.commit()
     return report
+
+
+def _rematch_prior_notes(financial_year):
+    """Match last year's stored note headings to the pinned library afresh.
+
+    Matched once, when the signed accounts were read - against whatever
+    library and matcher there were then. A heading stored unmatched stayed
+    "NO NOTE" for ever, even after the matcher learned "Finance cost" is
+    "Finance costs". No AI is involved, so it is cheap to redo on every build.
+    """
+    from .extraction import _normalise_heading, match_heading
+
+    try:
+        library = {_normalise_heading(n["heading"]): n["key"]
+                   for n in load_notes_catalogue(financial_year)}
+        if not library:
+            return
+        for prior in PriorYearNote.query.filter_by(
+                financial_year_id=financial_year.id).all():
+            key = match_heading(prior.title, library)
+            if key != prior.matched_key:
+                prior.matched_key = key
+        db.session.flush()
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not re-match last year's notes")
 
 
 def regenerate_report(financial_year):
@@ -536,6 +596,46 @@ def regenerate_report(financial_year):
         db.session.delete(report)
         db.session.flush()
     return ensure_report(financial_year)
+
+
+# The library's statutory documents. "Presented as: Statutory document" in its
+# Notes sheet: the directors' statement, the compilation report, and the
+# signature block that "sits inside" the directors' statement. Not notes -
+# numbered as notes they pushed every real note down by three.
+STATUTORY_PREFIX = NOTE_PREFIX + "S0"
+
+
+def is_statutory(section):
+    return section.section_key.startswith(STATUTORY_PREFIX)
+
+
+def _arrange_statutory(report):
+    """Put the library's statutory documents where a set of accounts has them.
+
+    The compilation report first, then the directors' statement with its
+    signature block inside it, then everything else as before. The library's
+    directors' statement replaces the app's built-in one: printing both put
+    the same statement in the accounts twice.
+    """
+    by_key = {s.section_key: s for s in report.sections}
+    s01 = by_key.get(NOTE_PREFIX + "S01_DIRECTORS_STATEMENT")
+    s02 = by_key.get(NOTE_PREFIX + "S02_COMPILATION_REPORT")
+    s03 = by_key.get(NOTE_PREFIX + "S03_STATEMENT_BY_DIRECTORS_SIG")
+
+    fixed = by_key.get("directors_statement")
+    if s01 is not None and s01.is_enabled and fixed is not None:
+        fixed.is_enabled = False
+
+    cover = by_key.get("cover_page")
+    # The signature block "sits inside" the directors' statement: kept as its
+    # own section straight after it, so the statement's tables (the directors'
+    # shareholdings) print between its text and the signatures.
+    front = [x for x in (cover, s02, s01, s03 if s01 is not None else None)
+             if x is not None]
+    rest = [x for x in sorted(report.sections, key=lambda x: (x.sort_order, x.id))
+            if x not in front]
+    for position, section in enumerate(front + rest):
+        section.sort_order = position
 
 
 def _match_customer_template(report, financial_year):
@@ -1041,14 +1141,6 @@ def _build_note_section(note, present, sort_order, report_id,
         # the note in their own words.
         binding["draft_wording"] = drafts
 
-    # Library sections S01-S03 (directors' statement, compilation report,
-    # signature block) are documents, not notes. Numbered as notes they pushed
-    # every real note down by three and repeated the Directors' Statement the
-    # report already prints. Off by default; a preparer who wants one turns it
-    # on in the Sections list.
-    if str(note.get("key") or "").upper().startswith("S0"):
-        enabled = False
-
     return AuditReportSection(
         report_id=report_id,
         section_key=f"{NOTE_PREFIX}{note['key']}",
@@ -1316,7 +1408,7 @@ def note_number_map(report):
     rather than fixed at creation.
     """
     def is_note(s):
-        return (s.section_type != "statement"
+        return (s.section_type != "statement" and not is_statutory(s)
                 and (s.section_key.startswith(NOTE_PREFIX)
                     or s.section_key.startswith("custom_")))
 

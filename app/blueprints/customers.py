@@ -1,5 +1,6 @@
 """Customer management and financial-year workspace."""
 import calendar
+import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -731,6 +732,65 @@ def workspace(customer_id, fy_id):
     )
 
 
+# The customer record fields a template can fill. Never `name`: that is what
+# the firm files the customer under.
+_FILLABLE = ("legal_name", "uen", "address_line1", "address_line2",
+             "postal_code", "directors", "company_secretary",
+             "principal_activities", "incorporation_date")
+
+
+def _fill_details_from_template(customer, saved_path):
+    """Read the company's details out of the template it brought.
+
+    The template is last year's signed accounts, and those state the company's
+    registration number, registered office, directors and principal
+    activities - the very details the report then asks the preparer to type
+    ("[director not provided]", "[principal activities not provided]").
+    Only a field the customer record has EMPTY is filled: nothing a person
+    typed is overwritten. Best effort - a template that cannot be read, or an
+    AI service that is down, leaves the record as it was and says so.
+    """
+    from ..services import company_profile as profile_service
+    from ..services.extraction.ai import extract_company_profile
+
+    path = Path(saved_path)
+    if path.suffix.lower() not in (".pdf", ".docx"):
+        return
+    try:
+        outcome = extract_company_profile(
+            path, path.suffix.lower().lstrip("."), raw_text="")
+    except Exception:                                      # noqa: BLE001
+        logging.getLogger(__name__).exception(
+            "Could not read details from the template of customer %s",
+            customer.id)
+        outcome = {"ok": False}
+
+    if not outcome.get("ok"):
+        flash("The template was saved, but its company details could not be "
+              "read. Fill them in on the customer page.", "warning")
+        return
+
+    values = profile_service.to_form(outcome["profile"])
+    filled = []
+    for field in _FILLABLE:
+        value = values.get(field)
+        if value in (None, "") or getattr(customer, field, None):
+            continue
+        if field == "incorporation_date":
+            try:
+                value = datetime.strptime(value, "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                continue
+        setattr(customer, field, value)
+        filled.append(field.replace("_", " "))
+
+    if filled:
+        db.session.commit()
+        flash("Read from the template and filled in: " + ", ".join(filled)
+              + ". Check them on the customer page - a signed set can be "
+                "out of date.", "info")
+
+
 @bp.route("/<int:customer_id>/upload-template", methods=["POST"])
 @login_required
 def upload_template(customer_id):
@@ -774,8 +834,10 @@ def upload_template(customer_id):
         customer.report_template_uploaded_at = datetime.utcnow()
         db.session.commit()
         flash(f"Custom template '{file.filename}' uploaded successfully.", "success")
+        _fill_details_from_template(customer, saved_path)
     except Exception as e:
-        log.error(f"Template upload failed for customer {customer.id}: {e}")
+        logging.getLogger(__name__).error(
+            "Template upload failed for customer %s: %s", customer.id, e)
         flash("Template upload failed. Please try again.", "error")
 
     return redirect(request.referrer or url_for("customers.detail",

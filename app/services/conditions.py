@@ -130,6 +130,16 @@ def note_applies(note, figures, financial_year):
 def paragraph(piece, note_code, figures):
     """(action, reason) for one paragraph of a note that is on."""
     source = (piece.get("condition_source") or "").strip().lower()
+    # The workbook's own wording for the sources it names. "Firm settings" and
+    # "ACRA business profile" were not recognised, so the compilation report's
+    # practitioner paragraphs and the directors' names were held as unknown
+    # conditions: the firm's details never printed, even when configured.
+    if source == "firm settings":
+        source = "firm setting"
+    elif source == "acra business profile":
+        source = "client record"
+    elif source.startswith("preparer supplies"):
+        source = "preparer confirms"
     tag = (piece.get("tag") or "").upper()
     unanswered = (piece.get("if_unanswered") or "").strip().lower()
     asked = HOLD if unanswered == "hold" else OMIT

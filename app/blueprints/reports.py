@@ -10,8 +10,8 @@ from flask import (Blueprint, abort, current_app, flash, jsonify, redirect,
 from flask_login import current_user, login_required
 
 from ..extensions import db
-from ..models import (AuditReport, AuditReportSection, FinancialStatement,
-                      FinancialYear, ReportFigureOverride, StatementLine)
+from ..models import (AuditReport, AuditReportSection, Customer,
+                      FinancialStatement, FinancialYear, ReportFigureOverride, StatementLine)
 log = logging.getLogger(__name__)
 
 from ..services import overrides as overrides_service
@@ -418,6 +418,55 @@ def update_section(section_id):
            after={"enabled": section.is_enabled})
     db.session.commit()
 
+    return jsonify({"ok": True})
+
+
+_COVER_FIELDS = {"legal_name", "uen", "directors", "company_secretary", "office"}
+
+
+@bp.route("/api/section/<int:section_id>/cover-field", methods=["PATCH"])
+@login_required
+def update_cover_field(section_id):
+    """Edit a company fact printed on the cover page.
+
+    The company's name, registration number, directors, secretary and
+    registered office belong to the customer record, not to the report: typed
+    over on the page they would print here and nowhere else, and next year's
+    report would ask again. So the cover writes them back to the record.
+    """
+    section = db.session.get(AuditReportSection, section_id) or abort(404)
+    payload = request.get_json(silent=True) or {}
+    field = payload.get("field")
+    if field not in _COVER_FIELDS:
+        abort(400)
+    text = (payload.get("value") or "").replace("\r", "")
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+
+    report = db.session.get(AuditReport, section.report_id) or abort(404)
+    year = db.session.get(FinancialYear, report.financial_year_id) or abort(404)
+    customer = db.session.get(Customer, year.customer_id) or abort(404)
+    before = {k: getattr(customer, k, None) for k in
+              ("legal_name", "uen", "directors", "company_secretary",
+               "address_line1", "address_line2", "postal_code")}
+
+    if field == "office":
+        postal = ""
+        if lines:
+            match = re.match(r"^(?:singapore\s+)?(\d{6})$", lines[-1], re.I)
+            if match:
+                postal = match.group(1)
+                lines = lines[:-1]
+        customer.address_line1 = lines[0] if lines else ""
+        customer.address_line2 = ", ".join(lines[1:]) if len(lines) > 1 else ""
+        customer.postal_code = postal
+    elif field == "directors":
+        customer.directors = "\n".join(lines)
+    else:
+        setattr(customer, field, " ".join(lines))
+
+    record("customer", customer.id, "update",
+           before=before, after={"cover_field": field})
+    db.session.commit()
     return jsonify({"ok": True})
 
 
