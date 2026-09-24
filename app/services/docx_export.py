@@ -480,7 +480,11 @@ def _pdf_look(path):
     return {
         "page_mm": (mm(width), mm(height)),
         "left": margin(left, 15, 45), "right": margin(right, 15, 45),
-        "top": margin(top, 15, 35), "bottom": margin(bottom, 15, 35),
+        # The text of a template's first line is often a running header
+        # sitting close to the edge (Brown Rock's: 15 mm). Ours carries a
+        # DRAFT band there, which then printed over the first line of every
+        # page, so the top margin is never less than 24 mm.
+        "top": margin(top, 24, 35), "bottom": margin(bottom, 15, 35),
         "body_pt": min(max(sizes.most_common(1)[0][0], 8), 12),
         "face": face,
     }

@@ -897,6 +897,13 @@ def _assemble_note_content(note, present, first_year=False, period=None,
             if keys and dedup_key not in seen_table_keys:
                 seen_table_keys.add(dedup_key)
                 heading = piece.get("wording") or piece.get("requirement", "")
+                # A "|"-separated wording is the library's list of the
+                # columns or rows a table might hold ("Carrying amount |
+                # Fair value | Level within the fair value hierarchy"), an
+                # instruction to the preparer. Printed over the table it read
+                # as a caption nobody wrote.
+                if "|" in heading:
+                    heading = None
                 # An empty string here still satisfies "total" in spec (it
                 # is a str, just a blank one - see the label line in
                 # notes.py), so the footed row printed with two bare
