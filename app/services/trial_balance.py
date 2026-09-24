@@ -85,6 +85,66 @@ def _amount_pair(item, standard_key=None):
     return debit, credit
 
 
+# Two documents in the winning category that name the same accounts describe
+# the same books, and adding them counts every account twice. A trial balance
+# sent in two halves - accounts A to M, then N to Z - shares none.
+OVERLAP_MIN = 0.30
+
+
+def _labels_of(document):
+    from .extraction.base import looks_like_total_label
+
+    rows = (db.session.query(ExtractedLineItem.label)
+            .filter(ExtractedLineItem.document_id == document.id)
+            .filter(ExtractedLineItem.status != "discarded")
+            .filter(ExtractedLineItem.period != "previous").all())
+    return {" ".join((label or "").lower().split()) for (label,) in rows
+            if label and not looks_like_total_label(label)}
+
+
+def _one_of_each_overlap(documents):
+    """Keep one document from each group that repeats the same accounts.
+
+    A balance sheet filed as a trial balance (a wrong guess from its contents)
+    was added to the real trial balance: debits 3,088,156 against credits
+    2,439,965, out by exactly the balance-sheet half counted twice. Only
+    documents that OVERLAP are collapsed, so a trial balance genuinely sent in
+    parts still adds up. Of an overlapping group the fullest wins: the one
+    that carries debit and credit columns, then the longer, then the later.
+    """
+    if len(documents) < 2:
+        return documents
+
+    labels = {d.id: _labels_of(d) for d in documents}
+
+    def strength(document):
+        paired = (db.session.query(ExtractedLineItem.id)
+                  .filter_by(document_id=document.id)
+                  .filter((ExtractedLineItem.debit.isnot(None))
+                          | (ExtractedLineItem.credit.isnot(None)))
+                  .first() is not None)
+        return (paired, len(labels[document.id]),
+                document.uploaded_at or 0)
+
+    kept = []
+    for document in sorted(documents, key=strength, reverse=True):
+        mine = labels[document.id]
+        clash = False
+        for other in kept:
+            theirs = labels[other.id]
+            smaller = min(len(mine), len(theirs))
+            if smaller and len(mine & theirs) / smaller >= OVERLAP_MIN:
+                clash = True
+                break
+        if clash:
+            log.info("Document %s repeats accounts already taken from "
+                     "document %s - kept back as evidence", document.id,
+                     other.id)
+        else:
+            kept.append(document)
+    return [d for d in documents if d in kept]
+
+
 def choose_sources(documents):
     """Which verified documents build the accounts, and which only check them.
 
@@ -107,7 +167,8 @@ def choose_sources(documents):
         # source; taking one without the other would build half a year.
         wanted = ({category} | (TB_SOURCE_PAIRED & present)
                   if category in TB_SOURCE_PAIRED else {category})
-        sources = [d for d in verified if (d.category or "other") in wanted]
+        sources = _one_of_each_overlap(
+            [d for d in verified if (d.category or "other") in wanted])
         return sources, [d for d in verified if d not in sources]
 
     return [], verified
