@@ -52,7 +52,9 @@ ENTERED = ("TAX", "PRIORFS", "FAR", "AGED")
 # PRIORFS:cost_open_py is the opening cost of plant and equipment in one
 # note, of investment property in another and of intangibles in a third,
 # and nothing but the note it sits in tells them apart.
-SCOPED = ("PRIORFS", "FAR")
+# ENTERED is an answer typed straight into an Incomplete cell of a note table,
+# keyed by the table (scope), the row and the year - see bindings._make_answerable.
+SCOPED = ("PRIORFS", "FAR", "ENTERED")
 
 # The library spells one token two ways. Its Binding fields sheet and every
 # note bind PRIORFS:, while its Source documents sheet describes the same

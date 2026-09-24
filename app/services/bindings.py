@@ -1091,22 +1091,31 @@ def build_table(spec, financial_year, statements=None):
             _fill(row, binding, figures, first_year, scope)
         rows.append(row)
 
+    # A figure typed into an Incomplete cell counts from here on, so the
+    # totals below add it in.
+    table_key = table.get("table_id") or ""
+    _make_answerable(rows, table_key, financial_year, totals=False)
+
     totals = [i for i, row in enumerate(rows) if row["binding"] == "DOC:total"]
     for index in totals:
         _doc_total(rows, index, figures, first_year,
                    named=table.get("totals_agree_with")
                    if index == totals[-1] else None,
                    partway=index != totals[-1])
+    _make_answerable(rows, table_key, financial_year, totals=True)
 
     shown = [row for row in rows if not _nil(row) and not _optional_gap(row)]
 
-    # Shown only once something in it is a figure from the books. A table
-    # made entirely of document fields and preparer answers waits for those.
+    # A table made entirely of document fields and preparer answers used to be
+    # shown as one sentence, which nobody could type into. It is shown as the
+    # grid, each Incomplete cell answerable - unless the note is not needed at
+    # all (no balance behind it), which _held_table still decides.
     if not any(_is_figure(row["binding"])
                and any(isinstance(v, Decimal) and v for v in
                        (row["current"], row["previous"]))
                for row in shown):
-        return _held_table(spec, table, rows, figures)
+        if _held_table(spec, table, rows, figures) is None:
+            return None
 
     for row in shown:
         if not row.get("ids"):
@@ -1133,6 +1142,49 @@ def build_table(spec, financial_year, statements=None):
     return {"heading": spec.get("heading"), "rows": shown,
             "columns": table.get("column_labels"),
             "table_id": table.get("table_id")}
+
+
+def _slug(label):
+    text = "".join(ch if ch.isalnum() else "_" for ch in (label or "").lower())
+    return "_".join(part for part in text.split("_") if part)[:80] or "row"
+
+
+def _make_answerable(rows, table_key, financial_year, totals=False):
+    """Give every Incomplete cell a place to type its answer.
+
+    Only a hold naming an exact document figure (the tax computation, the aged
+    listing) could be answered on the spot; everything else - a preparer's
+    entry, last year's split, a total nothing states - printed the plain word
+    Incomplete with nothing to click. Those now carry an ENTERED answer keyed
+    by the table, the row and the year, saved through the same function the
+    Figures page uses. A typed figure replaces the hold, so the totals add it
+    in and the note stops being incomplete.
+    """
+    from . import document_fields
+
+    seen = {}
+    for row in rows:
+        binding = row.get("binding")
+        if binding == "STATIC" or (binding == "DOC:total") != totals:
+            continue
+        base = _slug(row.get("label"))
+        seen[base] = seen.get(base, 0) + 1
+        if seen[base] > 1:
+            base = f"{base}_{seen[base]}"
+        for column, suffix in (("current", ""), ("previous", "__prior")):
+            value = row.get(column)
+            if not _is_held(value) or value.editable:
+                continue
+            field = base + suffix
+            entered = document_fields.value(financial_year, "ENTERED", field,
+                                            table_key)
+            if entered is not None:
+                row[column] = (entered.amount if entered.amount is not None
+                               else ZERO)
+            else:
+                row[column] = Held(value.reason, whole_year=value.whole_year,
+                                   blocking=value.blocking, token="ENTERED",
+                                   field=field, scope=table_key)
 
 
 def _held_table(spec, table, rows, figures):
