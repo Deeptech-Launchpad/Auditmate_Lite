@@ -305,7 +305,8 @@ def _present_profit_and_loss(book, rows):
         _agg(book, admin, -1), note=_note(book, "operating_expenses"))
     if show_finance:
         add(out, "finance_cost", _labelled(rows, "finance_cost", "Finance cost"),
-            _agg(book, [k for k in opex if k in finance], -1))
+            _agg(book, [k for k in opex if k in finance], -1),
+            note="finance_costs")
     add(out, "profit_before_tax",
         _labelled(rows, "profit_before_tax", "Profit before tax"),
         _agg(book, ["profit_before_tax"]), subtotal=True,

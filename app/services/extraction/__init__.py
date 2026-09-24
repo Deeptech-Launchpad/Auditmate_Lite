@@ -96,6 +96,57 @@ def _should_use_ai(result: ExtractionResult, file_type: str) -> tuple:
 _NOTE_NUMBER = re.compile(r"^\(?\s*(?:\d+|[ivxlcdm]+|[a-z])\s*[).:-]\s*")
 
 
+# Wording a company's own notes use for a heading the library words another
+# way. Matched after normalising, so plural and case do not matter.
+_HEADING_SYNONYMS = {
+    "loan from a bank": "borrowings",
+    "bank loan": "borrowings",
+    "loans": "borrowings",
+    "general": "corporate information",
+    "summary of material accounting policies": "material accounting policy information",
+    "critical accounting judgements and key sources of estimation uncertainty":
+        "significant accounting judgements and estimates",
+    "profit before income tax": "profit before tax",
+    "financial instruments and financial risks":
+        "financial risk management objectives and policies",
+    "capital management policies and objectives": "capital management",
+    "assets pledged": "assets pledged as security",
+}
+
+
+def _fold(text: str) -> str:
+    """A heading with plurals removed word by word."""
+    return " ".join(w[:-1] if len(w) > 3 and w.endswith("s") else w
+                    for w in text.split())
+
+
+def match_heading(title: str, library: dict):
+    """The library key a company's note heading corresponds to, or None.
+
+    Exact after normalising, then by a synonym the firm's own sets use, then
+    ignoring plurals ("Finance cost" against "Finance costs"), then by close
+    similarity. Exact matching alone left last year's "Finance cost",
+    "Trade and other receivables" and "Loan from a bank" reported as having no
+    note in this year's accounts while notes with those very names existed.
+    """
+    import difflib
+
+    wanted = _normalise_heading(title)
+    if not wanted:
+        return None
+    if wanted in library:
+        return library[wanted]
+    alias = _HEADING_SYNONYMS.get(wanted)
+    if alias and alias in library:
+        return library[alias]
+    folded = {_fold(h): k for h, k in library.items()}
+    if _fold(wanted) in folded:
+        return folded[_fold(wanted)]
+    close = difflib.get_close_matches(_fold(wanted), list(folded), n=1,
+                                      cutoff=0.88)
+    return folded[close[0]] if close else None
+
+
 def _normalise_heading(text: str) -> str:
     """A note heading reduced to comparable words."""
     text = _NOTE_NUMBER.sub("", (text or "").lower().strip())
@@ -143,7 +194,7 @@ def _read_prior_year_notes(document, path, file_type, raw_text) -> str:
             note_number=note["note_number"],
             title=note["title"][:255],
             body_text=note["body_text"],
-            matched_key=library.get(_normalise_heading(note["title"])),
+            matched_key=match_heading(note["title"], library),
             confidence=note["confidence"],
         ))
 

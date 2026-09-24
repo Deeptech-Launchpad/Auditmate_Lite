@@ -70,7 +70,7 @@ profit_and_loss:
     - {key: entertainment,         label: "Entertainment expenses", group: operating_expenses, detail: true}
     - {key: petty_cash_expenses,   label: "Petty cash expenses", group: operating_expenses, detail: true}
     - {key: secretarial_fee,       label: "Secretarial fee", group: operating_expenses, detail: true}
-    - {key: interest_expense,      label: "Interest expenses", group: operating_expenses, detail: true}
+    - {key: interest_expense,      label: "Interest expenses", group: operating_expenses, detail: true, note: finance_costs}
     - {key: gst_payables_expense,  label: "GST payables", group: operating_expenses, detail: true}
     - {key: training_expenses,     label: "Training expenses", group: operating_expenses, detail: true}
     - {key: staff_house_rental,    label: "Staff house rental", group: operating_expenses, detail: true}
@@ -87,6 +87,10 @@ profit_and_loss:
     - {key: other_comprehensive_income, label: "Other comprehensive income for the year", group: result, no_note: true}
     - {key: total_comprehensive_income, label: "Total comprehensive income for the period", group: result, total: true, formula: total_comprehensive_income}
 
+# Which note each line belongs to follows the notes library's own Statement
+# lines sheet (its 'Default note' column): Finance costs, Reserves, Trade and
+# other payables, Income tax expense. Without them the builder said "no note
+# explains Other Payables" while the library had one.
 balance_sheet:
   title: Statement of Financial Position
   columns: [current, previous]
@@ -108,7 +112,7 @@ balance_sheet:
     - {key: inventories,           label: "Inventories", group: current_assets, indent: 1, note: inventories}
     - {key: contract_assets,       label: "Contract assets", group: current_assets, indent: 1, note: contract_balances}
     - {key: trade_receivables,     label: "Trade receivables", group: current_assets, indent: 1, note: trade_receivables}
-    - {key: prepayments,           label: "Deposits & Other Receivables", group: current_assets, indent: 1}
+    - {key: prepayments,           label: "Deposits & Other Receivables", group: current_assets, indent: 1, note: trade_receivables}
     - {key: assets_held_for_sale,  label: "Assets held for sale", group: current_assets, indent: 1, note: assets_held_for_sale}
     - {key: cash_and_equivalents,  label: "Cash and cash equivalents", group: current_assets, indent: 1, note: cash_and_cash_equivalents}
     - {key: total_current_assets,  label: "Total current assets", group: current_assets, subtotal: true, formula: sum_group_current_assets}
@@ -116,7 +120,7 @@ balance_sheet:
 
     - {key: share_capital,         label: "Share capital", group: equity, indent: 1, note: share_capital}
     - {key: working_capital,       label: "Working Capital", group: equity, indent: 1, no_note: true}
-    - {key: retained_earnings,     label: "Accumulated profit/ (loss)", group: equity, indent: 1, formula: retained_earnings, no_note: true}
+    - {key: retained_earnings,     label: "Accumulated profit/ (loss)", group: equity, indent: 1, formula: retained_earnings, note: reserves}
     - {key: total_equity,          label: "Total capital and reserves", group: equity, subtotal: true, formula: sum_group_equity}
 
     - {key: long_term_borrowings,  label: "Long-term borrowings", group: non_current_liabilities, indent: 1, note: borrowings}
@@ -125,11 +129,11 @@ balance_sheet:
     - {key: deferred_tax,          label: "Deferred tax liabilities", group: non_current_liabilities, indent: 1, note: deferred_tax_liabilities}
     - {key: total_non_current_liabilities, label: "Total non-current liabilities", group: non_current_liabilities, subtotal: true, formula: sum_group_non_current_liabilities}
 
-    - {key: trade_payables,        label: "Other Payables", group: current_liabilities, indent: 1}
-    - {key: accruals,              label: "Accruals", group: current_liabilities, indent: 1}
+    - {key: trade_payables,        label: "Other Payables", group: current_liabilities, indent: 1, note: N75_TRADE_OTHER_PAYABLES}
+    - {key: accruals,              label: "Accruals", group: current_liabilities, indent: 1, note: N75_TRADE_OTHER_PAYABLES}
     - {key: contract_liabilities,  label: "Contract liabilities", group: current_liabilities, indent: 1, note: contract_balances}
     - {key: short_term_borrowings, label: "Short-term borrowings", group: current_liabilities, indent: 1, note: borrowings}
-    - {key: tax_payable,           label: "Provision for income tax", group: current_liabilities, indent: 1, no_note: true}
+    - {key: tax_payable,           label: "Provision for income tax", group: current_liabilities, indent: 1, note: income_tax_expense}
     - {key: total_current_liabilities, label: "Total current liabilities", group: current_liabilities, subtotal: true, formula: sum_group_current_liabilities}
     - {key: total_equity_and_liabilities, label: "Total equity and liabilities", group: liabilities_total, total: true, formula: total_equity_and_liabilities}
 

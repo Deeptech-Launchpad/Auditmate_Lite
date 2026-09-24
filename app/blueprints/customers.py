@@ -204,7 +204,13 @@ def read_profile():
     # What the profile said wins on the screen, but the preparer's own
     # entries survive: a field they already typed is not overwritten.
     form = dict(customer.__dict__) if customer else {}
-    form.update({k: v for k, v in values.items() if v not in (None, "")})
+    # A customer already on file keeps the name it is filed under: renaming it
+    # to what a document says (an old set of accounts, a parent's name) would
+    # break every list, report and search that finds it by that name.
+    read = {k: v for k, v in values.items() if v not in (None, "")}
+    if customer is not None:
+        read.pop("name", None)
+    form.update(read)
 
     return render_template("customers/form.html", customer=customer,
                            form=form, pending_profile=pending_path,

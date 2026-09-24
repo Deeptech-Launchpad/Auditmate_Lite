@@ -1033,6 +1033,14 @@ def _build_note_section(note, present, sort_order, report_id,
         # the note in their own words.
         binding["draft_wording"] = drafts
 
+    # Library sections S01-S03 (directors' statement, compilation report,
+    # signature block) are documents, not notes. Numbered as notes they pushed
+    # every real note down by three and repeated the Directors' Statement the
+    # report already prints. Off by default; a preparer who wants one turns it
+    # on in the Sections list.
+    if str(note.get("key") or "").upper().startswith("S0"):
+        enabled = False
+
     return AuditReportSection(
         report_id=report_id,
         section_key=f"{NOTE_PREFIX}{note['key']}",

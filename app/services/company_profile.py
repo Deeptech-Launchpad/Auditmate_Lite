@@ -117,6 +117,19 @@ def to_form(profile: dict) -> dict:
     if isinstance(directors, str):
         directors = [directors]
 
+    # The address arrives as printed on a business profile or in a set of
+    # signed accounts: "10 Ubi Crescent #06-51 Ubi Techpark / Singapore
+    # 408564". The postal code is also stored on its own, and the cover and
+    # the notes add "Singapore <postal code>" themselves - so the country and
+    # code left on the address line printed twice.
+    postal = (profile.get("postal_code") or "").strip()
+    line2 = (profile.get("address_line2") or "").strip()
+    if postal and line2:
+        import re
+        line2 = re.sub(r"[,\s]*(singapore)?\s*" + re.escape(postal) + r"\s*$",
+                       "", line2, flags=re.IGNORECASE).strip(" ,")
+    profile = {**profile, "address_line2": line2}
+
     values = {
         "name": (profile.get("name") or "").strip() or None,
         "legal_name": (profile.get("name") or "").strip() or None,
