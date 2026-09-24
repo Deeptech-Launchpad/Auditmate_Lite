@@ -526,6 +526,16 @@ def _pair_by_year(items):
 def review(document_id):
     """Review & Correct: extracted data beside the original document."""
     document = _load_document(document_id)
+
+    # A document that is itself last year's has no use for its own year-before
+    # column. Clear anything flagged there, so documents read before this rule
+    # existed stop asking for a review nobody can do.
+    from ..services.identify import (clear_unused_year_flags,
+                                     is_last_year_document)
+    if clear_unused_year_flags(document):
+        db.session.commit()
+    last_year_doc = is_last_year_document(document)
+
     items = (ExtractedLineItem.query
              .filter_by(document_id=document.id)
              .order_by(ExtractedLineItem.row_index).all())
@@ -574,7 +584,8 @@ def review(document_id):
     # this year's arithmetic is right; leaving its rows unverified is not.
     prior_rows = _live([i for i in items if i.period == "previous"])
     prior_balance = (reconcile_trial_balance(prior_rows)
-                     if prior_rows and balances_by_nature else None)
+                     if prior_rows and balances_by_nature and not last_year_doc
+                     else None)
 
     # One row per account, not one row per figure.
     #
@@ -586,6 +597,10 @@ def review(document_id):
     # state no real file could produce. Pairing the two years onto one row
     # also puts them where they can be compared: side by side.
     pairs = _pair_by_year(items)
+    if last_year_doc:
+        # Only the column that counts. A row that exists only in the year
+        # before is not an account of this engagement at all.
+        pairs = [{**p, "prior": None} for p in pairs if p["current"]]
 
     flagged = sum(1 for i in items if i.needs_review and i.status == "auto")
 
@@ -599,7 +614,7 @@ def review(document_id):
         "documents/review.html",
         document=document,
         pairs=pairs,
-        has_prior=any(p["prior"] for p in pairs),
+        has_prior=(not last_year_doc) and any(p["prior"] for p in pairs),
         fy=document.financial_year,
         customer=document.financial_year.customer,
         items=items, balance=balance, prior_balance=prior_balance,
@@ -793,6 +808,9 @@ def verify(document_id):
     """Sign the document off so its data can feed the statements."""
     document = _load_document(document_id)
 
+    from ..services.identify import clear_unused_year_flags
+    clear_unused_year_flags(document)
+
     outstanding = (ExtractedLineItem.query
                    .filter_by(document_id=document.id, needs_review=True,
                               status="auto").count())
@@ -893,6 +911,8 @@ def recategorise(document_id):
 
     before = document.category
     document.category = category
+    from ..services.identify import clear_unused_year_flags
+    clear_unused_year_flags(document)
     # A person decided. Nothing automatic overwrites this afterwards -
     # not the file name, and not a later re-read of the contents.
     document.category_source = "manual"

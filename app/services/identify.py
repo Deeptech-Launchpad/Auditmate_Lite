@@ -252,7 +252,7 @@ def _describes_last_year(document, raw_text):
     return None
 
 
-def identify_document(document, raw_text="", page_count=None):
+def _identify_document(document, raw_text="", page_count=None):
     """Set a document's category from its contents, unless a human set it.
 
     Returns (category, reason, changed). Called at the end of extraction,
@@ -308,3 +308,44 @@ def identify_document(document, raw_text="", page_count=None):
     document.category_reason = reason[:255]
     log.info("Document %s: identified as %s (%s)", document.id, category, reason)
     return category, reason, changed
+
+
+# Documents that are themselves LAST year's. Their first column is the year
+# that counts here; the second is the year before that, which nothing in this
+# engagement reads - so it is neither shown nor allowed to hold up review.
+LAST_YEAR_CATEGORIES = set(PRIOR_YEAR_TWIN.values()) | {"signed_accounts"}
+
+
+def is_last_year_document(document):
+    return document.category in LAST_YEAR_CATEGORIES
+
+
+def clear_unused_year_flags(document):
+    """Stop the year-before rows of a last-year document needing review.
+
+    They score low like any row, and the review screen listed each account
+    once with both years - so a preparer accepted the six rows they could
+    see and was told six more still needed checking, rows they had no cell
+    to accept and no reason to look at. Returns how many were cleared.
+    """
+    from ..extensions import db
+    from ..models import ExtractedLineItem
+
+    if not is_last_year_document(document):
+        return 0
+    cleared = (ExtractedLineItem.query
+               .filter_by(document_id=document.id, period="previous",
+                          needs_review=True, status="auto")
+               .update({"needs_review": False}))
+    if cleared:
+        db.session.flush()
+    return cleared
+
+
+def identify_document(document, raw_text="", page_count=None):
+    """See _identify_document. Then clears the flags on a last-year
+    document's unused year-before column."""
+    outcome = _identify_document(document, raw_text=raw_text,
+                                 page_count=page_count)
+    clear_unused_year_flags(document)
+    return outcome
