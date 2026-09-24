@@ -173,8 +173,15 @@
          style="margin:0;border-radius:0;border-left:0;border-right:0">
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <span>
+          {% if document.category.startswith('prior_') or document.category == 'signed_accounts' %}
+          This document is itself last year's. Its first column is last
+          year's figures, which is the year that counts here; the second is
+          the year before that.
+          <span class="muted">Each account is listed once, with both years.</span>
+          {% else %}
           Last year's figures were read from a separate column in this file.
           <span class="muted">Each account is listed once, with both years.</span>
+          {% endif %}
         </span>
         {% if document.review_status != 'verified' %}
         <form method="post" style="margin-left:auto"
@@ -204,7 +211,7 @@
                the finding, and it is invisible when the two figures are
                thirteen rows apart. #}
             {% if has_prior %}
-            <th style="width:132px" class="right">Last year</th>
+            <th style="width:132px" class="right">{% if document.category.startswith('prior_') or document.category == 'signed_accounts' %}Year before{% else %}Last year{% endif %}</th>
             {% endif %}
             <th style="width:62px">Conf.</th>
             <th style="width:74px">Source</th>
