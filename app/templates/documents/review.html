@@ -183,7 +183,14 @@
           <span class="muted">Each account is listed once, with both years.</span>
           {% endif %}
         </span>
-        {% if document.review_status != 'verified' %}
+        {# A prior-year document whose year the app read from its own title
+           already knows which column is which; asking "are the years the
+           wrong way round?" there only invites turning a right answer into
+           a wrong one. Still offered for every other document. #}
+        {% set year_from_title = document.category.startswith('prior_')
+                                 and document.category_source == 'content'
+                                 and 'made up to' in (document.category_reason or '') %}
+        {% if document.review_status != 'verified' and not year_from_title %}
         <form method="post" style="margin-left:auto"
               action="{{ url_for('documents.swap_years', document_id=document.id) }}"
               onsubmit="return confirm('Turn the two years around on every figure in this document?')">
