@@ -270,6 +270,21 @@ def apply_to_report(report, template_path):
             section.title = titles[key]
             retitled += 1
 
+    lined = 0
+    from . import template_statements
+    profile = template_statements.read_profile(template_path)
+    statement_profile = {
+        "statement_comprehensive_income": profile.get("profit_and_loss"),
+        "statement_financial_position": profile.get("balance_sheet"),
+    }
+    for section in report.sections:
+        rows = statement_profile.get(section.section_key)
+        if rows and section.section_key in outline:
+            binding = dict(section.data_binding or {})
+            binding["presentation"] = rows
+            section.data_binding = binding
+            lined += 1
+
     covered = False
     if cover:
         for section in report.sections:
@@ -288,7 +303,8 @@ def apply_to_report(report, template_path):
                 section.data_binding = binding
                 covered = True
 
-    if not (switched_off or switched_on or retitled or covered):
+    if not (switched_off or switched_on or retitled or covered
+            or lined):
         return None
 
     parts = []
@@ -300,4 +316,6 @@ def apply_to_report(report, template_path):
         parts.append(f"used its wording for {retitled} statement title(s)")
     if covered:
         parts.append("used its cover page wording")
+    if lined:
+        parts.append(f"drew {lined} statement(s) in its own lines")
     return "; ".join(parts)

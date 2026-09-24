@@ -133,7 +133,7 @@
 {% endmacro %}
 
 {% macro stmt_label(line) %}
-  {% if editable %}
+  {% if editable and line.id %}
     <span class="ed-label{{ ' is-edited' if line.label_is_overridden }}"
           contenteditable="true" data-line-id="{{ line.id }}"
           data-field="label" data-original="{{ line.label }}"
@@ -143,7 +143,7 @@
 {% endmacro %}
 
 {% macro stmt_amount(line) %}
-  {% if editable %}
+  {% if editable and line.id %}
     {% set from_tb = (line.source_line_item_ids or [])|length %}
     <td class="num ed-cell{{ ' is-overridden' if line.is_overridden }}{{
            ' from-tb' if from_tb and not line.is_overridden }}{{
@@ -335,7 +335,7 @@
                rule needs to look across a whole group to decide a subtotal,
                so it lives in reports.visible_statement_lines rather than
                here. #}
-            {% for line in visible_lines(statement.lines, detailed) %}
+            {% for line in (payload.presented or visible_lines(statement.lines, detailed)) %}
               {% if line.group_key != ns.group %}
                 {% set ns.group = line.group_key %}
                 {% set heading = headings.get(line.group_key) %}
@@ -379,7 +379,7 @@
                 {{ amount_cell(line.amount_previous,
                     {"token": "PRIORFS", "field": line.line_key,
                      "scope": "", "member": ""} if not line.is_detail
-                    else none) }}
+                    and not line.no_prior_entry else none) }}
               </tr>
               {% endif %}
             {% endfor %}

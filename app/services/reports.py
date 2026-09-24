@@ -1627,6 +1627,18 @@ def section_payload(section, customer, financial_year, chips: bool = False):
             payload["statement"] = FinancialStatement.query.filter_by(
                 financial_year_id=financial_year.id,
                 statement_type=statement_type).first()
+        # The customer's own lines, where the report was created from their
+        # template and the statement is not the detailed breakdown.
+        payload["presented"] = None
+        lines = (section.data_binding or {}).get("presentation")
+        if lines and payload["statement"] is not None and not payload["detailed"]:
+            from . import template_statements
+            try:
+                payload["presented"] = template_statements.present(
+                    payload["statement"], lines)
+            except Exception:                              # noqa: BLE001
+                log.exception("Could not draw %s in the template's lines",
+                              section.section_key)
     else:
         payload["html"] = render_bindings(section.content_html or "",
                                           customer, financial_year,

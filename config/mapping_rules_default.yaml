@@ -204,8 +204,11 @@
 # the account type keeps the asset rule above from fitting.
 - {pattern: "due from (a |the )?director", match: regex, statement: balance_sheet, line: trade_payables, priority: 2, sign: -1}
 # Signed accounts word these as a face statement does.
-- {pattern: "loan from a bank",       statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
-- {pattern: "loan from bank",         statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
+# Signed accounts list "Loan from a bank" under a non-current heading
+# that the extracted row no longer carries; non-current is the usual
+# case, and the preparer can remap an account that is not.
+- {pattern: "loan from a bank",       statement: balance_sheet, line: long_term_borrowings, priority: 2, sign: -1}
+- {pattern: "loan from bank",         statement: balance_sheet, line: long_term_borrowings, priority: 2, sign: -1}
 - {pattern: "bank loan",              statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
 - {pattern: "trade and other receivable", statement: balance_sheet, line: trade_receivables, priority: 12}
 - {pattern: "administrative expense", statement: profit_and_loss, line: other_expenses, priority: 12}
