@@ -28,8 +28,11 @@ source is worse than an unset one. An auditor's own choice is never
 overruled.
 """
 import logging
+import re
+from datetime import date, timedelta
 from decimal import Decimal
 
+from ..models import PRIOR_YEAR_TWIN
 from .classify import classify
 from .extraction.base import looks_like_total_label
 from .mapping import match_label
@@ -198,6 +201,57 @@ def looks_like_signed_accounts(raw_text, page_count):
     return has_notes and has_position and has_result
 
 
+# The date a statement is made up to, as its own title states it: "For the
+# year ended 31 December 2024", "As at 31 Dec 2024". Spaces are optional
+# because a PDF's text layer often has none ("Fortheyearended31December2024").
+# Only the title phrase is read - a column heading like "31 DEC 2024" also
+# appears on a current-year balance sheet beside its comparative, and reading
+# those would file this year's own document as last year's.
+_MONTHS = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun",
+     "jul", "aug", "sep", "oct", "nov", "dec"), start=1)}
+_PERIOD_END = re.compile(
+    r"(?:year\s*ended|period\s*ended|years\s*ended|as\s*at|as\s*of|"
+    r"financial\s*year\s*ended)\s*(\d{1,2})\s*([A-Za-z]{3,9})\s*(\d{4})",
+    re.IGNORECASE)
+
+
+def detect_period_end(raw_text):
+    """The date a document says it runs to, or None."""
+    for day, month, year in _PERIOD_END.findall((raw_text or "")[:2500]):
+        number = _MONTHS.get(month[:3].lower())
+        if not number:
+            continue
+        try:
+            return date(int(year), number, int(day))
+        except ValueError:
+            continue
+    return None
+
+
+def _describes_last_year(document, raw_text):
+    """The period the document states, if that is the year BEFORE this one.
+
+    A client sends last year's profit and loss or trial balance beside this
+    year's, and nothing in a file NAME says which is which. The document
+    itself does: it states the year it is made up to. Left to the Year box
+    the wrong year's figures count as this year's - the review screen then
+    showed last year's profit and loss, titled "for the year ended 31
+    December 2024", with the 2024 column as this year and asked whether "the
+    years are the wrong way round".
+    """
+    stated = detect_period_end(raw_text)
+    if stated is None:
+        return None
+    financial_year = document.financial_year
+    previous = getattr(financial_year, "previous_year", None)
+    last_end = (previous.end_date if previous is not None
+                else financial_year.start_date - timedelta(days=1))
+    if abs((stated - last_end).days) <= 5 and             abs((stated - financial_year.end_date).days) > 5:
+        return stated
+    return None
+
+
 def identify_document(document, raw_text="", page_count=None):
     """Set a document's category from its contents, unless a human set it.
 
@@ -231,9 +285,22 @@ def identify_document(document, raw_text="", page_count=None):
     if category is None:
         # The contents did not settle it, so whatever the file name decided
         # stands. Saying nothing is better than overwriting a reasonable
-        # guess with a worse one.
+        # guess with a worse one - though the year the document states is
+        # still worth acting on.
         log.info("Document %s: contents inconclusive (%s)", document.id, reason)
-        return document.category, reason, False
+        if (document.category in PRIOR_YEAR_TWIN
+                and _describes_last_year(document, raw_text) is not None):
+            category = document.category
+        else:
+            return document.category, reason, False
+
+    # Which year it describes. Only for a current-year category: a prior-year
+    # one was already chosen by a person or by an earlier pass.
+    last_year = _describes_last_year(document, raw_text)
+    if last_year is not None and category in PRIOR_YEAR_TWIN             and category not in {"signed_accounts"}:
+        category = PRIOR_YEAR_TWIN[category]
+        reason = (f"{reason}; it is made up to {last_year:%d %B %Y}, which "
+                  f"is last year, so it is filed as the prior-year version")
 
     changed = category != document.category
     document.category = category
