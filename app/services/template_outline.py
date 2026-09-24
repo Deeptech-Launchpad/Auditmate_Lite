@@ -239,6 +239,53 @@ TITLED_SECTIONS = {"statement_comprehensive_income",
                    "statement_changes_equity", "statement_cash_flows"}
 
 
+def _align_notes(report, profile):
+    """Point three notes at the same lines as the statements drawn above them.
+
+    The statements are drawn in the customer's lines: Administrative expenses
+    without the income and finance items, Other income with the interest, and
+    one "Trade and other receivables". The notes behind them were built from
+    the standard lines, so each disagreed with its statement by exactly the
+    part that moved (note 6 by 20,768, note 10 by 11,563). They are set to
+    list what the statement line adds up. Returns how many were changed.
+    """
+    from .reports import _operating_expense_keys
+
+    pl = {row["type"] for row in profile.get("profit_and_loss") or []}
+    bs = {row["type"]: row for row in profile.get("balance_sheet") or []}
+    income = {"other_income", "interest_income", "iras_rebate"}
+    finance = {"interest_expense"}
+
+    def rekey(section, keys):
+        specs = [dict(spec) for spec in
+                 (section.data_binding or {}).get("note_table_specs") or []]
+        if not specs:
+            return False
+        specs[0]["keys"] = keys
+        binding = dict(section.data_binding or {})
+        binding["note_table_specs"] = specs
+        section.data_binding = binding
+        return True
+
+    changed = 0
+    for section in report.sections:
+        key = section.section_key
+        if key == "note__administrative_and_other_expenses" and pl:
+            keys = [k for k in _operating_expense_keys()
+                    if not ("other_income" in pl and k in income)
+                    and not ("finance_cost" in pl and k in finance)]
+            changed += rekey(section, keys)
+        elif key == "note__other_income" and "other_income" in pl:
+            changed += rekey(section, ["other_income", "interest_income",
+                                       "iras_rebate"])
+        elif key == "note__trade_receivables" and "receivables" in bs:
+            if rekey(section, ["trade_receivables", "prepayments",
+                               "contract_assets"]):
+                section.title = bs["receivables"]["label"]
+                changed += 1
+    return changed
+
+
 def apply_to_report(report, template_path):
     """Shape a new report like the customer's own template.
 
@@ -285,6 +332,8 @@ def apply_to_report(report, template_path):
             section.data_binding = binding
             lined += 1
 
+    aligned = _align_notes(report, profile)
+
     covered = False
     if cover:
         for section in report.sections:
@@ -304,7 +353,7 @@ def apply_to_report(report, template_path):
                 covered = True
 
     if not (switched_off or switched_on or retitled or covered
-            or lined):
+            or lined or aligned):
         return None
 
     parts = []
@@ -318,4 +367,6 @@ def apply_to_report(report, template_path):
         parts.append("used its cover page wording")
     if lined:
         parts.append(f"drew {lined} statement(s) in its own lines")
+    if aligned:
+        parts.append(f"matched {aligned} note(s) to those lines")
     return "; ".join(parts)
