@@ -203,6 +203,18 @@ def _block_accounts(spec, financial_year, statements):
         rows.append(_row(account.account_name, amount, previous,
                          ref=f"tb:{account.id}"))
 
+    if not rows and not signed:
+        # Nothing on this year's trial balance, but last year had a figure:
+        # income of 24,947 last year and none this year is a real thing for
+        # a note to say. Returning nothing left the note as a heading over a
+        # blank page. One row per line that had a figure, at nil this year.
+        from .classify import _index
+        labels = _index()
+        for key in keys:
+            if key in prior_totals:
+                rows.append(_row((labels.get(key) or {}).get("label") or key,
+                                 ZERO, prior_totals[key]))
+
     if not rows:
         return None
 
