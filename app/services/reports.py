@@ -734,6 +734,14 @@ def _assemble_v2_note(note, financial_year, first_year=False, period=None,
                                                 "offered": offered}
 
 
+def _operating_expense_keys():
+    """Every standard line that sits in the statement's operating expenses."""
+    from .classify import _index
+
+    return sorted(key for key, entry in _index().items()
+                  if entry.get("group") == "operating_expenses")
+
+
 def _assemble_note_content(note, present, first_year=False, period=None,
                            previous_period=None, financial_year=None):
     """Build a note's starting text and figure tables from whichever of its
@@ -845,6 +853,15 @@ def _assemble_note_content(note, present, first_year=False, period=None,
                 html_parts.append(f"<p>{wording}</p>")
         elif piece.get("output_form") in TABLE_FORMS:
             keys = piece.get("tb_keys") or []
+            signed = False
+            if note.get("key") == "administrative_and_other_expenses":
+                # The library asks this note for depreciation and staff
+                # costs, so it listed two accounts' worth of a 696,122
+                # expense block. The note explains the operating expenses
+                # line, so it lists everything in that line, signed so the
+                # income items inside it net off and the total ties to it.
+                keys = _operating_expense_keys()
+                signed = True
             # Several pieces in one note (a movement schedule, a class
             # breakdown, a useful-lives table) can share the same trial
             # balance keys because the account-level breakdown is all this
@@ -862,8 +879,11 @@ def _assemble_note_content(note, present, first_year=False, period=None,
                 # figures and nothing in front of them. Auditor-editable
                 # afterwards like the rest of this table, same as a
                 # statement's own "Total ..." rows.
-                table_specs.append({"source": "accounts", "keys": keys,
-                                    "heading": heading, "total": "Total"})
+                spec = {"source": "accounts", "keys": keys,
+                        "heading": heading, "total": "Total"}
+                if signed:
+                    spec["signed"] = True
+                table_specs.append(spec)
             # No resolvable trial balance keys: nothing to compute, so
             # nothing is added. The auditor adds it by hand if it applies -
             # see readiness.py for the equivalent "flag, don't fabricate"

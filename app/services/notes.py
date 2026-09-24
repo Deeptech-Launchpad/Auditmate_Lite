@@ -176,8 +176,15 @@ def _block_accounts(spec, financial_year, statements):
 
     for account in accounts:
         amount = Decimal(str(account.net or 0))
-        if amount < 0:
+        # `signed` keeps a credit as a credit. A breakdown of the operating
+        # expenses block holds income lines too (other income, interest
+        # income - the template files them there as credits), and making
+        # every figure positive counted them as costs: the note came to
+        # 757,291 against 696,122 on the statement it explains.
+        if amount < 0 and not spec.get("signed"):
             amount = -amount
+        if spec.get("signed") and amount == 0:
+            continue                    # an account with nothing in it
         if shared.get(account.standard_key, 0) > 1:
             # Sole claim on the key's total is what makes it this row's
             # figure. With siblings under the same key it has to be this
