@@ -476,6 +476,14 @@ def ensure_report(financial_year) -> AuditReport:
     note_library.pin_version(financial_year)
     db.session.flush()
 
+    # Last year's figures at the grain the notes need, from the notes of the
+    # signed accounts. Before the notes are built, so they see them.
+    from . import signed_notes
+    try:
+        signed_notes.fill(financial_year)
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not read last year's note figures")
+
     present = _present_keys(financial_year)
 
     report = AuditReport(

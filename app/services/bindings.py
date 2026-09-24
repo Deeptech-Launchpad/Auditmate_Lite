@@ -304,6 +304,27 @@ class Figures:
                     result["totals"].pop(code, None)
                     result["ids"].pop(code, None)
 
+    def _note_figures(self, result):
+        """Last year at line-code grain, read from the signed accounts' notes.
+
+        Where the signed balance sheet gives one figure for a line the library
+        splits, the signed accounts' own note gives the split - see
+        services/signed_notes. Only codes that note PROVED are here (its rows
+        add up to the signed balance sheet), so a code present is a settled
+        figure and one absent stays exactly as it was: held.
+        """
+        from ..models import DocumentFigure
+
+        for row in DocumentFigure.query.filter_by(
+                financial_year_id=self.financial_year.id, token="PRIORNOTE",
+                scope="").all():
+            if row.amount is None:
+                continue
+            code = row.field
+            result["totals"][code] = self.present(code, Decimal(str(row.amount)))
+            result["held"].pop(code, None)
+            result["ids"].pop(code, None)
+
     def _entered_rows(self):
         from ..models import DocumentFigure
 
@@ -334,6 +355,7 @@ class Figures:
             # different branches and every one of them can be corrected.
             if offset == 1 and not result.get("nil"):
                 self._signed_corrections(result)
+                self._note_figures(result)
 
         self._periods[offset] = result
         return result
