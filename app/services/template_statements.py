@@ -345,12 +345,15 @@ def _present_balance_sheet(book, rows):
     share = line_for("share_capital", "Share capital", ["share_capital"],
                      "equity", note=_note(book, "share_capital"))
     retained = line_for("retained_earnings", "Retained earnings",
-                        ["retained_earnings"], "equity")
+                        ["retained_earnings"], "equity",
+                        note=_note(book, "retained_earnings") or "reserves")
     loan = line_for("loan", "Loan from a bank", ["long_term_borrowings"],
                     "non_current_liabilities",
                     note=_note(book, "long_term_borrowings"))
     tax_payable = line_for("tax_payable", "Income tax payable",
-                           ["tax_payable"], "current_liabilities")
+                           ["tax_payable"], "current_liabilities",
+                           note=_note(book, "tax_payable")
+                           or "income_tax_expense")
 
     consumed = {"cash_and_equivalents", "share_capital", "retained_earnings",
                 "long_term_borrowings", "tax_payable"}

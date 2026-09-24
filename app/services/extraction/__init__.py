@@ -182,8 +182,20 @@ def _read_prior_year_notes(document, path, file_type, raw_text) -> str:
     # last year's wording against the right note. No match is fine and is
     # left null - a company-specific note our library never had is precisely
     # the one worth keeping.
-    library = {_normalise_heading(entry.heading): entry.key
-               for entry in NoteLibraryEntry.query.all()}
+    # Against the library this engagement is pinned to, not the old flat one:
+    # its headings differ ("Trade receivables" there, "Trade and other
+    # receivables" in the versioned library), which left last year's
+    # receivables note reported as having no note to go to.
+    library = {}
+    try:
+        from ..reports import load_notes_catalogue
+        library = {_normalise_heading(n["heading"]): n["key"]
+                   for n in load_notes_catalogue(document.financial_year)}
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not read the pinned library for prior notes")
+    if not library:
+        library = {_normalise_heading(entry.heading): entry.key
+                   for entry in NoteLibraryEntry.query.all()}
 
     PriorYearNote.query.filter_by(source_document_id=document.id).delete()
 

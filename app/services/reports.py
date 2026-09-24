@@ -1203,6 +1203,13 @@ def prior_notes_dropped(report, financial_year):
                   .filter_by(financial_year_id=financial_year.id)
                   .order_by(PriorYearNote.id).all()):
 
+        # "2.2 Revenue recognition", "3.1 Critical judgements": headings
+        # inside a policy note. The note they sit in is what this year's
+        # accounts carry or drop; listing each as its own missing note buried
+        # the two or three that had really gone under eleven that had not.
+        if re.match(r"^\d+\.\d", str(prior.note_number or "")):
+            continue
+
         label = prior.title
         if prior.note_number:
             label = f"{prior.note_number}. {prior.title}"

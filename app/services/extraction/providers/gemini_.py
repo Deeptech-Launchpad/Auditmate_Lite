@@ -52,7 +52,16 @@ def _client():
     api_key = current_app.config.get("GEMINI_API_KEY")
     if not api_key:
         return None
-    from google import genai
+    # The SDK is imported on first use. Two requests arriving together, or one
+    # arriving while another is mid-import, hit "partially initialized module
+    # 'httpcore'" - a failure that clears on the next call. Retried once so
+    # the first read after a restart is not the one that comes back empty.
+    import time
+    try:
+        from google import genai
+    except (ImportError, AttributeError):
+        time.sleep(1.0)
+        from google import genai
     return genai.Client(api_key=api_key)
 
 
