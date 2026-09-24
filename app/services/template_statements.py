@@ -253,10 +253,20 @@ def present(statement, rows):
         return None
     book = {line.line_key: line for line in statement.lines}
     if statement.statement_type == "profit_and_loss":
-        return _present_profit_and_loss(book, rows)
-    if statement.statement_type == "balance_sheet":
-        return _present_balance_sheet(book, rows)
-    return None
+        drawn = _present_profit_and_loss(book, rows)
+    elif statement.statement_type == "balance_sheet":
+        drawn = _present_balance_sheet(book, rows)
+    else:
+        return None
+    # The same rule as the standard statements: a line with nothing in it in
+    # either year is left off. The customer's template lists every line it
+    # ever needed - Brown Rock's had "Income tax expenses (0)" because last
+    # year had some - and printing a row of dashes for a company with no tax
+    # in either year only asks the reader what is missing. Subtotals and
+    # totals always stay, since they anchor the statement.
+    return [row for row in drawn
+            if row.is_total or row.is_subtotal
+            or row.amount_current or row.amount_previous]
 
 
 def _present_profit_and_loss(book, rows):
