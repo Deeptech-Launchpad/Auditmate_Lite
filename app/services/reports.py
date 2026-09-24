@@ -2390,3 +2390,31 @@ def render_pdf(html: str, base_url: str = None) -> bytes:
     """Render assembled HTML into PDF bytes. Raises if WeasyPrint is absent."""
     import weasyprint
     return weasyprint.HTML(string=html, base_url=base_url).write_pdf()
+
+
+# --------------------------------------------------------------------------
+# Working marks stay out of the delivered document
+# --------------------------------------------------------------------------
+_CLEAN_RULES = [
+    # a figure nobody could source: an empty cell, never the word
+    (re.compile(r">\s*Incomplete\s*<"), "><"),
+    (re.compile(r'<p class="held-table">.*?</p>', re.S), ""),
+    (re.compile(r'<span class="missing-binding"[^>]*>.*?</span>', re.S), ""),
+    (re.compile(r'<tr class="working-note">.*?</tr>', re.S), ""),
+    # last year's wording awaiting this year's figure, and stray placeholders
+    (re.compile(r"\s?\[update:[^\]]*\]"), ""),
+    (re.compile(r"\s?\[[^\]]*\bnot (?:provided|set)\]"), ""),
+]
+
+
+def clean_for_client(html):
+    """The document without the app's own commentary.
+
+    Everything the app says about the work - "Incomplete", "[update: ...]",
+    "[... not provided]", "this draft cannot explain ..." - belongs to the
+    preparer's review, where the same items are listed against their note. None
+    of it is part of the accounts, so none of it is written into an export.
+    """
+    for pattern, replacement in _CLEAN_RULES:
+        html = pattern.sub(replacement, html)
+    return html

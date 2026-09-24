@@ -170,6 +170,29 @@ Anything typed into the report - note wording, edited figures, answers, section 
   </div>
 {% endif %}
 
+{% if skeleton %}
+<div class="card" style="margin-bottom:16px;border-left:3px solid {{ '#b3261e' if skeleton.mismatch else '#1f7a44' }}">
+  <div class="card-head"><h2 style="display:inline">Notes against last year's accounts:
+    <span style="color:{{ '#b3261e' if skeleton.mismatch else '#1f7a44' }}">{{ 'differ' if skeleton.mismatch else 'match' }}</span></h2></div>
+  <div class="card-body small">
+    <p style="margin-top:0">The report prints last year's {{ skeleton.count }} notes, in their order and under their titles.</p>
+    {% if skeleton.mismatch %}
+      <p><strong>Cannot be approved until these are settled:</strong></p>
+      <ul>{% for m in skeleton.mismatch %}<li>{{ m }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if skeleton.new %}
+      <p><strong>New this year, for you to decide.</strong> Last year's accounts had no note on these but the books now
+      hold a balance. They are off; switch one on in the Sections list to add it.</p>
+      <ul>{% for m in skeleton.new %}<li>{{ m }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if skeleton.left_out %}
+      <details><summary>{{ skeleton.left_out|length }} library notes left out (last year's accounts did not have them)</summary>
+      <ul>{% for m in skeleton.left_out %}<li>{{ m }}</li>{% endfor %}</ul></details>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 {% if follow.available %}
 <div class="card" style="margin-bottom:16px;border-left:3px solid #2563a8">
   <div class="card-head">

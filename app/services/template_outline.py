@@ -370,8 +370,11 @@ def apply_to_report(report, template_path):
                 section.data_binding = binding
                 covered = True
 
+    from . import template_skeleton
+    followed = template_skeleton.apply(report)
+
     if not (switched_off or switched_on or retitled or covered
-            or lined or aligned):
+            or lined or aligned or followed):
         return None
 
     parts = []
@@ -387,6 +390,8 @@ def apply_to_report(report, template_path):
         parts.append(f"drew {lined} statement(s) in its own lines")
     if aligned:
         parts.append(f"matched {aligned} note(s) to those lines")
+    if followed:
+        parts.append(followed)
     return "; ".join(parts)
 
 

@@ -14,7 +14,7 @@ from ..models import (AuditReport, AuditReportSection, Customer,
                       FinancialStatement, FinancialYear, ReportFigureOverride, StatementLine)
 log = logging.getLogger(__name__)
 
-from ..services import completion_needs
+from ..services import completion_needs, template_skeleton
 from ..services import template_follow
 from ..services import overrides as overrides_service
 from ..services import preparer_checks as checks_service
@@ -104,6 +104,7 @@ def builder(fy_id):
                            incomplete=incomplete,
                            needs=completion_needs.needs(incomplete),
                            follow=template_follow.panel(report),
+                           skeleton=template_skeleton.review(report),
                            summarise=completion_needs.summarise,
                            payloads=payloads,
                            ordered_sections=report_service.ordered_sections(report),
@@ -1188,6 +1189,13 @@ def finalise(fy_id):
               "error")
         return redirect(url_for("reports.builder", fy_id=fy_id))
 
+    # The notes must be the template's, in its order, before anything is issued.
+    mismatch = template_skeleton.check(report)
+    if mismatch:
+        flash("The report no longer matches last year's accounts, so it "
+              "cannot be approved: " + " ".join(mismatch), "error")
+        return redirect(url_for("reports.builder", fy_id=fy_id))
+
     # No clean final copy while anything is incomplete.
     incomplete = report_service.record_completeness(report, _assemble(report))
     if incomplete:
@@ -1343,6 +1351,7 @@ def export_word(report_id):
                                report, financial_year, payloads),
                            look=_template_look(report.financial_year.customer),
                            for_pdf=True, word_export=True)
+    html = report_service.clean_for_client(html)
 
     try:
         # Use customer's custom template if they uploaded one
@@ -1398,6 +1407,7 @@ def export(report_id):
                                report, report.financial_year, payloads),
                            look=_template_look(report.financial_year.customer),
                            for_pdf=True)
+    html = report_service.clean_for_client(html)
 
     if not report_service.weasyprint_available():
         # WeasyPrint isn't installed (typical on Windows dev machines) — send
