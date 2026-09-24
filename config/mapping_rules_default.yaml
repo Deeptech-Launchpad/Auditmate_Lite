@@ -208,7 +208,7 @@
 # that the extracted row no longer carries; non-current is the usual
 # case, and the preparer can remap an account that is not.
 - {pattern: "^loan from (a )?bank",   match: regex, statement: balance_sheet, line: long_term_borrowings, priority: 2, sign: -1}
-- {pattern: "^(bank|term) loans?\b", match: regex, statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
+- {pattern: '^bank loans?\b', match: regex, statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
 - {pattern: "trade and other receivable", statement: balance_sheet, line: trade_receivables, priority: 12}
 - {pattern: "administrative expense", statement: profit_and_loss, line: other_expenses, priority: 12}
 - {pattern: "repayment of loan",    statement: balance_sheet, line: short_term_borrowings, priority: 3, sign: -1}

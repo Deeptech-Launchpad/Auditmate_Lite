@@ -96,10 +96,26 @@ def _document_dependent(library_rows):
     return documents * 2 >= len(figure)
 
 
-def _book_balance(table, financial_year):
-    """Whether any row drawn from the books carries a balance this year."""
-    from decimal import Decimal
+def _book_codes(figures, binding):
+    """The line codes a row draws on. "One row per account" (PERACCOUNT) and
+    "each of these codes" (EACH) rows draw on the codes after the colon."""
+    binding = (binding or "").strip()
+    for prefix in ("PERACCOUNT:", "BALANCE:"):
+        if binding.startswith(prefix):
+            binding = binding[len(prefix):]
+    return figures.codes_in(binding) or (
+        [binding] if binding in figures.lines else [])
 
+
+def _book_balance(table, financial_year):
+    """Whether any row drawn from the books carries a balance, either year.
+
+    Asked of the line codes each row is bound to, including the per-account
+    rows: the first version resolved the raw binding, which cannot read
+    "PERACCOUNT:PL-OI", so a table listing this year's other income by account
+    looked empty and was left out.
+    """
+    from . import conditions
     from .bindings import figures_for
 
     figures = figures_for(financial_year)
@@ -108,13 +124,41 @@ def _book_balance(table, financial_year):
         if (not binding or binding in ("STATIC", "DOC:total")
                 or binding.split(":", 1)[0].strip() in _DOCUMENT_LIKE):
             continue
-        try:
-            value = figures.resolve(binding, 0, table.get("table_id") or "")
-        except Exception:                                    # noqa: BLE001
-            continue
-        if isinstance(value, Decimal) and value:
-            return True
+        for code in _book_codes(figures, binding):
+            if conditions.carries_balance(figures, code):
+                return True
     return False
+
+
+def this_years_books(note_code, financial_year, table=None):
+    """What this year's books hold on the lines the note covers.
+
+    [(line label, this year's amount)] for the note's lines that carry a
+    balance now or last year. Shown beside every table left out, because
+    "last year's accounts had none" says nothing about THIS year.
+    """
+    from decimal import Decimal
+
+    from . import conditions
+    from .bindings import figures_for
+
+    figures = figures_for(financial_year)
+    found, seen = [], set()
+    codes = list(conditions.subject_codes(figures, note_code))
+    # The lines the library says this table's total must agree with: the
+    # ageing table ties to trade receivables, which is not one of its note's
+    # own lines but is exactly what it would analyse.
+    for word in str((table or {}).get("totals_agree_with") or "").replace("+", " ").split():
+        if word in figures.lines and word not in codes:
+            codes.append(word)
+    for code in codes:
+        if code in seen or not conditions.carries_balance(figures, code):
+            continue
+        seen.add(code)
+        value = figures.resolve(code, 0)
+        found.append((figures.label(code),
+                      value if isinstance(value, Decimal) else None))
+    return found
 
 
 def _template_note_number(financial_year, note_code):
@@ -186,7 +230,9 @@ def left_out(report):
             if keep or tid in seen:
                 continue
             seen.add(tid)
+            books = this_years_books(spec.get("note_code"), financial_year, table)
             out.append({"table_id": tid, "note": section.title,
+                        "books": books,
                         "heading": spec.get("heading") or table.get("heading") or "",
                         "rows": [r.get("label") for r in table["rows"]
                                  if r.get("label")][:5],

@@ -1322,8 +1322,14 @@ def roll_forward_references(html, financial_year, section):
         return html
     if not mapped:
         return html
+    # A note that numbers ITS OWN sub-headings ("Note 4. Write off", the credit
+    # risk note) refers to those, not to a note of the accounts: "(Note 4)"
+    # there means its own fourth heading, and was being renumbered to the
+    # revenue note.
+    own = set(re.findall(r"<h4>\s*Note\s+(\d+)\.", html))
     return _NOTE_REF.sub(
-        lambda m: f"Note {mapped.get(m.group(1), m.group(1))}", html)
+        lambda m: ("Note " + m.group(1) if m.group(1) in own
+                   else f"Note {mapped.get(m.group(1), m.group(1))}"), html)
 
 
 _NUMBERED_HEADING = re.compile(r"^\d+(\.\d+)*\.?\s+\S")
@@ -1360,7 +1366,26 @@ def _grading_table(lines):
     return f'<table class="fin note-table grading">{head}<tbody>{body}</tbody></table>'
 
 
-def prior_text_to_html(text):
+def _carried_html(prior, financial_year):
+    """Last year's note, ready to sit in this year's report.
+
+    Dates rolled, figures marked for update, paragraphs and headings restored,
+    and the table of new accounting standards put back where the first reading
+    of the template lost it. Row-label lists are dropped only in a note whose
+    template counterpart printed figures (the real table prints from the
+    books); in a note of words they are content, and stay as a list.
+    """
+    from . import template_follow, template_tables
+
+    counts = template_follow._figure_notes(financial_year) or {}
+    drop = bool(counts.get(str(prior.note_number or "")))
+    html = prior_text_to_html(roll_forward_text(prior.body_text, financial_year),
+                              drop_labels=drop)
+    return template_tables.restore_standards_table(
+        html, getattr(financial_year.customer, "report_template_path", None))
+
+
+def prior_text_to_html(text, drop_labels=True):
     """Last year's plain-text note as paragraphs and headings.
 
     The signed accounts' note is stored as plain text - blank lines between
@@ -1403,6 +1428,8 @@ def prior_text_to_html(text):
     out = []
     for index, (kind, lines) in enumerate(blocks):
         if kind == "labels":
+            if not drop_labels:
+                out.append("<p>" + "<br>".join(escape(ln) for ln in lines) + "</p>")
             continue
         if kind in ("heading", "candidate"):
             if kind == "candidate":
@@ -1460,8 +1487,7 @@ def carry_forward_prior_wording(report, financial_year) -> int:
             raw = (carried.body_text or "").strip() if carried else ""
             if (carried is not None and carried.id == section.prior_note_id
                     and raw and (section.content_html or "").strip() == raw):
-                section.content_html = prior_text_to_html(
-                    roll_forward_text(carried.body_text, financial_year))
+                section.content_html = _carried_html(carried, financial_year)
                 filled += 1
             continue
 
@@ -1482,8 +1508,7 @@ def carry_forward_prior_wording(report, financial_year) -> int:
         if current and current != (default_html or "").strip():
             continue
 
-        section.content_html = prior_text_to_html(
-            roll_forward_text(prior.body_text, financial_year))
+        section.content_html = _carried_html(prior, financial_year)
         section.prior_note_id = prior.id
         filled += 1
 

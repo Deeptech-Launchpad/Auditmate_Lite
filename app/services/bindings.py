@@ -1340,6 +1340,7 @@ def _doc_total(rows, index, figures, first_year, named=None, partway=False):
             if column == "previous" and first_year:
                 continue
             row[column] = figures.resolve(f"FI:{side}", offset)
+        _fill_from_rows(row, group, first_year)
         return
 
     # The library ties this total to no statement line ("no total"): it is the
@@ -1380,19 +1381,31 @@ def _doc_total(rows, index, figures, first_year, named=None, partway=False):
             continue
         row[column] = figures.statement_total(codes, offset)
 
-    # A subtotal partway down a table ("Trade receivables - net", the rows
-    # above it less the loss allowance) is on no statement, so nothing states
-    # it and it was held Incomplete in both years. It is the rows above it,
-    # and where every one of them is a figure that is what it says.
-    if partway:
-        for column in ("current", "previous"):
-            if column == "previous" and first_year:
-                continue
-            if not _is_held(row[column]):
-                continue
-            values = [r[column] for r in group]
-            if values and all(isinstance(v, Decimal) for v in values):
-                row[column] = sum(values, ZERO)
+    _fill_from_rows(row, group, first_year)
+
+
+def _fill_from_rows(row, group, first_year):
+    """A total nothing states is the sum of the rows above it.
+
+    A total the statements do not print, or cannot state for one year, was held
+    Incomplete even though every row above it was a figure - last year's
+    "Wages", "Part timers" and "Staff allowance" all known, and the total
+    still Incomplete. Where EVERY row in the group is a figure, the total is
+    what those rows add up to, and that is what is filled in. A row that is
+    itself Incomplete keeps the total Incomplete: an unknown cannot be added.
+
+    A total the statements DO state keeps that figure, so a table that omits a
+    line the statement carries still shows the difference; and the note's own
+    completeness rule (a balance with nowhere to print) still holds it.
+    """
+    for column in ("current", "previous"):
+        if column == "previous" and first_year:
+            continue
+        if not _is_held(row[column]):
+            continue
+        values = [r[column] for r in group]
+        if values and all(isinstance(v, Decimal) for v in values):
+            row[column] = sum(values, ZERO)
 
 
 def uncovered_lines(specs, financial_year):

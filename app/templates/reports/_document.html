@@ -543,7 +543,7 @@
                   {% elif cell is none %}
                     <td class="num"></td>
                   {% else %}
-                    <td class="num{{ ' total-col' if loop.last }}{{
+                    <td class="num{{ ' total-col' if loop.last and not table.year_groups }}{{
                         ' unsourced' if cell is none }}">{{ cell|stmt }}</td>
                   {% endif %}
                 {% endfor %}

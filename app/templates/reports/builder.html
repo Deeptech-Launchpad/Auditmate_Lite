@@ -191,13 +191,23 @@ Anything typed into the report - note wording, edited figures, answers, section 
       {% if follow.left_out %}
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="text-align:left;color:#6b7280">
-            <th style="padding:4px 8px 4px 0">Left out</th><th style="padding:4px 8px">Why</th><th></th></tr></thead>
+            <th style="padding:4px 8px 4px 0">Left out</th><th style="padding:4px 8px">Why, and what this year's books hold</th><th></th></tr></thead>
           <tbody>
           {% for item in follow.left_out %}
             <tr style="border-top:1px solid #e5e7eb;vertical-align:top">
               <td style="padding:8px 8px 8px 0"><strong>{{ item.note }}</strong>
                 <div class="muted small">{{ item.rows[:3]|join(' · ') }}{% if item.rows|length > 3 %} …{% endif %}</div></td>
-              <td style="padding:8px" class="small">{{ item.why }}</td>
+              <td style="padding:8px" class="small">{{ item.why }}
+                {% if item.books %}
+                  <div style="margin-top:4px;color:#9a5b00">
+                    <strong>This year's books do carry:</strong>
+                    {% for label, amount in item.books[:3] %}{{ label }}{% if amount is not none %} ({{ '{:,.0f}'.format(amount) }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.
+                    Check this table is not needed before leaving it out.
+                  </div>
+                {% else %}
+                  <div class="muted" style="margin-top:4px">This year's books: nothing on these lines.</div>
+                {% endif %}
+              </td>
               <td style="padding:8px 0;text-align:right">
                 {% if not fy.is_closed %}
                 <button type="button" class="btn" data-fy="{{ fy.id }}" data-follow-action="add_back"
