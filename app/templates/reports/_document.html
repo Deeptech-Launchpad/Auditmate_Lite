@@ -452,11 +452,34 @@
           <span class="incomplete-badge" title="{{ payload.incomplete|join(' · ') }}">Incomplete</span>{% endif %}</h3>
         {% if editable and payload.incomplete %}
           {# Working file only: what this note is waiting for. #}
-          <ul class="incomplete-why">
-            {% for reason in payload.incomplete[:6] %}<li>{{ reason }}</li>{% endfor %}
-            {% if payload.incomplete|length > 6 %}<li>and {{ payload.incomplete|length - 6 }} more</li>{% endif %}
+          <ul class="incomplete-why" title="{{ payload.incomplete|join(' | ') }}">
+            {% for line in payload.incomplete_summary or payload.incomplete[:2] %}<li>{{ line }}</li>{% endfor %}
           </ul>
         {% endif %}
+
+      {% endif %}
+
+      {# Paragraphs the library holds until the preparer says whether they
+         apply. Answered here, in the note, where the wording will sit. #}
+      {% if editable and payload.confirm %}
+        {% for item in payload.confirm %}
+        <div class="confirm-box" id="confirm-{{ item.section_id }}-{{ item.para_id }}"
+             data-section-id="{{ item.section_id }}" data-para-id="{{ item.para_id }}">
+          <div class="confirm-q"><span class="confirm-tag">{{ 'OPTIONAL' if item.optional else 'CONFIRM' }}</span>
+            {{ item.question if item.question and item.question|lower not in ('always', '-') else 'Does this apply?' }}</div>
+          {% if item.wording and '[table' not in item.wording %}
+            <div class="confirm-wording">{{ item.wording|safe }}</div>
+          {% endif %}
+          <div class="confirm-actions">
+            {% if item.wording and '[table' not in item.wording %}
+              <button type="button" class="confirm-yes" data-decision="yes">Applies &mdash; add to the note</button>
+              <button type="button" class="confirm-no" data-decision="no">Does not apply</button>
+            {% else %}
+              <button type="button" class="confirm-no" data-decision="no">Done &mdash; nothing to add</button>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
       {% endif %}
 
       {# `ov-show` turns on the margin mark that a paragraph carrying

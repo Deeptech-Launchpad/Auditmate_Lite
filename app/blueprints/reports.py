@@ -102,6 +102,7 @@ def builder(fy_id):
                            editable=editable,
                            incomplete=incomplete,
                            needs=completion_needs.needs(incomplete),
+                           summarise=completion_needs.summarise,
                            payloads=payloads,
                            ordered_sections=report_service.ordered_sections(report),
                            note_numbers=report_service.note_number_map(report),
@@ -750,6 +751,57 @@ def update_document_figure():
         statements_service.build_all(financial_year.id, use_ai=False)
 
     return jsonify({"ok": True, "amount": float(amount)})
+
+
+@bp.route("/api/confirm-paragraph", methods=["PATCH"])
+@login_required
+def confirm_paragraph():
+    """Answer a paragraph the library holds for the preparer: it applies, or
+    it does not.
+
+    The library marks some paragraphs "Preparer confirms ..." - the Company
+    renders services, a material uncertainty exists - that no balance or
+    document can decide. They were listed as CONFIRM with nowhere to confirm,
+    so their notes stayed incomplete for good. A yes prints the paragraph in
+    the note; a no leaves it out. Either way the answer is kept for the
+    engagement (a CONFIRM figure), so a rebuilt note does not ask again.
+    """
+    from ..services import document_fields
+
+    payload = request.get_json(silent=True) or {}
+    section = db.session.get(AuditReportSection, payload.get("section_id") or 0)
+    if section is None:
+        return jsonify({"ok": False, "error": "Unknown note."}), 404
+    report = db.session.get(AuditReport, section.report_id)
+    year = db.session.get(FinancialYear, report.financial_year_id)
+    if year.is_closed:
+        return jsonify({"ok": False, "error": "This engagement is closed."}), 400
+
+    para_id = (payload.get("para_id") or "").strip()
+    decision = (payload.get("decision") or "").strip().lower()
+    if not para_id or decision not in ("yes", "no"):
+        return jsonify({"ok": False, "error": "Nothing to save here."}), 400
+
+    binding = dict(section.data_binding or {})
+    wording = ""
+    for kind in ("awaiting_preparer", "offered_to_preparer"):
+        kept = []
+        for item in binding.get(kind, []):
+            if item.get("para_id") == para_id:
+                wording = wording or (item.get("wording") or "")
+            else:
+                kept.append(item)
+        if kept or kind in binding:
+            binding[kind] = kept
+
+    if decision == "yes" and wording.strip() and "[table" not in wording:
+        section.content_html = ((section.content_html or "")
+                                + f'<p data-para="{para_id}">{wording}</p>')
+    section.data_binding = binding
+    document_fields.save(year, "CONFIRM", para_id, text=decision,
+                         found_at="confirmed in the report")
+    db.session.commit()
+    return jsonify({"ok": True, "decision": decision})
 
 
 @bp.route("/api/note-paragraph", methods=["PATCH"])

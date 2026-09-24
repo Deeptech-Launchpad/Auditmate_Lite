@@ -72,13 +72,13 @@ lines:
     # general administration, which is where they landed while "levy"
     # pointed at MOM application fee.
     #
-    # PL-CPF because it is the employer's statutory payroll cost on this
-    # library, and it is what carries a figure into the employee benefits
-    # note. Library 3.9 adds PL-LEVY for exactly this and the default
-    # should move to it when the engine is built against that version.
+    # PL-LEVY where the library defines it (3.9 onward, added for exactly
+    # this), so the levy has its own row in the employee benefits note and
+    # the CPF row is no longer net of a levy credit. An older library has no
+    # PL-LEVY, so it keeps PL-CPF, the employer's statutory payroll cost.
     # PL-ADM stays on the list for a firm that presents them as overheads.
-    codes: [PL-CPF, PL-ADM]
-    default: PL-CPF
+    codes: [PL-LEVY, PL-CPF, PL-ADM]
+    default: [PL-LEVY, PL-CPF]
   directors_remuneration: {codes: [PL-DIRFEE]}
 
   # --- Profit and loss: depreciation, leases, finance, tax ----------------

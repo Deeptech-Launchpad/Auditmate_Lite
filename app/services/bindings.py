@@ -515,7 +515,14 @@ class Figures:
             for other in (self.categories.get(key) or {}).get("codes") or []:
                 if other in codes:
                     continue
-                if any(self._carries(other, o) for o in (0, 1)):
+                # This year the accounts on the line say exactly what it holds.
+                # Last year comes from the signed set at line-code grain, which
+                # the accounts cannot speak for, so a clash there is judged as
+                # before - but only where last year's statement actually holds
+                # this line (else there is nothing on it to over-cover).
+                last_year_holds = key in self.period(1).get("statement", {})
+                if (self._key_carries(key, other, 0)
+                        or (last_year_holds and self._carries(other, 1))):
                     # The label alone. The code used to follow it in
                     # brackets, which told a developer which binding and
                     # told a preparer nothing they could act on.
@@ -545,6 +552,41 @@ class Figures:
             amount = period["statement"][key]
             total += -amount if key in flipped else amount
         return total
+
+    def _key_carries(self, key, code, offset):
+        """Whether an account on this statement line sits under `code`.
+
+        The guard on a total row: the statement line also covers a balance the
+        table has no row for. It used to ask whether the CODE carried a balance
+        anywhere - which a line that merely ALLOWS a code (the levy's line
+        allows administrative expenses) failed whenever any other account held
+        that code, blocking a total no account contradicted. Asked of the
+        accounts on the line itself, it flags only a real clash: an account on
+        this line mapped to a code the table leaves out, or not mapped yet.
+        """
+        from ..models import TrialBalanceAccount
+
+        if offset > 1:
+            return False
+        accounts = getattr(self, "_line_accounts", None)
+        if accounts is None:
+            accounts = self._line_accounts = TrialBalanceAccount.query.filter_by(
+                financial_year_id=self.financial_year.id).all()
+        for account in accounts:
+            if account.standard_key != key:
+                continue
+            if offset:
+                net = (Decimal(str(account.prior_debit or 0))
+                       - Decimal(str(account.prior_credit or 0)))
+            else:
+                net = (Decimal(str(account.debit or 0))
+                       - Decimal(str(account.credit or 0)))
+            if not net:
+                continue
+            mapped = self._code_of(account)
+            if mapped is None or mapped == code:
+                return True
+        return False
 
     def _carries(self, code, offset):
         period = self.period(offset)

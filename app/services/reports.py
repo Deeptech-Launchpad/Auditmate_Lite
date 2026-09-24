@@ -499,6 +499,21 @@ def ensure_report(financial_year) -> AuditReport:
     report = AuditReport.query.filter_by(
         financial_year_id=financial_year.id).first()
 
+    # The company's details from the template it brought, where the record is
+    # still empty (no AI involved). A template uploaded before this existed, or
+    # while the AI service was down, otherwise left every "[not provided]".
+    try:
+        from . import template_details
+        if template_details.fill_missing(financial_year.customer):
+            db.session.commit()
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not read the company's details from its template")
+    try:
+        from . import line_codes
+        line_codes.refresh_defaults(financial_year)
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not refresh the accounts' line codes")
+
     if report is not None:
         add_missing_template_sections(report)
         return report
@@ -813,6 +828,14 @@ def _assemble_v2_note(note, financial_year, first_year=False, period=None,
     figures = bindings.figures_for(financial_year)
     html_parts, table_specs, awaiting, offered = [], [], [], []
     placed = set()
+    # What the preparer already decided about the paragraphs no balance can
+    # settle ("Preparer confirms the Company renders services"): kept per
+    # engagement so a rebuilt note does not ask the same question again.
+    from ..models import DocumentFigure
+    decisions = {row.field: (row.text or "") for row in
+                 DocumentFigure.query.filter_by(
+                     financial_year_id=financial_year.id,
+                     token="CONFIRM").all()}
     tables = {p["table_id"] for p in _all_pieces(note)
               if p.get("table_id") and p.get("rows")}
 
@@ -825,6 +848,12 @@ def _assemble_v2_note(note, financial_year, first_year=False, period=None,
                 piece, owner.get("library_code"), figures)
             if action == conditions.SKIP:
                 continue
+            if action in (conditions.HOLD, conditions.OMIT):
+                verdict = decisions.get(piece.get("para_id") or "")
+                if verdict == "no":
+                    continue                     # does not apply: left out
+                if verdict == "yes":
+                    action = conditions.PRINT    # applies: printed
             if action in (conditions.HOLD, conditions.OMIT):
                 (awaiting if action == conditions.HOLD else offered).append({
                     "para_id": piece.get("para_id"),
@@ -1211,6 +1240,92 @@ def prior_year_wording(financial_year):
     return out
 
 
+_UPDATE_MARK = re.compile(r"\[update:[^\]]*\]")
+
+# A figure quoted in last year's sentences: "S$65,560 (2022: S$78,300)", or a
+# comparative in brackets: "(2022: 17%)", "(2022: 30-60 days terms)".
+_STALE_FIGURE = re.compile(
+    r"S\$\s?\d[\d,]*(?:\.\d+)?(?:\s*\(20\d\d:\s*S\$\s?\d[\d,]*(?:\.\d+)?\))?"
+    r"|\(20\d\d:[^)]*\)")
+
+
+def roll_forward_text(text, financial_year):
+    """Last year's wording, brought up to this year's dates.
+
+    The signed accounts' sentences quote last year's facts. Carried over as
+    they stood they printed "31 DECEMBER 2024" in the 2025 accounts, and last
+    year's amounts as if they were this year's. Two different things:
+
+    A DATE is mechanical: last year's year end becomes this year's, in the
+    case the sentence used.
+
+    A FIGURE is not. What last year said about its receivables says nothing
+    about this year's, and quietly keeping it would state a fact about the
+    wrong year. Each is wrapped as "[update: S$65,560 (2022: S$78,300)]" so it
+    is visible where it sits and the note stays Incomplete until somebody
+    types this year's, or deletes the sentence.
+    """
+    from datetime import date
+
+    if not text:
+        return text
+    end = getattr(financial_year, "end_date", None)
+    if end:
+        try:
+            previous = date(end.year - 1, end.month, min(end.day, 28)
+                            if end.month == 2 else end.day)
+        except ValueError:
+            previous = None
+        if previous:
+            pattern = re.compile(
+                r"\b%d\s+%s\s+%d\b" % (previous.day,
+                                       previous.strftime("%B"), previous.year),
+                re.IGNORECASE)
+
+            def move(match):
+                new = f"{end.day} {end.strftime('%B')} {end.year}"
+                return new.upper() if match.group(0).isupper() else new
+
+            text = pattern.sub(move, text)
+    return _STALE_FIGURE.sub(lambda m: f"[update: {m.group(0)}]", text)
+
+
+def _note_reference_map(financial_year, report):
+    """{last year's note number: this year's}, for the notes both years have."""
+    from ..models import PriorYearNote
+
+    numbers = note_number_map(report)
+    mapped = {}
+    for prior in PriorYearNote.query.filter_by(
+            financial_year_id=financial_year.id).all():
+        if prior.note_number and prior.matched_key:
+            current = numbers.get(f"{NOTE_PREFIX}{prior.matched_key}")
+            if current:
+                mapped[str(prior.note_number).strip()] = str(current)
+    return mapped
+
+
+# "(Note 8)", "refer to Note 12" - but not the risk note's own headings, which
+# read "Note 2. Significant increase in credit risk".
+_NOTE_REF = re.compile(r"\bNote\s+(\d+)\b(?!\.)")
+
+
+def roll_forward_references(html, financial_year, section):
+    """Point last year's "(Note 8)" at the note that now holds that subject."""
+    if not html or "Note " not in html:
+        return html
+    try:
+        report = db.session.get(AuditReport, section.report_id)
+        mapped = _note_reference_map(financial_year, report)
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not map note references")
+        return html
+    if not mapped:
+        return html
+    return _NOTE_REF.sub(
+        lambda m: f"Note {mapped.get(m.group(1), m.group(1))}", html)
+
+
 _NUMBERED_HEADING = re.compile(r"^\d+(\.\d+)*\.?\s+\S")
 
 
@@ -1220,25 +1335,55 @@ def prior_text_to_html(text):
     The signed accounts' note is stored as plain text - blank lines between
     paragraphs, a heading on a line of its own ("2.1 Basis of preparation",
     "Financial assets"). Put into a note as it stood, HTML collapsed every line
-    break and the whole policies note printed as one run-on paragraph with its
-    headings buried in the sentences. A short line with no closing punctuation
-    is a heading; a line starting with a bullet keeps its own line.
+    break and the whole policies note printed as one run-on paragraph.
+
+    Two kinds of short line are NOT headings. A block of several short lines
+    with no full stop, or a "Total ..." line, is the row labels of a table whose
+    figures were left behind in the PDF - "Trade receivables / - Third parties
+    / Other receivables"; this year's table prints from the books, so those
+    labels are dropped rather than printed as loose text. And a short line is a
+    heading only when a paragraph follows it, not when it is the last of a run
+    of labels.
     """
     from html import escape
 
-    blocks = re.split(r"\n\s*\n", (text or "").replace("\r\n", "\n").strip())
-    out = []
-    for block in blocks:
+    def ends_sentence(line):
+        return bool(re.search(r"[.;]$", line))
+
+    blocks = []
+    for block in re.split(r"\n\s*\n", (text or "").replace("\r\n", "\n").strip()):
         lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
         if not lines:
             continue
-        if (len(lines) == 1 and len(lines[0]) <= 90
-                and not re.search(r"[.;,:]$", lines[0])
-                and (_NUMBERED_HEADING.match(lines[0])
-                     or not re.match(r"^[a-z(•\-]", lines[0]))):
+        if len(lines) > 1 and all(len(ln) <= 90 for ln in lines) and not any(
+                ends_sentence(ln) for ln in lines):
+            blocks.append(("labels", lines))          # a table's row labels
+        elif len(lines) == 1 and len(lines[0]) <= 90 and not re.search(
+                r"[.;,:]$", lines[0]):
+            if re.match(r"^total\b", lines[0], re.I):
+                blocks.append(("labels", lines))
+            elif _NUMBERED_HEADING.match(lines[0]):
+                blocks.append(("heading", lines))
+            else:
+                blocks.append(("candidate", lines))
+        else:
+            blocks.append(("para", lines))
+
+    out = []
+    for index, (kind, lines) in enumerate(blocks):
+        if kind == "labels":
+            continue
+        if kind in ("heading", "candidate"):
+            if kind == "candidate":
+                # A heading only if a real paragraph follows the run of
+                # candidates; otherwise it is the tail of a label list.
+                nxt = next(((k, ln) for k, ln in blocks[index + 1:]
+                            if k not in ("candidate", "heading")), None)
+                if not nxt or nxt[0] != "para" or len(" ".join(nxt[1])) < 100:
+                    continue
             out.append(f"<h4>{escape(lines[0])}</h4>")
             continue
-        if any(re.match(r"^[•\-•]\s*", ln) for ln in lines):
+        if any(re.match(r"^[•\-]\s*", ln) for ln in lines):
             out.append("<p>" + "<br>".join(escape(ln) for ln in lines) + "</p>")
         else:
             out.append("<p>" + escape(" ".join(lines)) + "</p>")
@@ -1281,7 +1426,8 @@ def carry_forward_prior_wording(report, financial_year) -> int:
             raw = (carried.body_text or "").strip() if carried else ""
             if (carried is not None and carried.id == section.prior_note_id
                     and raw and (section.content_html or "").strip() == raw):
-                section.content_html = prior_text_to_html(carried.body_text)
+                section.content_html = prior_text_to_html(
+                    roll_forward_text(carried.body_text, financial_year))
                 filled += 1
             continue
 
@@ -1302,7 +1448,8 @@ def carry_forward_prior_wording(report, financial_year) -> int:
         if current and current != (default_html or "").strip():
             continue
 
-        section.content_html = prior_text_to_html(prior.body_text)
+        section.content_html = prior_text_to_html(
+            roll_forward_text(prior.body_text, financial_year))
         section.prior_note_id = prior.id
         filled += 1
 
@@ -1703,6 +1850,7 @@ def content_gaps(report, financial_year):
                     # it can send the preparer to the note rather than
                     # naming it and leaving them to find it.
                     "section_id": section.id,
+                    "para_id": item.get("para_id") or "",
                     "note": section.title,
                     "heading": item.get("heading") or "",
                     "question": item.get("question") or "",
@@ -1822,6 +1970,9 @@ def section_payload(section, customer, financial_year, chips: bool = False):
         payload["html"] = render_bindings(section.content_html or "",
                                           customer, financial_year,
                                           chips=chips)
+        if section.prior_note_id:
+            payload["html"] = roll_forward_references(
+                payload["html"], financial_year, section)
         note_table_spec = spec.get("note_table")
         if note_table_spec is None and section.data_binding:
             note_table_spec = section.data_binding.get("note_table_specs")
@@ -1835,11 +1986,31 @@ def section_payload(section, customer, financial_year, chips: bool = False):
         for table in payload["tables"]:
             for row in table.get("rows") or []:
                 if row.get("label") and "{{" in row["label"]:
-                    row["label"] = render_bindings(row["label"], customer,
-                                                   financial_year)
+                    # Plain text: the label is printed escaped, and a blank
+                    # rendered as a marked-up span printed its own tags
+                    # ("<span class=missing-binding>") in a client's accounts.
+                    row["label"] = re.sub(
+                        r"<[^>]+>", "",
+                        render_bindings(row["label"], customer,
+                                        financial_year))
         apply_note_overrides(section, payload["tables"])
         payload["incomplete"] = incomplete_reasons(section, payload,
                                                    financial_year)
+        # The same reasons in two short lines: what is missing, and which
+        # document or answer settles it. The full list stays available.
+        from . import completion_needs
+        payload["incomplete_summary"] = completion_needs.summarise(
+            payload["incomplete"])
+        # The paragraphs waiting on a yes or no, shown in the note itself.
+        binding = section.data_binding or {}
+        payload["confirm"] = [
+            {"section_id": section.id, "para_id": item.get("para_id") or "",
+             "question": item.get("question") or "",
+             "optional": kind == "offered_to_preparer",
+             "wording": render_bindings(item.get("wording") or "",
+                                        customer, financial_year)}
+            for kind in ("awaiting_preparer", "offered_to_preparer")
+            for item in binding.get(kind, []) if item.get("para_id")]
 
     return payload
 
@@ -1905,6 +2076,11 @@ def incomplete_reasons(section, payload, financial_year=None):
         for reason in related_parties.holds(financial_year):
             if reason not in reasons:
                 reasons.append(reason)
+
+    for mark in _UPDATE_MARK.findall(payload.get("html") or ""):
+        text = "Update last year's figure: " + mark[len("[update:"):-1].strip()
+        if text not in reasons:
+            reasons.append(text)
 
     for blank in _MISSING_BLANK.findall(payload.get("html") or ""):
         text = f"Not filled in: {blank.strip('[]')}"

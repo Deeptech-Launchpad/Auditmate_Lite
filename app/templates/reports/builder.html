@@ -161,7 +161,7 @@ Anything typed into the report - note wording, edited figures, answers, section 
             <span class="pill pill-red">INCOMPLETE</span>
             <div class="gap-body">
               <div class="gap-title">{{ title }}</div>
-              <div class="gap-detail muted small">{{ reasons[:4]|join(' · ') }}{% if reasons|length > 4 %} · and {{ reasons|length - 4 }} more{% endif %}</div>
+              <div class="gap-detail muted small">{% for line in summarise(reasons) %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
             </div>
           </div>
         {% endfor %}
@@ -306,7 +306,7 @@ Anything typed into the report - note wording, edited figures, answers, section 
               {{ fix_it(url_for('reports.preparer_inputs', fy_id=fy.id),
                         'Fill in the wording') }}
             {% elif gap.section_id %}
-              {{ fix_it('#sec-' ~ gap.section_id, 'Go to the note') }}
+              {{ fix_it('#confirm-' ~ gap.section_id ~ '-' ~ gap.para_id if gap.para_id else '#sec-' ~ gap.section_id, 'Go to the note') }}
             {% endif %}
           </div>
         </div>

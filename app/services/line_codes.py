@@ -180,8 +180,11 @@ def propose(account, categories, last_year=None, codes=None):
         if rule.get("code") in options and _rule_fits(rule, name, side):
             return rule["code"], "rule"
 
-    if spec.get("default") in options:
-        return spec["default"], "default"
+    # One code, or an ordered list: the first the library version defines.
+    default = spec.get("default")
+    for candidate in (default if isinstance(default, list) else [default]):
+        if candidate in options:
+            return candidate, "default"
     return None, None
 
 
@@ -207,6 +210,27 @@ def assign(account, categories=None, last_year=None, codes=None):
     code, source = propose(account, categories, last_year, codes)
     account.line_code, account.line_code_source = code, source
     return before != (code, source)
+
+
+def refresh_defaults(financial_year):
+    """Re-decide accounts whose code came only from a category's default.
+
+    A default is the app's guess, not anybody's choice, so when the guess
+    improves (the levy moving from PL-CPF to PL-LEVY once the library defines
+    it) an engagement already built follows it. A person's choice, a code
+    carried from last year and a rule's split are never touched.
+    """
+    categories = load_categories()
+    codes = known_codes(financial_year)
+    changed = 0
+    for account in (TrialBalanceAccount.query
+                    .filter_by(financial_year_id=financial_year.id,
+                               line_code_source="default").all()):
+        if assign(account, categories, None, codes):
+            changed += 1
+    if changed:
+        db.session.commit()
+    return changed
 
 
 def choose(account, code, categories=None, codes=None):

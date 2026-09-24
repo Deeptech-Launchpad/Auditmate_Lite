@@ -14,6 +14,7 @@ import re
 # (key, pattern on the reason text). First match wins, so the specific ones
 # come first.
 _RULES = [
+    ("stale", re.compile(r"^update last year's figure", re.I)),
     ("reconcile", re.compile(r"cannot explain|do not add up|difference", re.I)),
     ("practitioner", re.compile(r"practitioner", re.I)),
     ("prior_docs", re.compile(
@@ -44,6 +45,16 @@ _RULES = [
 
 # What each group means, in the order a preparer would work through them.
 _NEEDS = {
+    "stale": {
+        "label": "Last year's amounts in the wording",
+        "file": "No file - sentences carried over from last year quote last "
+                "year's amounts; each shows as [update: ...] in the note",
+        "owner": "The preparer",
+        "where": "Type this year's amount over the [update: ...] text, or "
+                 "delete the sentence.",
+        "endpoint": None,
+        "kind": "answer",
+    },
     "reconcile": {
         "label": "Balances that do not agree",
         "file": "No file - the books disagree with each other or with last "
@@ -195,7 +206,7 @@ _NEEDS = {
     },
 }
 
-ORDER = ["reconcile", "tax", "aged", "loan", "register", "far", "ledger",
+ORDER = ["stale", "reconcile", "tax", "aged", "loan", "register", "far", "ledger",
          "prior_docs", "practitioner", "client_record", "related",
          "questions", "prior_split", "preparer_entry", "layout", "other"]
 
@@ -232,3 +243,57 @@ def needs(incomplete):
         item["count"] = len(groups[key]["reasons"])
         out.append(item)
     return out
+
+
+# How each group reads in the two-line marker on a note.
+_SHORT = {
+    "reconcile": "an explanation of the difference in the balances",
+    "tax": "the tax computation",
+    "aged": "the aged receivables listing",
+    "loan": "the loan and lease schedules",
+    "register": "the share register",
+    "far": "the fixed asset register",
+    "ledger": "the general ledger",
+    "prior_docs": "last year's documents",
+    "practitioner": "the practitioner's name and address (Settings)",
+    "client_record": "the company details",
+}
+_ANSWER = {
+    "stale": "last year's amounts in the wording updated",
+    "related": "related-party decisions",
+    "prior_split": "figures typed into the highlighted cells",
+    "preparer_entry": "figures typed into the highlighted cells",
+    "layout": "not built in the software yet",
+}
+
+
+def summarise(reasons):
+    """A note's open items in at most two short lines.
+
+    "Needs: the tax computation." and "You answer: 3 questions, figures typed
+    into the highlighted cells." - not a list of every reason the engine
+    wrote, which for a note with forty open cells ran to a wall of text.
+    """
+    files, answers, questions = [], [], 0
+    for reason in reasons or []:
+        key = classify(reason)
+        if key == "questions":
+            questions += 1
+        elif key in _SHORT:
+            if _SHORT[key] not in files:
+                files.append(_SHORT[key])
+        elif key in _ANSWER:
+            if _ANSWER[key] not in answers:
+                answers.append(_ANSWER[key])
+        elif "other" not in answers:
+            answers.append("the items shown in the note")
+    if questions:
+        answers.insert(0, f"{questions} question{'s' if questions != 1 else ''} "
+                          f"on the Questions page")
+    lines = []
+    if files:
+        lines.append("Needs: " + "; ".join(files) + ".")
+    if answers:
+        lines.append(("You answer: " if files or questions else "You supply: ")
+                     + ", ".join(answers) + ".")
+    return lines[:2]

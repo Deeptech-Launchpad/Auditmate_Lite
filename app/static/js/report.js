@@ -450,6 +450,55 @@
     document.execCommand('insertText', false, text);
   });
 
+  /* A held paragraph is answered in its note: it applies (the wording is added
+     to the note) or it does not (left out). Saved for the engagement, then the
+     page is reloaded on the same note so the wording shows where it sits. */
+  document.addEventListener('click', async event => {
+    const button = event.target.closest('.confirm-box button[data-decision]');
+    if (!button) return;
+    const box = button.closest('.confirm-box');
+    button.disabled = true;
+    try {
+      const response = await fetch('/reports/api/confirm-paragraph', {
+        method: 'PATCH', headers: csrfHeaders(),
+        body: JSON.stringify({ section_id: box.dataset.sectionId,
+                               para_id: box.dataset.paraId,
+                               decision: button.dataset.decision })
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || 'failed');
+      try { sessionStorage.setItem('am-scroll-section', box.dataset.sectionId); }
+      catch (err) { /* private window: the page still reloads */ }
+      window.location.reload();
+    } catch (err) {
+      button.disabled = false;
+      say('Could not save the answer', 'failed');
+    }
+  });
+
+  /* After answering, come back to the same note. */
+  try {
+    const back = sessionStorage.getItem('am-scroll-section');
+    if (back) {
+      sessionStorage.removeItem('am-scroll-section');
+      const note = report.querySelector(
+        `[data-section-id="${back}"][data-field="content_html"]`);
+      if (note) note.scrollIntoView({ block: 'center' });
+    }
+  } catch (err) { /* nothing to restore */ }
+
+  /* "Go to the note" for a held paragraph lands on its own confirm box. */
+  document.addEventListener('click', event => {
+    const link = event.target.closest('a.gap-fix[href^="#confirm-"]');
+    if (!link) return;
+    const box = report.querySelector('#' + link.getAttribute('href').slice(1));
+    if (!box) return;                         // let the plain anchor do its job
+    event.preventDefault();
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    box.classList.add('section-found');
+    setTimeout(() => box.classList.remove('section-found'), 2200);
+  });
+
   /* "Go to the note" in the gaps panel lands on the note itself.
      The href is an anchor on the section's row in the list, which is the
      right fallback with no JavaScript, but scrolling to a row in a list

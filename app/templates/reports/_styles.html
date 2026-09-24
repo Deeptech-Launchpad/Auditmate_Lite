@@ -278,6 +278,9 @@
   padding-left: 6px; white-space: nowrap;
 }
 {{ S }} table.by-class .total-col { font-weight: 600; }
+/* The row captions of a multi-column table need room: with four figure
+   columns the caption was squeezed to a few characters a line. */
+{{ S }} table.by-class th.lbl, {{ S }} table.by-class td.lbl { width: 34%; }
 
 /* The stamp is fixed to the viewport, so it crosses whatever paragraph
    happens to be under it and both become unreadable. Given its own
@@ -377,6 +380,21 @@
      is-overridden  an auditor typed a different figure
    ---------------------------------------------------------------------- */
 
+/* A held paragraph waiting for a yes or a no, shown in its note. Working
+   copy only: it is never in an export. */
+{{ S }} .confirm-box { border: 1px solid #e3b7b3; background: #fdf2f1;
+  border-left: 3px solid #c0392b; padding: 8px 10px; margin: 8px 0;
+  font: 12px/1.45 -apple-system, "Segoe UI", sans-serif; color: #3b1512; }
+{{ S }} .confirm-box.section-found { box-shadow: 0 0 0 3px rgba(192, 57, 43, .35); }
+{{ S }} .confirm-q { font-weight: 600; }
+{{ S }} .confirm-tag { font-size: 10px; letter-spacing: .04em; color: #c0392b;
+  margin-right: 6px; }
+{{ S }} .confirm-wording { margin: 6px 0; padding: 6px 8px; background: #fff;
+  border: 1px solid #e5e7eb; font-family: Georgia, serif; font-size: 12px; }
+{{ S }} .confirm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+{{ S }} .confirm-actions button { font: inherit; padding: 4px 10px; cursor: pointer;
+  border: 1px solid #9aa3af; background: #fff; border-radius: 3px; }
+{{ S }} .confirm-actions .confirm-yes { border-color: #1f7a44; color: #1f7a44; }
 {{ S }} .ed-label,
 {{ S }} .ed-cover,
 {{ S }} .ed-amount {

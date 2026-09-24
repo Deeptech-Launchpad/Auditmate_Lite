@@ -756,6 +756,11 @@ def _fill_details_from_template(customer, saved_path):
     path = Path(saved_path)
     if path.suffix.lower() not in (".pdf", ".docx"):
         return
+    # First the plain reading of the words the accounts use, which needs no AI
+    # service; the AI reading below only adds what that did not find.
+    from ..services import template_details
+    if template_details.fill_missing(customer):
+        db.session.commit()
     try:
         outcome = extract_company_profile(
             path, path.suffix.lower().lstrip("."), raw_text="")
