@@ -48,7 +48,7 @@
 # line of its own. The finance costs note discloses interest separately.
 - {pattern: "interest expense",     statement: profit_and_loss, line: interest_expense, priority: 10}
 - {pattern: "bank charge",          statement: profit_and_loss, line: bank_charges, priority: 15}
-- {pattern: "finance cost",         statement: profit_and_loss, line: bank_charges, priority: 10}
+- {pattern: "finance cost",         statement: profit_and_loss, line: interest_expense, priority: 10}
 - {pattern: "utilities",            statement: profit_and_loss, line: other_expenses, priority: 20}
 - {pattern: "telephone",            statement: profit_and_loss, line: other_expenses, priority: 20}
 - {pattern: "insurance",            statement: profit_and_loss, line: other_expenses, priority: 20}
@@ -199,6 +199,10 @@
 # "Amount due from a director" as the signed accounts word it.
 - {pattern: "due from (a |the )?director", match: regex, statement: balance_sheet, line: prepayments, priority: 1}
 - {pattern: "due to (a |the )?director", match: regex, statement: balance_sheet, line: trade_payables, priority: 1, sign: -1}
+# The same words in a books file whose account is typed as a liability: a
+# director's account that has gone into credit is owed BY the company, and
+# the account type keeps the asset rule above from fitting.
+- {pattern: "due from (a |the )?director", match: regex, statement: balance_sheet, line: trade_payables, priority: 2, sign: -1}
 # Signed accounts word these as a face statement does.
 - {pattern: "loan from a bank",       statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}
 - {pattern: "loan from bank",         statement: balance_sheet, line: short_term_borrowings, priority: 2, sign: -1}

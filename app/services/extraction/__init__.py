@@ -355,6 +355,10 @@ def extract_document(document_id: int) -> dict:
     # detail) needs the ORIGINAL text regardless of which stage the figures
     # ended up coming from.
     document_text = result.raw_text
+    # Likewise the page count: an AI read returns a fresh result that never
+    # had one, and identify_document needs the document's length to tell a
+    # set of signed accounts from a trial balance.
+    document_pages = result.page_count
 
     # --- Stage 2: AI fallback, only where it adds value ---------------------
     use_ai, reason = _should_use_ai(result, file_type)
@@ -425,7 +429,8 @@ def extract_document(document_id: int) -> dict:
     if result.rows:
         from ..identify import identify_document
         identified, identified_reason, _changed = identify_document(
-            document, raw_text=document_text, page_count=result.page_count)
+            document, raw_text=document_text,
+            page_count=result.page_count or document_pages)
 
     # --- Stage 3b: last year's words, not just its figures ------------------
     # Only for the signed accounts, and only when they carry narrative. The
@@ -472,7 +477,7 @@ def extract_document(document_id: int) -> dict:
     document.extraction_error = None if got_something else (
         failure or "No line items found")
     document.ai_used = ai_used
-    document.page_count = result.page_count
+    document.page_count = result.page_count or document_pages
     auto_verified = False
     differs = None
     # The rows above are still pending; auto_verify reads them back off the
