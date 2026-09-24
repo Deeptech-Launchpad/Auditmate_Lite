@@ -496,6 +496,30 @@ def ensure_report(financial_year) -> AuditReport:
     return report
 
 
+def regenerate_report(financial_year):
+    """Throw the report away and build it again from what is on file now.
+
+    A report's sections and note tables are fixed when it is created, so a
+    change to the trial balance, the notes library or the customer's template
+    reached only reports made afterwards. The only way to refresh one was to
+    delete it in the database.
+
+    Everything typed into the report - note wording, figure overrides,
+    section switches, the cover labels - goes with it, so the caller must have
+    said so. The statements are not touched: they come from the approved
+    trial balance, and are rebuilt there.
+    """
+    from ..models import ReportFigureOverride
+
+    report = AuditReport.query.filter_by(
+        financial_year_id=financial_year.id).first()
+    if report is not None:
+        ReportFigureOverride.query.filter_by(report_id=report.id).delete()
+        db.session.delete(report)
+        db.session.flush()
+    return ensure_report(financial_year)
+
+
 def _match_customer_template(report, financial_year):
     """Shape a NEW report like the customer's own template, and say so.
 

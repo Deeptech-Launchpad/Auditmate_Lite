@@ -1085,6 +1085,41 @@ def finalise(fy_id):
     return redirect(url_for("reports.builder", fy_id=fy_id))
 
 
+@bp.route("/fy/<int:fy_id>/regenerate", methods=["POST"])
+@login_required
+def regenerate(fy_id):
+    """Rebuild this year's report from the current statements and notes.
+
+    For a report made before a fix, a new trial balance or a change of the
+    customer's template. Refused for a report that has been issued as final
+    and for a closed engagement: those are the record of what was delivered.
+    """
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+
+    if not financial_year.tb_is_approved:
+        flash("Approve the trial balance first.", "error")
+        return redirect(url_for("reports.builder", fy_id=fy_id))
+    if financial_year.is_closed:
+        flash("This engagement is closed. Reopen it before regenerating "
+              "the report.", "error")
+        return redirect(url_for("reports.builder", fy_id=fy_id))
+
+    existing = AuditReport.query.filter_by(financial_year_id=fy_id).first()
+    if existing is not None and existing.status == "final":
+        flash("This report was issued as final. Regenerating would replace "
+              "the delivered copy, so it is not offered.", "error")
+        return redirect(url_for("reports.builder", fy_id=fy_id))
+
+    report = report_service.regenerate_report(financial_year)
+    record("audit_report", report.id, "regenerate",
+           after={"replaced": existing.id if existing else None},
+           commit=True)
+
+    flash("The report was rebuilt from the current statements and notes. "
+          "Anything typed into the old report was replaced.", "success")
+    return redirect(url_for("reports.builder", fy_id=fy_id))
+
+
 @bp.route("/fy/<int:fy_id>/reopen", methods=["POST"])
 @login_required
 def reopen(fy_id):

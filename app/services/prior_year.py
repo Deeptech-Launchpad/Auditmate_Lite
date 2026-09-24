@@ -166,13 +166,15 @@ def _from_document(document, customer_id):
     return _figures_from_rows(rows, customer_id, document.category)
 
 
-def _figures_from_rows(rows, customer_id, category=None):
+def _figures_from_rows(rows, customer_id, category=None, period="current"):
     if category == "signed_accounts":
         rows = _face_statement_rows(rows)
 
     totals = {}
     for row in rows:
-        if row.period == "previous":
+        # One column at a time: the document's own year, or the year before
+        # it. Nothing here adds the two together.
+        if (row.period == "previous") != (period == "previous"):
             continue
         label = (row.label or "").strip()
         if not label or looks_like_total_label(label):
@@ -214,6 +216,29 @@ def _figures_from_rows(rows, customer_id, category=None):
         totals[key] = totals.get(key, ZERO) + amount
 
     return totals or None
+
+
+def year_before_balances(financial_year):
+    """The balances a year earlier than last year, from the signed accounts.
+
+    A signed set prints two years side by side. Its first column is last year
+    (the comparative of this engagement) and its second is the year before,
+    which the statements have no use for - except two of them: last year's
+    statement of changes in equity needs the balances it OPENED with, and
+    last year's cash flow needs the movement between those and its close.
+
+    Debit-positive, like every other source here. Empty when there is no
+    verified signed set or it carries no second column.
+    """
+    signed = _document_of(financial_year, "signed_accounts")
+    if signed is None:
+        return {}
+    rows = (ExtractedLineItem.query
+            .filter_by(document_id=signed.id)
+            .filter(ExtractedLineItem.status != "discarded")
+            .all())
+    return _figures_from_rows(rows, financial_year.customer_id,
+                              "signed_accounts", period="previous") or {}
 
 
 def _document_of(financial_year, category, file_type=None):

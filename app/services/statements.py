@@ -204,6 +204,36 @@ def build_statement(financial_year_id: int, statement_type: str,
             log.info("FY %s comparatives taken from %s",
                      financial_year.id, source)
 
+            # A finished set of accounts prints only the lines that have a
+            # balance. Where its balance sheet foots - assets equal equity
+            # plus liabilities - a line it does not print was nil, and
+            # showing "Incomplete" for it says the figure is unknown when the
+            # statement has already settled it. Only the balance sheet can
+            # be proved this way; a profit and loss that omits a detail
+            # line has folded it into another, which is not the same as nil.
+            if statement_type == "balance_sheet" and source in (
+                    "signed_accounts", "entered"):
+                from .classify import _index
+                groups = {k: (v.get("group"))
+                          for k, v in _index().items()}
+                assets = sum((v for k, v in prior.items()
+                              if groups.get(k) in ("current_assets",
+                                                   "non_current_assets")),
+                             ZERO)
+                funded = sum((v for k, v in prior.items()
+                              if groups.get(k) in (
+                                  "equity", "current_liabilities",
+                                  "non_current_liabilities")), ZERO)
+                if assets and abs(assets - funded) <= Decimal("1"):
+                    for spec in template.get("lines", []):
+                        key = spec["key"]
+                        if (not spec.get("formula") and key not in prior
+                                and groups.get(key) in (
+                                    "current_assets", "non_current_assets",
+                                    "equity", "current_liabilities",
+                                    "non_current_liabilities")):
+                            prior[key] = ZERO
+
     lines = []
     for order, spec in enumerate(template.get("lines", [])):
         key = spec["key"]
@@ -240,7 +270,8 @@ def build_statement(financial_year_id: int, statement_type: str,
     # The comparative column gets the same treatment. Its figures arrive line
     # by line from last year's source, which supplies no subtotals - so
     # without this every total in the prior column stays blank.
-    compute.apply_formulas_previous(lines)
+    compute.apply_formulas_previous(
+        lines, _prior_context(financial_year, statement_type))
 
     db.session.commit()
 
@@ -493,6 +524,78 @@ def _build_context(financial_year_id: int, statement_type: str) -> dict:
     return context
 
 
+def _prior_context(financial_year, statement_type):
+    """Last year's cross-statement figures, for its equity and cash flow.
+
+    Those two statements are derived from the others, so last year's column
+    needs last year's profit, its closing balances AND the balances it opened
+    with - the last of which no earlier engagement in this app supplies, and
+    the signed accounts do, in their second column. None unless all of that
+    is known: an equity statement built on a guessed opening balance is
+    worse than one marked incomplete.
+    """
+    if statement_type not in ("changes_in_equity", "cash_flow"):
+        return None
+    if financial_year is None or financial_year.is_first_year:
+        return None
+
+    from .classify import is_credit_balance
+    from .prior_year import balances, year_before_balances
+
+    figures, source = balances(financial_year)
+    if source not in ("signed_accounts", "entered"):
+        return None
+    before = year_before_balances(financial_year)
+    if not figures or not before:
+        return None
+
+    def present(raw):
+        return {key: (-value if is_credit_balance(key) else value)
+                for key, value in raw.items()}
+
+    closing, opening = present(figures), present(before)
+
+    def at(book, key):
+        return Decimal(str(book.get(key, 0) or 0))
+
+    def moved(*keys):
+        return sum((at(closing, k) - at(opening, k) for k in keys), ZERO)
+
+    profit = FinancialStatement.query.filter_by(
+        financial_year_id=financial_year.id,
+        statement_type="profit_and_loss").first()
+    last_year = {line.line_key: line.amount_previous
+                 for line in (profit.lines if profit else [])}
+    if last_year.get("total_comprehensive_income") is None:
+        return None
+
+    def lately(key):
+        return Decimal(str(last_year.get(key) or 0))
+
+    return {
+        "total_comprehensive_income": lately("total_comprehensive_income"),
+        "profit_for_year": lately("profit_for_year"),
+        "profit_before_tax": lately("profit_before_tax"),
+        "depreciation": lately("depreciation"),
+        "tax_expense": lately("tax_expense"),
+        "closing_share_capital": (at(closing, "share_capital")
+                                  + at(closing, "working_capital")),
+        "opening_share_capital": (at(opening, "share_capital")
+                                  + at(opening, "working_capital")),
+        "opening_retained_earnings": at(opening, "retained_earnings"),
+        "closing_cash": at(closing, "cash_and_equivalents"),
+        "opening_cash": at(opening, "cash_and_equivalents"),
+        "tax_provision_movement": moved("tax_payable"),
+        "receivables_movement": moved("trade_receivables", "prepayments",
+                                      "inventories", "contract_assets"),
+        "payables_movement": moved("trade_payables", "accruals",
+                                   "contract_liabilities"),
+        "borrowings_movement": moved("short_term_borrowings",
+                                     "long_term_borrowings"),
+        "ppe_net_movement": moved("ppe", "accumulated_depreciation"),
+    }
+
+
 def build_all(financial_year_id: int, use_ai: bool = True,
               cascade: bool = True) -> dict:
     """Rebuild every statement in the correct dependency order."""
@@ -529,5 +632,7 @@ def recalculate(statement_id: int) -> None:
     context = _build_context(statement.financial_year_id,
                              statement.statement_type)
     compute.apply_formulas(statement.lines, context)
-    compute.apply_formulas_previous(statement.lines)
+    compute.apply_formulas_previous(
+        statement.lines,
+        _prior_context(statement.financial_year, statement.statement_type))
     db.session.commit()

@@ -30,6 +30,17 @@
        class="btn supply">Related parties
       {%- if waiting.parties %}<span class="supply-n">{{ waiting.parties }}</span>{% endif %}</a>
     <span class="supply-sep"></span>
+    {% if not fy.is_closed and report.status != 'final' %}
+    <form method="post" style="display:inline"
+          action="{{ url_for('reports.regenerate', fy_id=fy.id) }}"
+          onsubmit="return confirm('Rebuild this report from the current statements, notes and the customer template?
+
+Anything typed into the report - note wording, edited figures, answers, section switches - will be replaced.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn"
+              title="Use after the trial balance, the notes library or the customer's template has changed">Regenerate report</button>
+    </form>
+    {% endif %}
     <a href="{{ url_for('reports.preview', report_id=report.id) }}"
        class="btn" target="_blank">Preview full report</a>
     {# Word first, and primary. It is the deliverable: the preparer finishes

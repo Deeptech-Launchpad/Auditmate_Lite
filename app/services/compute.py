@@ -418,7 +418,7 @@ class _ContextProbe(dict):
         return False
 
 
-def apply_formulas_previous(lines):
+def apply_formulas_previous(lines, context=None):
     """Compute the comparative column's subtotals and totals.
 
     Without this every computed line - gross profit, profit before tax, total
@@ -429,9 +429,24 @@ def apply_formulas_previous(lines):
     Skipped entirely when there are no prior figures at all: a first-year
     engagement must print "--" down that column, and summing a column of
     nothing would state last year's profit as a confident 0.00.
+
+    `context` is LAST year's cross-statement figures (its closing cash, the
+    movement in its receivables...), for the two statements whose lines are
+    all derived from other statements: changes in equity and cash flow. With
+    it the same formulas that produce this year's column produce last
+    year's. Without it a formula that reaches for the context is discarded,
+    rather than being handed this year's number to print under last year.
     """
-    if not any(line.amount_previous is not None for line in lines):
+    if context is None and not any(
+            line.amount_previous is not None for line in lines):
         return lines
+
+    if context is not None:
+        # Lines that no formula fills (dividends, expenses paid...) are nil
+        # for the year when the rest of the statement is being derived.
+        for line in lines:
+            if not line.formula and line.amount_previous is None:
+                line.amount_previous = ZERO
 
     views = [_PriorLine(line) for line in lines]
     by_key = {view.line_key: view for view in views}
@@ -443,12 +458,12 @@ def apply_formulas_previous(lines):
         if func is None:
             continue
 
-        probe = _ContextProbe()
+        probe = _ContextProbe() if context is None else context
         try:
             value = func(views, probe)
         except Exception:                              # noqa: BLE001
             continue
-        if probe.touched:
+        if context is None and probe.touched:
             continue
 
         # Written back to the view too, so a later subtotal summing this one
