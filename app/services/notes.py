@@ -102,7 +102,7 @@ def _same_account(name) -> str:
     return " ".join((name or "").split()).strip().lower()
 
 
-def _previous_by_account(financial_year, keys):
+def _previous_by_account(financial_year, keys, signed=False):
     """Last year per ACCOUNT, not merely per key - where that can be known.
 
     A key-level total is the right granularity for a statement line, which
@@ -131,7 +131,7 @@ def _previous_by_account(financial_year, keys):
         net = (Decimal(str(account.prior_debit or 0))
                - Decimal(str(account.prior_credit or 0)))
         matched[(account.standard_key, _same_account(account.account_name))] = (
-            net if net >= 0 else -net)
+            net if (net >= 0 or signed) else -net)
 
     # The previous engagement's approved trial balance, by account name.
     # Ranked after the above only because it is reached second; the two
@@ -149,7 +149,7 @@ def _previous_by_account(financial_year, keys):
             if slot in matched:
                 continue
             net = Decimal(str(account.net or 0))
-            matched[slot] = net if net >= 0 else -net
+            matched[slot] = net if (net >= 0 or signed) else -net
 
     return matched
 
@@ -171,8 +171,9 @@ def _block_accounts(spec, financial_year, statements):
     shared = {}
     for account in accounts:
         shared[account.standard_key] = shared.get(account.standard_key, 0) + 1
-    by_account = (_previous_by_account(financial_year, keys)
-                  if any(n > 1 for n in shared.values()) else {})
+    signed = bool(spec.get("signed"))
+    by_account = (_previous_by_account(financial_year, keys, signed=signed)
+                  if signed or any(n > 1 for n in shared.values()) else {})
 
     for account in accounts:
         amount = Decimal(str(account.net or 0))
@@ -185,7 +186,12 @@ def _block_accounts(spec, financial_year, statements):
             amount = -amount
         if spec.get("signed") and amount == 0:
             continue                    # an account with nothing in it
-        if shared.get(account.standard_key, 0) > 1:
+        if signed or shared.get(account.standard_key, 0) > 1:
+            # A signed breakdown holds income and expense lines together, and
+            # the key-level figure from the signed accounts is stored without
+            # a sign - it printed last year's other income as +24,947 under a
+            # current (28,630). Only an account's own prior figure, sign
+            # kept, is used here.
             # Sole claim on the key's total is what makes it this row's
             # figure. With siblings under the same key it has to be this
             # account's own, or nothing - never the shared total, which
@@ -213,6 +219,12 @@ def _block_accounts(spec, financial_year, statements):
                           if keys_shown and all(k in prior_totals
                                                 for k in keys_shown)
                           else None)
+        if signed:
+            # Footed from the rows, and only when every one has a figure: a
+            # total over some rows and not others reads as complete.
+            previous_total = (sum((r["previous"] for r in rows), ZERO)
+                              if all(r["previous"] is not None for r in rows)
+                              else None)
         rows.append(_row(label, sum(r["current"] for r in rows),
                          previous_total, bold=True, rule=True))
 
