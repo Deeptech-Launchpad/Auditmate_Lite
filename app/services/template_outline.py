@@ -262,6 +262,10 @@ def _align_notes(report, profile):
         if not specs:
             return False
         specs[0]["keys"] = keys
+        # The caption over these tables was the wording of one library piece
+        # ("Carrying amount of transferred assets | Associated liabilities"
+        # over the receivables), which describes a different disclosure.
+        specs[0]["heading"] = None
         binding = dict(section.data_binding or {})
         binding["note_table_specs"] = specs
         section.data_binding = binding
