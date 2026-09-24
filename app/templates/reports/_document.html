@@ -515,7 +515,7 @@
           <span class="incomplete-badge" title="{{ payload.incomplete|join(' · ') }}">Incomplete</span>{% endif %}</h3>
         {% if editable and payload.incomplete %}
           {# Working file only: what this note is waiting for. #}
-          <ul class="incomplete-why" title="{{ payload.incomplete|join(' | ') }}">
+          <ul class="incomplete-why" data-why-for="{{ section.id }}" title="{{ payload.incomplete|join(' | ') }}">
             {% for line in payload.incomplete_summary or payload.incomplete[:2] %}<li>{{ line }}</li>{% endfor %}
           </ul>
         {% endif %}

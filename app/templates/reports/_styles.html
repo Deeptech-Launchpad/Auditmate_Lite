@@ -392,6 +392,11 @@
 {{ S }} .confirm-box { border: 1px solid #e3b7b3; background: #fdf2f1;
   border-left: 3px solid #c0392b; padding: 8px 10px; margin: 8px 0;
   font: 12px/1.45 -apple-system, "Segoe UI", sans-serif; color: #3b1512; }
+{# Quiet until asked for: the box (and the reasons under the title) open only
+   when the preparer presses "Go to the note" for that item. #}
+{{ S }} .confirm-box, {{ S }} ul.incomplete-why { display: none; }
+{{ S }} .confirm-box.is-open { display: block; }
+{{ S }} ul.incomplete-why.is-open { display: block; }
 {{ S }} .confirm-box.section-found { box-shadow: 0 0 0 3px rgba(192, 57, 43, .35); }
 {{ S }} .confirm-q { font-weight: 600; }
 {{ S }} .confirm-tag { font-size: 10px; letter-spacing: .04em; color: #c0392b;
@@ -599,4 +604,13 @@
 {% endif %}
 {% if spec %}
 {{ S }} .rpt-doc p.ind1 { margin-left: 26.8pt; }
+/* Tables under a note sit in the note's column, as its wording does. */
+{{ S }} .rpt-note > table.note-table { margin-left: 33pt; width: calc(100% - 33pt); }
+{{ S }} .rpt-note > p.tbl-head, {{ S }} .rpt-note > p.held-table { margin-left: 33pt; }
+@media print {
+  /* The DRAFT banner is fixed to the page area, which starts under the top
+     margin, so it printed over the running header and the first line of
+     every page. Lifted into the margin instead. */
+  {{ S }} .draft-stamp { top: -40pt; }
+}
 {% endif %}

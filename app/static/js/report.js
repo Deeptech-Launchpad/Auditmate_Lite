@@ -516,6 +516,7 @@
     const box = report.querySelector('#' + link.getAttribute('href').slice(1));
     if (!box) return;                         // let the plain anchor do its job
     event.preventDefault();
+    box.classList.add('is-open');             // shown only when asked for
     box.scrollIntoView({ behavior: 'smooth', block: 'center' });
     box.classList.add('section-found');
     setTimeout(() => box.classList.remove('section-found'), 2200);
@@ -536,6 +537,9 @@
     const row = list && list.querySelector(`.section-item[data-section-id="${id}"]`);
     if (!field && !row) return;             // let the plain anchor do its job
     event.preventDefault();
+    report.querySelectorAll(
+      `.confirm-box[data-section-id="${id}"], ul.incomplete-why[data-why-for="${id}"]`
+    ).forEach(el => el.classList.add('is-open'));
     if (row) {
       row.classList.add('section-found');
       setTimeout(() => row.classList.remove('section-found'), 2200);

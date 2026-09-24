@@ -1418,7 +1418,10 @@ def prior_text_to_html(text, drop_labels=True):
         return bool(re.search(r"[.;]$", line))
 
     blocks = []
-    for block in re.split(r"\n\s*\n", (text or "").replace("\r\n", "\n").strip()):
+    # Word's symbol-font bullets come through the PDF as private-use
+    # characters, which print as an empty box in any other font.
+    text = re.sub("[]", "•", text or "")
+    for block in re.split(r"\n\s*\n", text.replace("\r\n", "\n").strip()):
         lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
         if not lines:
             continue
