@@ -199,6 +199,20 @@
 
     {# ---------------------------------------------------------- cover -- #}
     {% if is_cover %}
+      {% set cover_labels = (section.data_binding or {}).get('labels') or {} %}
+      {% if cover_labels.get('template_cover') %}
+      {# The customer's own title page: company, registration, the title
+         their template gives the document, and how it introduces the year
+         end. The company and the dates are this customer's and this year's;
+         only the wording is the template's. #}
+      <div class="cover">
+        <h2 class="cover-co">{{ (customer.legal_name or customer.name)|upper }}</h2>
+        <p class="cover-uen">({{ cover_labels.get('registration_label', 'Registration No') }}: {{ customer.uen or '—' }})</p>
+        <h1>{{ cover_label(section, 'title', '') }}</h1>
+        <p class="cover-date">{{ cover_label(section, 'date_prefix', '') }}
+          {% set _d = fy.end_date|datefmt('%d %B %Y') %}{{ _d|upper if cover_labels.get('upper_date') else _d }}</p>
+      </div>
+      {% else %}
       <div class="cover">
         <h1>{{ cover_label(section, 'title', 'ANNUAL REPORT') }} {{ fy.year_label }}</h1>
         <p class="cover-sub">{{ cover_label(section, 'subtitle',
@@ -207,6 +221,7 @@
         <p class="cover-uen">(Registration No: {{ customer.uen or '—' }})</p>
         <p class="cover-date">{{ fy.end_date|datefmt('%d %B %Y') }}</p>
       </div>
+      {% endif %}
 
       <h3 class="ruled">{{ cover_label(section, 'corp_info',
                             'CORPORATE INFORMATION') }}</h3>
