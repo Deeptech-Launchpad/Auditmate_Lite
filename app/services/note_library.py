@@ -28,7 +28,10 @@ log = logging.getLogger(__name__)
 # header is row 3 on every data sheet.
 HEADER_ROW = 3
 
-REQUIRED_SHEETS = ("Version", "Notes", "Paragraphs", "Tables", "Requirements")
+# The Version sheet is not required: a library issued without one
+# (its history kept outside the workbook) is given its label and
+# validity when it is imported - see read_workbook(overrides=).
+REQUIRED_SHEETS = ("Notes", "Paragraphs", "Tables", "Requirements")
 
 TICK_STATES = {
     "always on": "always",
@@ -270,8 +273,13 @@ def _parse_validity(text):
     return None, None
 
 
-def read_workbook(path):
-    """Parse a library workbook into plain dicts. No database access."""
+def read_workbook(path, overrides=None):
+    """Parse a library workbook into plain dicts. No database access.
+
+    `overrides` supplies what a workbook without a Version sheet cannot say
+    for itself: {"version_label", "valid_from", "valid_to"}. Where the sheet
+    exists they win over it, so a corrected label never needs the file edited.
+    """
     from openpyxl import load_workbook
 
     wb = load_workbook(path, data_only=True, read_only=True)
@@ -283,21 +291,31 @@ def read_workbook(path):
                 "sheet(s): " + ", ".join(missing))
 
         # --- Version -------------------------------------------------------
-        vi, vrows = _sheet_rows(wb["Version"])
         meta = {}
-        for row in vrows:
-            item = _cell(row, vi, "Item")
-            if item:
-                meta[item.lower()] = _cell(row, vi, "Value", "")
+        if "Version" in wb.sheetnames:
+            vi, vrows = _sheet_rows(wb["Version"])
+            for row in vrows:
+                item = _cell(row, vi, "Item")
+                if item:
+                    meta[item.lower()] = _cell(row, vi, "Value", "")
         valid_from, valid_to = _parse_validity(
             meta.get("valid for financial years ending", ""))
+        given = overrides or {}
         version = {
-            "version_label": meta.get("version") or "unknown",
-            "framework": meta.get("framework"),
+            "version_label": (given.get("version_label")
+                              or meta.get("version") or None),
+            "framework": meta.get("framework")
+                         or "Full FRS (Singapore Financial Reporting Standards)",
             "entity_scope": meta.get("entity scope"),
-            "valid_from": valid_from,
-            "valid_to": valid_to,
+            "valid_from": given.get("valid_from") or valid_from,
+            "valid_to": given.get("valid_to") or valid_to,
         }
+        if not version["version_label"]:
+            raise ValueError(
+                "This workbook has no Version sheet, so it does not say what "
+                "version it is. Give it one with --version-label (and "
+                "--valid-from / --valid-to if it is not for 2023-01-01 to "
+                "2026-12-31).")
 
         # --- Requirements: ref to requirement text and TB mapping ----------
         ri, rrows = _sheet_rows(wb["Requirements"])
@@ -635,16 +653,23 @@ def check_integrity(data):
 # Planning and applying an import
 # ---------------------------------------------------------------------------
 
-def plan(path):
+def plan(path, overrides=None):
     """Read a workbook and work out what importing it would do.
 
     Touches the database only to read. Returns (report, data) where `data` is
     what `apply_plan` acts on, so what is shown and what is written cannot
     drift apart.
     """
-    data = read_workbook(path)
+    data = read_workbook(path, overrides)
     digest = file_digest(path)
     version = data["version"]
+
+    if not (version["valid_from"] and version["valid_to"]):
+        newest = (NoteLibraryVersion.query
+                  .order_by(NoteLibraryVersion.imported_at.desc()).first())
+        if newest is not None:
+            version["valid_from"] = version["valid_from"] or newest.valid_from
+            version["valid_to"] = version["valid_to"] or newest.valid_to
 
     existing = NoteLibraryVersion.query.filter_by(
         version_label=version["version_label"]).first()

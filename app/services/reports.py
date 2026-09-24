@@ -466,6 +466,16 @@ def ensure_report(financial_year) -> AuditReport:
         add_missing_template_sections(report)
         return report
 
+    # An engagement reads from the notes library version in force for its
+    # year end, attached the first time its report is made. Nothing else in
+    # the app did that - only a command-line backfill - so every customer
+    # created in the browser fell back to the old flat library, which has no
+    # figure bindings: notes printed unfilled, repeated one table under
+    # several notes, and left figures "Incomplete" that the documents held.
+    from . import note_library
+    note_library.pin_version(financial_year)
+    db.session.flush()
+
     present = _present_keys(financial_year)
 
     report = AuditReport(

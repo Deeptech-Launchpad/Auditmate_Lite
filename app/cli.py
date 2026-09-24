@@ -1121,8 +1121,17 @@ def setup_production(email, password, name, force):
               help="Mark the version active so engagements can pin to it.")
 @click.option("--force", is_flag=True,
               help="Import even if this exact file was imported before.")
+@click.option("--version-label", default=None,
+              help="The version this file is, for a workbook with no Version "
+                   "sheet (e.g. 3.11).")
+@click.option("--valid-from", default=None,
+              help="First year end it covers (YYYY-MM-DD). Default: the "
+                   "newest loaded version's.")
+@click.option("--valid-to", default=None,
+              help="Last year end it covers (YYYY-MM-DD).")
 @with_appcontext
-def import_note_library(path, do_apply, activate, force):
+def import_note_library(path, do_apply, activate, force, version_label,
+                        valid_from, valid_to):
     """Load a notes library workbook as a version.
 
     Reports first and writes only when asked. The library is issued per
@@ -1136,8 +1145,17 @@ def import_note_library(path, do_apply, activate, force):
     """
     from .services import note_library as lib
 
+    from datetime import date as _date
+
+    overrides = {}
+    if version_label:
+        overrides["version_label"] = version_label
     try:
-        report, data = lib.plan(path)
+        if valid_from:
+            overrides["valid_from"] = _date.fromisoformat(valid_from)
+        if valid_to:
+            overrides["valid_to"] = _date.fromisoformat(valid_to)
+        report, data = lib.plan(path, overrides)
     except ValueError as exc:
         raise click.ClickException(str(exc))
 
