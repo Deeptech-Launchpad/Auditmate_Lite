@@ -1375,11 +1375,22 @@ def _carried_html(prior, financial_year):
     template counterpart printed figures (the real table prints from the
     books); in a note of words they are content, and stay as a list.
     """
-    from . import template_follow, template_tables
+    from . import template_follow, template_structure, template_tables
 
     counts = template_follow._figure_notes(financial_year) or {}
     drop = bool(counts.get(str(prior.note_number or "")))
-    html = prior_text_to_html(roll_forward_text(prior.body_text, financial_year),
+    body = prior.body_text
+    # The wording is first read through an AI service that does not always keep
+    # its paragraph breaks. Flat, it printed as one block with "3.1 Critical
+    # judgements ..." inside the sentences: read the same note's structure from
+    # the template PDF instead, which has it.
+    if template_structure.is_flat(body) and prior.note_number:
+        path = template_follow._template_path(financial_year)
+        structured = (template_structure.read_notes(path) or {}) if path else {}
+        rebuilt = structured.get(str(prior.note_number).strip())
+        if rebuilt and len(rebuilt) > 0.6 * len(body or ""):
+            body = rebuilt
+    html = prior_text_to_html(roll_forward_text(body, financial_year),
                               drop_labels=drop)
     return template_tables.restore_standards_table(
         html, getattr(financial_year.customer, "report_template_path", None))
@@ -1489,6 +1500,21 @@ def carry_forward_prior_wording(report, financial_year) -> int:
                     and raw and (section.content_html or "").strip() == raw):
                 section.content_html = _carried_html(carried, financial_year)
                 filled += 1
+            elif (carried is not None and carried.id == section.prior_note_id
+                    and raw):
+                # Stored flat (no paragraph breaks) and carried into the note as
+                # one block: rebuilt from the template's own structure, but only
+                # if nobody has touched it since - the block must be exactly what
+                # the flat wording converts to.
+                from . import template_structure
+                if template_structure.is_flat(carried.body_text):
+                    as_carried = prior_text_to_html(
+                        roll_forward_text(carried.body_text, financial_year))
+                    if (section.content_html or "").strip() == as_carried.strip():
+                        rebuilt = _carried_html(carried, financial_year)
+                        if rebuilt.strip() != as_carried.strip():
+                            section.content_html = rebuilt
+                            filled += 1
             continue
 
         note = catalogue.get(key)
