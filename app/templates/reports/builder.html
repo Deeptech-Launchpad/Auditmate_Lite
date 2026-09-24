@@ -170,6 +170,54 @@ Anything typed into the report - note wording, edited figures, answers, section 
   </div>
 {% endif %}
 
+{% if follow.available %}
+<div class="card" style="margin-bottom:16px;border-left:3px solid #2563a8">
+  <div class="card-head">
+    <h2 style="display:inline">Following last year's accounts:
+      <span style="color:{{ '#1f7a44' if follow.on else '#6b7280' }}">{{ 'on' if follow.on else 'off' }}</span></h2>
+    {% if not fy.is_closed %}
+      <button type="button" class="btn" data-fy="{{ fy.id }}" data-follow-action="{{ 'off' if follow.on else 'on' }}"
+              style="float:right">{{ 'Turn off' if follow.on else 'Turn on' }}</button>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% if follow.on %}
+      <p class="small" style="margin-top:0">
+        Tables the notes library adds that last year's accounts never had, and
+        that only a document nobody has supplied could fill, are left out.
+        Tables drawn from the books are always kept. Nothing is dropped
+        silently: each is listed here, and you can put it back.
+      </p>
+      {% if follow.left_out %}
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="text-align:left;color:#6b7280">
+            <th style="padding:4px 8px 4px 0">Left out</th><th style="padding:4px 8px">Why</th><th></th></tr></thead>
+          <tbody>
+          {% for item in follow.left_out %}
+            <tr style="border-top:1px solid #e5e7eb;vertical-align:top">
+              <td style="padding:8px 8px 8px 0"><strong>{{ item.note }}</strong>
+                <div class="muted small">{{ item.rows[:3]|join(' · ') }}{% if item.rows|length > 3 %} …{% endif %}</div></td>
+              <td style="padding:8px" class="small">{{ item.why }}</td>
+              <td style="padding:8px 0;text-align:right">
+                {% if not fy.is_closed %}
+                <button type="button" class="btn" data-fy="{{ fy.id }}" data-follow-action="add_back"
+                        data-table-id="{{ item.table_id }}">Add back</button>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="small muted" style="margin:0">Nothing has been left out.</p>
+      {% endif %}
+    {% else %}
+      <p class="small" style="margin:0">Every disclosure in the notes library is included, whether or not last year's accounts had it.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 <div class="notice">
   <span>&#8505;</span>
   <div>

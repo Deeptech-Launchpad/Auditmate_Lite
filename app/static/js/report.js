@@ -450,6 +450,28 @@
     document.execCommand('insertText', false, text);
   });
 
+  /* Follow the template: turn it on or off, or put back a table it left out. */
+  document.addEventListener('click', async event => {
+    const button = event.target.closest('[data-follow-action]');
+    if (!button) return;
+    button.disabled = true;
+    try {
+      const response = await fetch('/reports/api/follow-template', {
+        method: 'PATCH', headers: csrfHeaders(),
+        body: JSON.stringify({
+          financial_year_id: button.dataset.fy,
+          action: button.dataset.followAction,
+          table_id: button.dataset.tableId || null })
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || 'failed');
+      window.location.reload();
+    } catch (err) {
+      button.disabled = false;
+      say('Could not save', 'failed');
+    }
+  });
+
   /* A held paragraph is answered in its note: it applies (the wording is added
      to the note) or it does not (left out). Saved for the engagement, then the
      page is reloaded on the same note so the wording shows where it sits. */

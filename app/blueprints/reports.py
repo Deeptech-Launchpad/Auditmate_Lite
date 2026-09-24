@@ -15,6 +15,7 @@ from ..models import (AuditReport, AuditReportSection, Customer,
 log = logging.getLogger(__name__)
 
 from ..services import completion_needs
+from ..services import template_follow
 from ..services import overrides as overrides_service
 from ..services import preparer_checks as checks_service
 from ..services import provenance as provenance_service, readiness
@@ -102,6 +103,7 @@ def builder(fy_id):
                            editable=editable,
                            incomplete=incomplete,
                            needs=completion_needs.needs(incomplete),
+                           follow=template_follow.panel(report),
                            summarise=completion_needs.summarise,
                            payloads=payloads,
                            ordered_sections=report_service.ordered_sections(report),
@@ -751,6 +753,38 @@ def update_document_figure():
         statements_service.build_all(financial_year.id, use_ai=False)
 
     return jsonify({"ok": True, "amount": float(amount)})
+
+
+@bp.route("/api/follow-template", methods=["PATCH"])
+@login_required
+def follow_template():
+    """Turn "follow the template's disclosures" on or off, or put back one
+    table it left out. Kept per engagement, so a rebuilt report keeps it."""
+    from ..services import document_fields
+
+    payload = request.get_json(silent=True) or {}
+    year = db.session.get(FinancialYear, payload.get("financial_year_id") or 0)
+    if year is None:
+        return jsonify({"ok": False, "error": "Unknown engagement."}), 404
+    if year.is_closed:
+        return jsonify({"ok": False, "error": "This engagement is closed."}), 400
+
+    action = (payload.get("action") or "").strip()
+    if action == "add_back" and payload.get("table_id"):
+        document_fields.save(year, template_follow.ADDBACK_TOKEN,
+                             str(payload["table_id"]), text="yes",
+                             found_at="put back in the report")
+    elif action in ("on", "off"):
+        if action == "off":
+            document_fields.save(year, template_follow.FOLLOW_TOKEN, "template",
+                                 text="off", found_at="set in the report")
+        else:
+            document_fields.save(year, template_follow.FOLLOW_TOKEN, "template",
+                                 clear=True)
+    else:
+        return jsonify({"ok": False, "error": "Nothing to do."}), 400
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @bp.route("/api/confirm-paragraph", methods=["PATCH"])

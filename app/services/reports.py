@@ -1329,6 +1329,37 @@ def roll_forward_references(html, financial_year, section):
 _NUMBERED_HEADING = re.compile(r"^\d+(\.\d+)*\.?\s+\S")
 
 
+_GRADING_BASIS = re.compile(
+    r"^(?P<cat>\d+)\s+(?P<desc>.+?)\s+"
+    r"(?P<basis>12-months? ECL|Lifetime ECL|Written off|Difference between.+)$",
+    re.IGNORECASE)
+
+
+def _grading_table(lines):
+    """The credit risk grading table as last year's accounts printed it.
+
+    Category, Description, Basis of recognising ECL - words, no amounts. Kept
+    as the table it was, not joined into one line; and it is the reason the
+    library's amounts table for the same subject can be left out.
+    """
+    from html import escape
+
+    if len(lines) < 3 or not re.match(r"^category\b", lines[0], re.IGNORECASE):
+        return None
+    rows = []
+    for line in lines[1:]:
+        match = _GRADING_BASIS.match(line.strip())
+        if not match:
+            return None
+        rows.append(match.group("cat", "desc", "basis"))
+    head = ("<thead><tr><th>Category</th><th>Description</th>"
+            "<th>Basis of recognising ECL</th></tr></thead>")
+    body = "".join(
+        "<tr><td>%s</td><td>%s</td><td>%s</td></tr>" % tuple(
+            escape(cell) for cell in row) for row in rows)
+    return f'<table class="fin note-table grading">{head}<tbody>{body}</tbody></table>'
+
+
 def prior_text_to_html(text):
     """Last year's plain-text note as paragraphs and headings.
 
@@ -1383,7 +1414,10 @@ def prior_text_to_html(text):
                     continue
             out.append(f"<h4>{escape(lines[0])}</h4>")
             continue
-        if any(re.match(r"^[•\-]\s*", ln) for ln in lines):
+        grading = _grading_table(lines)
+        if grading:
+            out.append(grading)
+        elif any(re.match(r"^[•\-]\s*", ln) for ln in lines):
             out.append("<p>" + "<br>".join(escape(ln) for ln in lines) + "</p>")
         else:
             out.append("<p>" + escape(" ".join(lines)) + "</p>")

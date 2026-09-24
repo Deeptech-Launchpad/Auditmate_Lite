@@ -281,6 +281,12 @@
 /* The row captions of a multi-column table need room: with four figure
    columns the caption was squeezed to a few characters a line. */
 {{ S }} table.by-class th.lbl, {{ S }} table.by-class td.lbl { width: 34%; }
+/* A table of words carried from last year's accounts (the credit risk grading). */
+{{ S }} table.grading { font-size: .92em; }
+{{ S }} table.grading th, {{ S }} table.grading td { text-align: left; vertical-align: top;
+  padding: 3px 8px 3px 0; }
+{{ S }} table.grading th { border-bottom: 1px solid #000; }
+{{ S }} table.grading td:first-child, {{ S }} table.grading th:first-child { width: 8%; }
 
 /* The stamp is fixed to the viewport, so it crosses whatever paragraph
    happens to be under it and both become unreadable. Given its own

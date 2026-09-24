@@ -1018,6 +1018,13 @@ def build_table(spec, financial_year, statements=None):
     if not library_rows:
         return None
 
+    # A table the library adds that last year's accounts never had, and that
+    # only a document nobody supplied could fill: left out, and listed, when
+    # the engagement follows its template. See services/template_follow.
+    from . import template_follow
+    if not template_follow.keeps(table, spec, financial_year):
+        return None
+
     # Presented one column per class of asset - the fixed asset,
     # investment property and intangibles movement tables.
     if str(table.get("column_labels") or "").strip().lower().startswith(
