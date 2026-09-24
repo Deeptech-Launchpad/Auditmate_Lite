@@ -280,10 +280,14 @@ def render_bindings(text: str, customer, financial_year,
     values["field.report_date"] = date.today().strftime("%d %B %Y")
     values["field.place_of_signature"] = (
         current_app.config.get("FIRM_PLACE_OF_SIGNATURE") or "Singapore")
+    # The firm's own settings first (typed once in Settings, or read from a
+    # compilation report), then the deployment's .env.
     values["field.practitioner_name"] = (
-        current_app.config.get("FIRM_PRACTITIONER_NAME") or "")
+        values.get("firm.practitioner_name")
+        or current_app.config.get("FIRM_PRACTITIONER_NAME") or "")
     values["field.practitioner_address"] = (
-        current_app.config.get("FIRM_PRACTITIONER_ADDRESS") or "")
+        values.get("firm.practitioner_address")
+        or current_app.config.get("FIRM_PRACTITIONER_ADDRESS") or "")
 
     from . import related_parties as related_service
 
@@ -1207,6 +1211,40 @@ def prior_year_wording(financial_year):
     return out
 
 
+_NUMBERED_HEADING = re.compile(r"^\d+(\.\d+)*\.?\s+\S")
+
+
+def prior_text_to_html(text):
+    """Last year's plain-text note as paragraphs and headings.
+
+    The signed accounts' note is stored as plain text - blank lines between
+    paragraphs, a heading on a line of its own ("2.1 Basis of preparation",
+    "Financial assets"). Put into a note as it stood, HTML collapsed every line
+    break and the whole policies note printed as one run-on paragraph with its
+    headings buried in the sentences. A short line with no closing punctuation
+    is a heading; a line starting with a bullet keeps its own line.
+    """
+    from html import escape
+
+    blocks = re.split(r"\n\s*\n", (text or "").replace("\r\n", "\n").strip())
+    out = []
+    for block in blocks:
+        lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
+        if not lines:
+            continue
+        if (len(lines) == 1 and len(lines[0]) <= 90
+                and not re.search(r"[.;,:]$", lines[0])
+                and (_NUMBERED_HEADING.match(lines[0])
+                     or not re.match(r"^[a-z(•\-]", lines[0]))):
+            out.append(f"<h4>{escape(lines[0])}</h4>")
+            continue
+        if any(re.match(r"^[•\-•]\s*", ln) for ln in lines):
+            out.append("<p>" + "<br>".join(escape(ln) for ln in lines) + "</p>")
+        else:
+            out.append("<p>" + escape(" ".join(lines)) + "</p>")
+    return "\n".join(out)
+
+
 def carry_forward_prior_wording(report, financial_year) -> int:
     """Offer last year's sentences as the starting text of this year's notes.
 
@@ -1234,10 +1272,19 @@ def carry_forward_prior_wording(report, financial_year) -> int:
     for section in report.sections:
         if not section.section_key.startswith(NOTE_PREFIX):
             continue
+        key = section.section_key[len(NOTE_PREFIX):]
         if section.prior_note_id:                  # already carried
+            # Carried as raw text by an earlier version, and not touched
+            # since: put it into paragraphs and headings. Anything a person
+            # has edited no longer equals the raw text and is left alone.
+            carried = wording.get(key)
+            raw = (carried.body_text or "").strip() if carried else ""
+            if (carried is not None and carried.id == section.prior_note_id
+                    and raw and (section.content_html or "").strip() == raw):
+                section.content_html = prior_text_to_html(carried.body_text)
+                filled += 1
             continue
 
-        key = section.section_key[len(NOTE_PREFIX):]
         note = catalogue.get(key)
         prior = wording.get(key)
         if not note or prior is None:
@@ -1255,7 +1302,7 @@ def carry_forward_prior_wording(report, financial_year) -> int:
         if current and current != (default_html or "").strip():
             continue
 
-        section.content_html = prior.body_text
+        section.content_html = prior_text_to_html(prior.body_text)
         section.prior_note_id = prior.id
         filled += 1
 

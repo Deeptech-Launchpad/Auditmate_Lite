@@ -36,6 +36,11 @@ import re
 # single spaces, so "Profit_and_Loss", "Profit-and-Loss" and "Profit & Loss"
 # all read the same way.
 RULES = [
+    # Before everything: the sheets of a reporting pack are outputs whatever
+    # they contain, and the words "financial statements" or "balance sheet"
+    # inside their names must not send them to a source category.
+    ("compilation_report", [r"\bcompilation report\b"]),
+    ("reporting_pack", [r"\bfinancial reporting for sme"]),
     ("trial_balance", [
         r"\btrial balance\b", r"\btb\b", r"\btrialbalance\b",
     ]),

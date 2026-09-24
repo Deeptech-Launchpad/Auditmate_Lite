@@ -68,6 +68,13 @@ DOCUMENT_CATEGORIES = [
     # against a return filed under this category (see readiness.py), so the
     # label has to say so rather than leaving the preparer guessing.
     ("tax_document", "Tax Document / GST Return"),
+    # A sheet of an accounting system's own "financial reporting" pack: the
+    # statements, notes and cover pages it has already drawn FROM the books.
+    # Output, not a source - it must never build or overrule the accounts.
+    ("reporting_pack", "Reporting pack sheet (output, not a source)"),
+    # The compilation report sheet of such a pack, or a firm's own. Read only
+    # for the practitioner's name and address, when they are filled in.
+    ("compilation_report", "Compilation report"),
     ("other", "Other"),
     # The prior-year half of every OTHER category a client might also send
     # twice - the same reasoning PRIOR_YEAR_TWIN gives for a trial balance
@@ -2476,6 +2483,19 @@ DISCLOSURE_SETTINGS = (
      "Days overdue before a receivable is written off",
      "e.g. 365 days",
      "The point at which recovery is no longer considered likely."),
+)
+
+# The practitioner's particulars, which SSRS 4410 needs on a compilation
+# report. Firm-wide, so they live with the other standing wording.
+DISCLOSURE_SETTINGS = DISCLOSURE_SETTINGS + (
+    ("practitioner_name",
+     "Practitioner or firm name (compilation report)",
+     "e.g. AltiusNXT Public Accountants",
+     "Signs the compilation report."),
+    ("practitioner_address",
+     "Practitioner address (compilation report)",
+     "e.g. 1 Example Road, Singapore 123456",
+     "Printed under the practitioner's name."),
 )
 
 DISCLOSURE_SETTING_KEYS = {key for key, _l, _p, _h in DISCLOSURE_SETTINGS}

@@ -96,7 +96,8 @@ PERSON_TOKENS = {
     "FIRM": "Comes from a firm setting",
 }
 
-SINGLE_COLUMN = ("single amount column", "amount per period")
+SINGLE_COLUMN = ("single amount column", "amount per period",
+                 "current year")
 
 # A movement table presented one column per class of asset, with a Total
 # column beside them. The library says so in the table's own column
@@ -986,6 +987,14 @@ def build_table(spec, financial_year, statements=None):
     if "REG:shares_open" in str(table.get("line_codes") or ""):
         return _shareholding_table(spec, financial_year)
 
+    # Number of shares and amount, for each year: four figure columns.
+    from . import share_capital
+    if share_capital.is_share_capital_table(table):
+        built = share_capital.table(spec, financial_year, table,
+                                    figures_for(financial_year))
+        if built is not None:
+            return built
+
     figures = figures_for(financial_year)
     first_year = bool(financial_year.is_first_year)
     # Which table these rows belong to. A document field whose name
@@ -1230,6 +1239,24 @@ def _doc_total(rows, index, figures, first_year, named=None, partway=False):
             if column == "previous" and first_year:
                 continue
             row[column] = figures.resolve(f"FI:{side}", offset)
+        return
+
+    # The library ties this total to no statement line ("no total"): it is the
+    # table's own rows added together, so that is what it prints - where every
+    # row above is a figure. Asked of a statement line instead, it was held
+    # because the line (reserves) also carries share capital, which this table
+    # does not list.
+    if str(named or "").strip().lower() == "no total":
+        for column in ("current", "previous"):
+            if column == "previous" and first_year:
+                continue
+            values = [r[column] for r in group]
+            if values and all(isinstance(v, Decimal) for v in values):
+                row[column] = sum(values, ZERO)
+            elif any(_is_held(v) for v in values):
+                row[column] = Held("The rows above it are not all known")
+            else:
+                row[column] = None
         return
 
     codes = []

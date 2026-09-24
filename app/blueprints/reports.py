@@ -14,6 +14,7 @@ from ..models import (AuditReport, AuditReportSection, Customer,
                       FinancialStatement, FinancialYear, ReportFigureOverride, StatementLine)
 log = logging.getLogger(__name__)
 
+from ..services import completion_needs
 from ..services import overrides as overrides_service
 from ..services import preparer_checks as checks_service
 from ..services import provenance as provenance_service, readiness
@@ -100,6 +101,7 @@ def builder(fy_id):
                            look=_template_look(financial_year.customer),
                            editable=editable,
                            incomplete=incomplete,
+                           needs=completion_needs.needs(incomplete),
                            payloads=payloads,
                            ordered_sections=report_service.ordered_sections(report),
                            note_numbers=report_service.note_number_map(report),

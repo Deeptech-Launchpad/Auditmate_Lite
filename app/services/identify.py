@@ -265,6 +265,25 @@ def _identify_document(document, raw_text="", page_count=None):
     if document.category_source == "manual":
         return document.category, "set by the auditor", False
 
+    # A sheet of an accounting system's reporting pack, told by its title.
+    # Before the rows are read: they look like a trial balance's (income and
+    # expenses, a debit or a credit) and used to be filed as one.
+    from . import compilation_report
+
+    kind = compilation_report.sheet_kind(document.storage_path)
+    if kind is not None:
+        reason = ("titled as a sheet of a financial reporting pack - output "
+                  "drawn from the books, never a source for them")
+        if kind == compilation_report.COMPILATION:
+            name, _address, note = compilation_report.remember_practitioner(
+                document.storage_path)
+            reason = "a compilation report; " + note
+        changed = kind != document.category
+        document.category = kind
+        document.category_source = "content"
+        document.category_reason = reason[:255]
+        return kind, reason, changed
+
     if document.category not in DECIDABLE:
         return (document.category,
                 "already a category the contents cannot argue with", False)

@@ -109,6 +109,53 @@ Anything typed into the report - note wording, edited figures, answers, section 
           report below, never shown as a dash. The accounts can be approved once
           all of these are resolved.
         </p>
+        {# What would settle it, grouped: five or six things to chase, not
+           fifty reasons. Working screen only - never in an export. #}
+        {% if needs %}
+        <h3 style="margin:14px 0 6px;font-size:14px">What this report still needs</h3>
+        <table class="needs-table" style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="text-align:left;color:#6b7280">
+              <th style="padding:4px 8px 4px 0">What</th>
+              <th style="padding:4px 8px">From whom</th>
+              <th style="padding:4px 8px">Where it goes</th>
+              <th style="padding:4px 0 4px 8px">Fills</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for need in needs %}
+            <tr style="border-top:1px solid #e5e7eb;vertical-align:top">
+              <td style="padding:8px 8px 8px 0">
+                <strong>{{ need.label }}</strong>
+                <span class="pill {{ 'pill-red' if need.kind == 'file' else 'pill-amber' if need.kind == 'answer' else '' }}"
+                      style="margin-left:6px">{{ 'file' if need.kind == 'file' else 'software' if need.kind == 'software' else 'answer' }}</span>
+                <div class="muted small">{{ need.file }}</div>
+              </td>
+              <td style="padding:8px">{{ need.owner }}</td>
+              <td style="padding:8px">
+                {{ need.where }}
+                {% if need.endpoint == 'documents.figures' %}
+                  <a class="gap-fix" href="{{ url_for('documents.figures', fy_id=fy.id) }}">Open Figures &rarr;</a>
+                {% elif need.endpoint == 'reports.preparer_inputs' %}
+                  <a class="gap-fix" href="{{ url_for('reports.preparer_inputs', fy_id=fy.id) }}">Open Questions &rarr;</a>
+                {% elif need.endpoint == 'reports.related_parties' %}
+                  <a class="gap-fix" href="{{ url_for('reports.related_parties', fy_id=fy.id) }}">Open Related parties &rarr;</a>
+                {% elif need.endpoint == 'settings.disclosures' %}
+                  <a class="gap-fix" href="{{ url_for('settings.disclosures') }}">Open Settings &rarr;</a>
+                {% elif need.endpoint == 'customers.detail' %}
+                  <a class="gap-fix" href="{{ url_for('customers.detail', customer_id=customer.id) }}">Open customer &rarr;</a>
+                {% endif %}
+              </td>
+              <td style="padding:8px 0 8px 8px" class="small">
+                {{ need.notes[:4]|join(', ') }}{% if need.notes|length > 4 %} and {{ need.notes|length - 4 }} more{% endif %}
+                <span class="muted">({{ need.count }})</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <h3 style="margin:16px 0 6px;font-size:14px">Note by note</h3>
+        {% endif %}
         {% for title, reasons in incomplete %}
           <div class="gap-row">
             <span class="pill pill-red">INCOMPLETE</span>

@@ -329,6 +329,8 @@ def fill(financial_year):
     DocumentFigure.query.filter_by(financial_year_id=financial_year.id,
                                    token=TOKEN).delete()
     _fill_shareholdings(financial_year)
+    from . import share_capital
+    share_capital.fill(financial_year)
     for code, (amount, where) in figures.items():
         db.session.add(DocumentFigure(
             financial_year_id=financial_year.id, token=TOKEN, field=code,

@@ -483,6 +483,20 @@
         {% if table.by_class %}
         <table class="fin note-table by-class">
           <thead>
+            {% if table.year_groups %}
+            {# Two columns under each year - number of shares, then amount. #}
+            <tr class="hdr-dates">
+              <th class="lbl"></th>
+              <th class="num" colspan="2">{{ fy_end }}</th>
+              {% if table.classes|length > 2 %}
+                <th class="num" colspan="2">{{ fy_prev_end or '—' }}</th>
+              {% endif %}
+            </tr>
+            <tr class="hdr-ccy">
+              <th class="lbl"></th>
+              {% for name in table.subheads %}<th class="num">{{ name }}</th>{% endfor %}
+            </tr>
+            {% else %}
             <tr class="hdr-dates">
               <th class="lbl"></th>
               {% for name in table.classes %}
@@ -493,6 +507,7 @@
               <th class="lbl"></th>
               {% for name in table.classes %}<th class="num">{{ ccy_sym }}</th>{% endfor %}
             </tr>
+            {% endif %}
           </thead>
           <tbody>
             {% for row in table.rows %}
