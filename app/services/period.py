@@ -70,6 +70,6 @@ def heading_wording(start, end, date_format="%d %B %Y"):
     if not start or not end:
         return "for the year ended [date]"
     if is_full_year(start, end):
-        return f"for the year ended {end.strftime(date_format)}"
+        return f"for the financial year ended {end.strftime(date_format)}"
     return (f"for the period from {start.strftime(date_format)} to "
            f"{end.strftime(date_format)}")

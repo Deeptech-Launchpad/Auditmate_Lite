@@ -1285,8 +1285,12 @@ def _template_look(customer):
     Handed to the preview, PDF and Word export alike - see
     docx_export.template_look.
     """
-    from ..services import docx_export
-    return docx_export.template_look(customer.report_template_path)
+    # One output format for every set (AuditMate_Output_Format_Spec.pdf): the
+    # customer's template decides the structure and wording, never the type or
+    # the page. Measuring the template used to give Times on Letter paper,
+    # because the template's fonts carry anonymous names.
+    from ..services import output_spec
+    return output_spec.look()
 
 
 @bp.route("/<int:report_id>/preview")
@@ -1338,12 +1342,15 @@ def export_word(report_id):
                            checks=checks_service.build(
                                report, financial_year, payloads),
                            look=_template_look(report.financial_year.customer),
-                           for_pdf=True)
+                           for_pdf=True, word_export=True)
 
     try:
         # Use customer's custom template if they uploaded one
         template_path = financial_year.customer.report_template_path
-        data = docx_export.build(html, draft=bool(incomplete), template_path=template_path)
+        customer = financial_year.customer
+        data = docx_export.build(
+            html, draft=bool(incomplete), template_path=template_path,
+            page_header=(customer.legal_name or customer.name, customer.uen))
     except Exception as exc:                        # noqa: BLE001
         flash(f"Word export failed: {exc}", "error")
         return redirect(url_for("reports.preview", report_id=report.id))

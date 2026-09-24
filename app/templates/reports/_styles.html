@@ -15,8 +15,9 @@
 {% set L = look|default(none) %}
 {% set page_size = ('%.1fmm %.1fmm'|format(L.page_mm[0], L.page_mm[1])) if L else 'A4' %}
 {% set page_margin = ('%.1fmm %.1fmm %.1fmm %.1fmm'|format(L.top, L.right, L.bottom, L.left)) if L else '20mm 18mm 18mm' %}
-{% set body_face = ('"' ~ L.face ~ '", "Times New Roman", Times, serif') if L else '"Times New Roman", Times, Georgia, serif' %}
+{% set body_face = (L.stack if L and L.stack else ('"' ~ L.face ~ '", "Times New Roman", Times, serif') if L else '"Times New Roman", Times, Georgia, serif') %}
 {% set body_size = ('%gpt'|format(L.body_pt)) if L else '11pt' %}
+{% set spec = L and L.spec %}
 
 {#
   Paged-media rules, under @media print rather than gated on `for_pdf`.
@@ -495,3 +496,107 @@
   {{ S }} .src-dot, {{ S }} .stale-note, {{ S }} .tbl-source { display: none !important; }
   {{ S }} tr.stale td { background: none !important; }
 }
+
+{% if spec %}
+{# ============================================================================
+   AuditMate output format - AuditMate_Output_Format_Spec.pdf.
+   Last in the file on purpose: it settles every earlier rule. Arial 9 pt
+   throughout, a 10.2 pt line, plain tables ruled not gridded, and the page
+   furniture the spec lists. The one grid in the document is the credit risk
+   grading table.
+   ============================================================================ #}
+{{ S }} .rpt-doc {
+  font-family: {{ body_face|safe }}; font-size: 9pt; line-height: 10.2pt;
+  color: #000; text-align: left;
+}
+{{ S }} .rpt-doc p { margin: 0 0 10.2pt; text-align: justify; }
+{{ S }} .rpt-doc h1, {{ S }} .rpt-doc h2, {{ S }} .rpt-doc h3,
+{{ S }} .rpt-doc h4, {{ S }} .rpt-doc h5, {{ S }} .rpt-doc h6 {
+  font-size: 9pt; font-weight: bold; line-height: 10.2pt; font-family: inherit;
+}
+{{ S }} .rpt-doc h4 { margin: 10.2pt 0 0; }
+{{ S }} h3.note-title { margin: 20.5pt 0 10.2pt; font-size: 9pt; }
+{{ S }} .rpt-note .rpt-body { margin-left: 33pt; }        /* as the template */
+
+/* page furniture */
+{{ S }} .rpt-head { text-align: left; margin: 0 0 20.5pt; }
+{{ S }} .rpt-co { font-weight: bold; text-transform: uppercase; letter-spacing: 0; }
+{{ S }} .rpt-uen { font-style: italic; margin: 0 0 10.2pt; }
+{{ S }} .rpt-sect { font-weight: bold; text-transform: uppercase;
+                    text-decoration: none; margin: 0; }
+{{ S }} .rpt-period { font-style: italic; text-transform: uppercase; }
+{{ S }} .rpt-head.with-rule { border-bottom: .6pt solid #000; padding-bottom: 6pt; }
+
+/* cover: nothing running, name and title centred on the upper third */
+{{ S }} .cover { margin: 150pt 0 0; }
+{{ S }} .cover h1, {{ S }} .cover-co { font-size: 9pt; font-weight: bold;
+                                        letter-spacing: 0; line-height: 10.2pt; }
+{{ S }} .cover-sub { font-style: italic; }
+{{ S }} .cover-uen { margin: 0 0 20.5pt; font-style: normal; }
+{{ S }} .cover-date { font-weight: bold; }
+
+/* face statements and figure notes: plain, ruled */
+{{ S }} table.fin { margin: 0 0 10.2pt; }
+{{ S }} table.fin th, {{ S }} table.fin td {
+  padding: 0 3pt; line-height: 10.2pt; border: 0; background: none;
+}
+{{ S }} table.fin tbody tr:first-child td { padding-top: 10.2pt; }
+{{ S }} table.fin .hdr-dates th, {{ S }} table.fin .hdr-ccy th {
+  font-weight: bold; border: 0; padding-bottom: 0;
+}
+/* the rule under a year heading is the width of the heading only */
+{{ S }} table.fin th .yr { display: inline-block; padding: 0 1pt;
+                            border-bottom: .96pt solid #000; }
+{{ S }} table.fin:not(.by-class) th.num.hdr-space { width: auto; }
+{{ S }} table.fin:not(.by-class) td.notes, {{ S }} table.fin:not(.by-class) th.notes {
+  width: 14.8mm; text-align: center; }
+{{ S }} table.fin:not(.by-class) td.num:nth-last-child(2),
+{{ S }} table.fin:not(.by-class) th.num:nth-last-child(2) { width: 25.8mm; }
+{{ S }} table.fin:not(.by-class) td.num:last-child,
+{{ S }} table.fin:not(.by-class) th.num:last-child { width: 34.6mm; }
+{{ S }} table.fin tr.group-head td { font-weight: bold; padding-top: 10.2pt; }
+{{ S }} table.fin tr.subtotal td.num, {{ S }} table.fin tr.ruled-above td.num,
+{{ S }} table.fin tr.total td.num { border-top: .96pt solid #000; }
+{{ S }} table.fin tr.subtotal td.lbl, {{ S }} table.fin tr.ruled-above td.lbl,
+{{ S }} table.fin tr.total td.lbl, {{ S }} table.fin tr.subtotal td.notes,
+{{ S }} table.fin tr.total td.notes { border-top: 0; }
+{{ S }} table.fin tr.total td { font-weight: bold; border-bottom: 0; }
+{{ S }} table.fin tr.total td.num { border-bottom: 2.84pt double #000; }  /* .72 pt x2, 1.4 pt apart */
+{{ S }} table.fin tr.subtotal td { font-weight: bold; }
+{{ S }} table.fin td.indent-1 { padding-left: 12pt; }
+{{ S }} table.fin td.indent-2 { padding-left: 24pt; }
+{{ S }} table.fin tr.detail td.lbl { padding-left: 12pt; }
+{{ S }} table.note-table { margin-bottom: 10.2pt; }
+
+/* the one genuine grid: the credit risk grading table */
+{{ S }} table.grading { border-collapse: collapse; font-size: 9pt; }
+{{ S }} table.grading th, {{ S }} table.grading td {
+  border: .5pt solid #000; padding: 2pt 4pt; text-align: left; vertical-align: top;
+}
+
+/* the footnote under every statement */
+{{ S }} .rpt-foot { font-size: 8pt; font-style: italic; margin-top: 10.2pt;
+                    line-height: 10.2pt; text-align: left; }
+
+/* directors' shareholdings column heads */
+{{ S }} .shareholdings th { font-size: 7.5pt; font-weight: bold; }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 49pt 66pt 48pt 101pt;
+    @bottom-center { font-family: {{ body_face|safe }}; font-size: 9pt;
+                     font-weight: bold; content: counter(page); }
+  }
+  /* the cover carries no running header and no page number */
+  @page :first { @bottom-center { content: none; } }
+}
+{% endif %}
+{% if spec %}
+{{ S }} .contents-title { font-weight: bold; text-transform: uppercase; margin: 20.5pt 0 10.2pt; }
+{{ S }} table.contents { width: 100%; border-collapse: collapse; }
+{{ S }} .contents td { padding: 0 0 10.2pt; line-height: 10.2pt; }
+{% endif %}
+{% if spec %}
+{{ S }} .rpt-doc p.ind1 { margin-left: 26.8pt; }
+{% endif %}

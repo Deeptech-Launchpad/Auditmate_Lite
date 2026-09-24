@@ -12,10 +12,19 @@
   "--", and every primary statement closes with the annexed-notes footnote.
 #}
 
-{% macro page_header(title, subtitle, section_id=None) %}
-  <div class="rpt-head">
+{% macro page_header(title, subtitle, section_id=None, rule=False) %}
+  {# Page furniture per AuditMate_Output_Format_Spec.pdf: the company name in
+     bold, its registration number in italic beneath, then - on a statement
+     page - the title in bold capitals, the period line in italic and a 0.6 pt
+     rule across the text block. Left-aligned at the margin, as the template's
+     own pages are. #}
+  <div class="rpt-head{{ ' with-rule' if rule }}">
+    {# In the Word file the running header carries the company and its
+       registration number on every page, so they are not repeated here. #}
+    {% if not word_export|default(false) %}
     <div class="rpt-co">{{ customer.legal_name or customer.name }}</div>
-    <div class="rpt-uen">(Registration No: {{ customer.uen or '—' }})</div>
+    <div class="rpt-uen">Company Registration No.: {{ customer.uen or '—' }}</div>
+    {% endif %}
     <div class="rpt-sect">
       {%- if section_id -%}
         <span contenteditable="true" data-section-id="{{ section_id }}"
@@ -23,8 +32,8 @@
       {%- else -%}
         {{ title }}
       {%- endif -%}
-      {% if subtitle %} {{ subtitle }}{% endif %}
     </div>
+    {% if subtitle %}<div class="rpt-period">{{ subtitle }}</div>{% endif %}
   </div>
 {% endmacro %}
 
@@ -144,14 +153,14 @@
   {%- else -%}<span class="missing-binding">[not provided]</span>{%- endif -%}
 {% endmacro %}
 
-{% macro stmt_label(line) %}
+{% macro stmt_label(line, wording=None) %}
   {% if editable and line.id %}
     <span class="ed-label{{ ' is-edited' if line.label_is_overridden }}"
           contenteditable="true" data-line-id="{{ line.id }}"
           data-field="label" data-original="{{ line.label }}"
           title="{{ 'Was: ' ~ line.label if line.label_is_overridden
                     else 'Click to reword' }}">{{ line.effective_label }}</span>
-  {% else %}{{ line.effective_label }}{% endif %}
+  {% else %}{{ (wording or {}).get(line.line_key) if (wording and not line.label_is_overridden and line.line_key in wording) else line.effective_label }}{% endif %}
 {% endmacro %}
 
 {% macro stmt_amount(line) %}
@@ -181,6 +190,9 @@
 
 
 {% set fy_end = fy.end_date.strftime('%d.%m.%Y') if fy.end_date else '' %}
+{% set yr_cur = fy.end_date.year if fy.end_date else '' %}
+{% set yr_prev = (fy.previous_period_end.year if fy.previous_period_end
+                  else ((fy.end_date.year - 1) if fy.end_date else '—')) %}
 {% set fy_prev_end = fy.previous_period_end.strftime('%d.%m.%Y')
                      if fy.previous_period_end else '' %}
 {% set ccy = customer.books_currency or 'SGD' %}
@@ -215,29 +227,37 @@
     {# ---------------------------------------------------------- cover -- #}
     {% if is_cover %}
       {% set cover_labels = (section.data_binding or {}).get('labels') or {} %}
-      {% if cover_labels.get('template_cover') %}
+      {% set has_template = cover_labels.get('template_cover') %}
+      {% set _d = fy.end_date|datefmt('%d %B %Y') %}
+      {% if has_template %}
       {# The customer's own title page: company, registration, the title
          their template gives the document, and how it introduces the year
          end. The company and the dates are this customer's and this year's;
-         only the wording is the template's. #}
+         only the wording is the template's. Nothing else is on it: the
+         template's cover has no corporate information and no contents. #}
+      {% set doc_title = cover_label(section, 'title', '') %}
+      {% set period_line = (cover_label(section, 'date_prefix', '') ~ ' '
+                            ~ (_d|upper if cover_labels.get('upper_date') else _d)) %}
       <div class="cover">
         <h2 class="cover-co">{{ cover_field(section, 'legal_name', (customer.legal_name or customer.name)|upper) }}</h2>
         <p class="cover-uen">({{ cover_labels.get('registration_label', 'Registration No') }}: {{ cover_field(section, 'uen', customer.uen) }})</p>
-        <h1>{{ cover_label(section, 'title', '') }}</h1>
-        <p class="cover-date">{{ cover_label(section, 'date_prefix', '') }}
-          {% set _d = fy.end_date|datefmt('%d %B %Y') %}{{ _d|upper if cover_labels.get('upper_date') else _d }}</p>
+        <h1>{{ doc_title }}</h1>
+        <p class="cover-date">{{ period_line }}</p>
       </div>
       {% else %}
+      {% set doc_title = cover_label(section, 'title', 'ANNUAL REPORT') ~ ' ' ~ fy.year_label %}
+      {% set period_line = _d %}
       <div class="cover">
-        <h1>{{ cover_label(section, 'title', 'ANNUAL REPORT') }} {{ fy.year_label }}</h1>
+        <h1>{{ doc_title }}</h1>
         <p class="cover-sub">{{ cover_label(section, 'subtitle',
              'Financial Statements and Other Financial Information') }}</p>
         <h2 class="cover-co">{{ cover_field(section, 'legal_name', (customer.legal_name or customer.name)|upper) }}</h2>
         <p class="cover-uen">(Registration No: {{ cover_field(section, 'uen', customer.uen) }})</p>
-        <p class="cover-date">{{ fy.end_date|datefmt('%d %B %Y') }}</p>
+        <p class="cover-date">{{ period_line }}</p>
       </div>
-      {% endif %}
 
+      {# Without a template of their own, the company's particulars sit on the
+         cover as they always have. #}
       <h3 class="ruled">{{ cover_label(section, 'corp_info',
                             'CORPORATE INFORMATION') }}</h3>
 
@@ -268,18 +288,24 @@
           {{ cover_field(section, 'office', office|join('\n'), true) }}
         </div>
       </div>
+      {% endif %}
+    </div>{# the cover page ends here: the contents are the next page #}
 
-      <div class="corp-label" style="margin-top:18px">{{
-           cover_label(section, 'contents', 'CONTENTS') }}</div>
+    {# ------------------------------------------------------- contents -- #}
+    <div class="rpt-page page-break" id="sec-contents">
       {#
+        A page of its own after the cover, headed like every other page: the
+        company, its registration number, then the document's title and period
+        (as the template's own contents page is).
+
         Page numbers come from WeasyPrint's target-counter, so the contents
         page cites where each section actually lands. Nothing is printed on
-        screen, where there is no pagination to cite.
+        screen, where there is no pagination to cite. The notes are one entry
+        spanning a page range, the way the client's template lists them.
       #}
-      {#
-        The seventeen notes are one contents entry spanning a page range, the
-        way the client's template lists them - not seventeen separate lines.
-      #}
+      {{ page_header(doc_title, period_line) }}
+      <div class="contents-title">{{ cover_label(section, 'contents',
+           'TABLE OF CONTENTS PAGE' if has_template else 'CONTENTS') }}</div>
       {% set note_keys = [] %}
       {% for other in payloads %}
         {% if other.section.section_key.startswith('note_')
@@ -324,25 +350,60 @@
          actual length rather than assuming twelve months - see
          period_heading. #}
       {{ page_header(section.title,
-                     ('as of ' ~ (fy.end_date|datefmt('%d %B %Y'))) if as_of
-                     else period_heading(fy.start_date, fy.end_date)) }}
+                     ('as at ' ~ (fy.end_date|datefmt('%d %B %Y'))) if as_of
+                     else period_heading(fy.start_date, fy.end_date),
+                     rule=True) }}
 
       {% if statement %}
         {% set detailed = payload.detailed %}
         {% set show_notes = not detailed %}
-        {% set headings = GROUP_HEADINGS.get(
+        {% set headings = payload.headings or GROUP_HEADINGS.get(
              statement.statement_type ~ ('_detailed' if detailed else '')) or {} %}
+        {% if payload.matrix %}
+        {# The customer's own layout: share capital, retained earnings and
+           total across, one row for each date. #}
+        <table class="fin matrix">
+          <thead>
+            <tr class="hdr-dates">
+              <th class="lbl"></th>
+              {% for name in payload.matrix.columns %}<th class="num">{{ name }}</th>{% endfor %}
+            </tr>
+            <tr class="hdr-ccy">
+              <th class="lbl"></th>
+              {% for name in payload.matrix.columns %}<th class="num">{{ ccy_sym }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in payload.matrix.rows %}
+              <tr class="{{ 'subtotal' if row.bold }}">
+                <td class="lbl">{{ row.label }}</td>
+                {% for cell in row.cells %}<td class="num">{{ cell|stmt }}</td>{% endfor %}
+              </tr>
+              {% if row.label == 'Adjustment to opening balance' and show_working_marks %}
+                <tr class="working-note">
+                  <td colspan="4">
+                    <span class="wn-tag">Not part of the accounts</span>
+                    This year's opening balance is not last year's closing balance
+                    (the row above). It is shown so the columns add; the
+                    difference has to be found before the set can be approved.
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
         <table class="fin">
           <thead>
             <tr class="hdr-dates">
               <th class="lbl"></th>
-              {% if show_notes %}<th class="notes"></th>{% endif %}
-              <th class="num">{{ fy_end }}</th>
-              <th class="num">{{ fy_prev_end or '—' }}</th>
+              {% if show_notes %}<th class="notes"><span class="yr">Note</span></th>{% endif %}
+              <th class="num"><span class="yr">{{ yr_cur }}</span></th>
+              <th class="num"><span class="yr">{{ yr_prev }}</span></th>
             </tr>
             <tr class="hdr-ccy">
               <th class="lbl"></th>
-              {% if show_notes %}<th class="notes">Notes</th>{% endif %}
+              {% if show_notes %}<th class="notes"></th>{% endif %}
               <th class="num">{{ ccy_sym }}</th>
               <th class="num">{{ ccy_sym }}</th>
             </tr>
@@ -392,7 +453,7 @@
                 {% endif %}
               {% else %}
               <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}{% if line.is_detail %} detail{% endif %}">
-                <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ stmt_label(line) }}</td>
+                <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ stmt_label(line, payload.cf_labels) }}</td>
                 {% if show_notes %}<td class="notes">{{ note_numbers.get(line.note_ref, '') if note_numbers else '' }}</td>{% endif %}
                 {{ stmt_amount(line) }}
                 {{ amount_cell(line.amount_previous,
@@ -405,10 +466,12 @@
           </tbody>
         </table>
 
+        {% endif %}
+
         {% if payload.footnote %}
           <p class="rpt-foot">{{ payload.footnote }}</p>
         {% else %}
-          <p class="rpt-foot">The annexed notes form an integral part of and
+          <p class="rpt-foot">The accompanying notes form an integral part of and
           should be read in conjunction with these financial statements.</p>
         {% endif %}
       {% else %}
@@ -426,7 +489,7 @@
       {% if starts_page %}
         {{ page_header(
              'Notes to the Financial Statements' if is_note else section.title,
-             ('- ' ~ (fy.end_date|datefmt('%d %B %Y'))) if is_note else '',
+             period_heading(fy.start_date, fy.end_date) if is_note else '',
              section_id=section.id if (editable and not is_note) else None) }}
       {% endif %}
 
@@ -510,9 +573,9 @@
             {# Two columns under each year - number of shares, then amount. #}
             <tr class="hdr-dates">
               <th class="lbl"></th>
-              <th class="num" colspan="2">{{ fy_end }}</th>
+              <th class="num" colspan="2"><span class="yr">{{ yr_cur }}</span></th>
               {% if table.classes|length > 2 %}
-                <th class="num" colspan="2">{{ fy_prev_end or '—' }}</th>
+                <th class="num" colspan="2"><span class="yr">{{ yr_prev }}</span></th>
               {% endif %}
             </tr>
             <tr class="hdr-ccy">
@@ -585,8 +648,8 @@
           <thead>
             <tr class="hdr-dates">
               <th class="lbl"></th>
-              <th class="num">{{ fy_end }}</th>
-              <th class="num">{{ fy_prev_end or '—' }}</th>
+              <th class="num"><span class="yr">{{ yr_cur }}</span></th>
+              <th class="num"><span class="yr">{{ yr_prev }}</span></th>
             </tr>
             <tr class="hdr-ccy">
               <th class="lbl"></th>

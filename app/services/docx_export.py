@@ -90,6 +90,13 @@ class _Reader(HTMLParser):
         # <tr> in the preview already, so it is read here rather than
         # guessed from the text later.
         self._row_kind = ""
+        # Which open <div>s centre their text (the cover), so a paragraph
+        # knows to be centred without the converter reading CSS.
+        self._div_stack = []
+        self._centred = 0
+
+    def _format_next(self, **what):
+        self.out.append(("next", what, None))
 
     # -- text collection --------------------------------------------------
 
@@ -122,6 +129,8 @@ class _Reader(HTMLParser):
         runs = self._flush()
         if not runs:
             return
+        if self._centred:
+            self._format_next(align="center")
         if self._heading is not None:
             self.out.append(("heading", self._heading, runs))
         else:
@@ -163,9 +172,20 @@ class _Reader(HTMLParser):
             # Still a block, as it was before: closing the open one is what
             # the BLOCKS branch below would have done. The anchor is extra.
             self._emit_block()
+            classes = (next((v for k, v in attrs if k == "class"), "")
+                       or "").split()
             anchor = next((v for k, v in attrs if k == "id"), "") or ""
             if anchor.startswith("sec-"):
                 self.out.append(("bookmark", anchor, None))
+            # A section that starts a page does so in the Word file too - the
+            # converter used to run every section into the last.
+            if "page-break" in classes:
+                self._format_next(page_break=True)
+            centred = "cover" in classes
+            self._div_stack.append(centred)
+            if centred:
+                self._centred += 1
+                self._format_next(before=150)         # the upper third
         elif tag == "br":
             self._text.append((LINE_BREAK, False, False))
         elif tag in HEADINGS:
@@ -174,7 +194,9 @@ class _Reader(HTMLParser):
         elif tag == "table":
             self._emit_block()
             self._in_table = True
-            self.out.append(("table_start", None, None))
+            classes = (next((v for k, v in attrs if k == "class"), "")
+                       or "").split()
+            self.out.append(("table_start", classes, None))
         elif tag == "tr" and self._in_table:
             self._row = []
             classes = (next((v for k, v in attrs if k == "class"), "")
@@ -225,6 +247,10 @@ class _Reader(HTMLParser):
         elif tag in HEADINGS:
             self._emit_block()
             self._heading = None
+        elif tag == "div" and not self._in_table:
+            self._emit_block()
+            if self._div_stack and self._div_stack.pop():
+                self._centred = max(0, self._centred - 1)
         elif tag in ("td", "th") and self._in_table:
             text = "".join(r[0] for r in self._flush()).strip()
             if self._row is not None:
@@ -320,7 +346,7 @@ def _keep_row_whole(row):
     properties.append(_element("w:cantSplit", val="true"))
 
 
-def _page_numbers(section, own_paragraph=False):
+def _page_numbers(section, own_paragraph=False, spec=False):
     """PAGE of NUMPAGES, centred in the footer.
 
     Added as real Word fields rather than typed text, so they stay right
@@ -346,6 +372,15 @@ def _page_numbers(section, own_paragraph=False):
         run._r.append(instr)
         run._r.append(end)
 
+    if spec:
+        # AuditMate_Output_Format_Spec.pdf: bottom centre, Arial 9 pt bold,
+        # the number alone.
+        field("PAGE")
+        for run in paragraph.runs:
+            run.font.name = "Arial"
+            run.font.size = Pt(9)
+            run.font.bold = True
+        return
     paragraph.add_run("Page ")
     field("PAGE")
     paragraph.add_run(" of ")
@@ -557,7 +592,35 @@ def _load_docx_template(template_path):
     return document
 
 
-def build(html: str, title: str = None, draft: bool = False, template_path: str = None) -> bytes:
+def _column_widths(columns, usable_mm, matrix=False):
+    """Column widths (mm) at the spec's measured positions.
+
+    A face statement has four columns: the caption, the note number centred at
+    337 pt, then the two amounts ending 98 pt apart. A note table with two
+    amounts and a caption keeps the same amount columns, so every table's
+    figures line up on the page.
+    """
+    from . import output_spec
+
+    caption, note, current, prior = output_spec.statement_columns_mm()
+    if matrix and columns == 4:
+        # a caption and three equal figure columns: share capital, retained
+        # earnings, total
+        each = 30
+        return [max(usable_mm - 3 * each, 40), each, each, each]
+    if columns == 4:
+        return [caption, note, current, prior]
+    if columns == 3:
+        return [max(usable_mm - current - prior, 40), current, prior]
+    if columns == 2:
+        return [max(usable_mm - prior, 40), prior]
+    amounts = max(columns - 1, 1)
+    each = min(prior, (usable_mm * 0.5) / amounts)
+    return [max(usable_mm - amounts * each, 40)] + [each] * amounts
+
+
+def build(html: str, title: str = None, draft: bool = False, template_path: str = None,
+          page_header: tuple = None) -> bytes:
     """The report's HTML as a .docx file, returned as bytes.
 
     `draft` stamps DRAFT - INCOMPLETE in the header of every page: accounts
@@ -581,10 +644,13 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
     look = None
     if template_path and template_path != "STANDARD":
         document = _load_docx_template(template_path)
-        if document is None:
-            look = _pdf_look(template_path) if str(template_path).lower().endswith(".pdf") else None
     keep_own_layout = document is not None
     if document is None:
+        # One output format for every set (AuditMate_Output_Format_Spec.pdf).
+        # A PDF template used to be measured here, which gave Times on Letter:
+        # its fonts carry anonymous names, so the face was never recognised.
+        from . import output_spec
+        look = output_spec.look()
         document = DocxDocument()
 
     if not keep_own_layout:
@@ -600,41 +666,59 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
         for edge, key in (("left_margin", "left"), ("right_margin", "right"),
                           ("top_margin", "top"), ("bottom_margin", "bottom")):
             setattr(section, edge, Mm(look[key] if look else 20))
-        _page_numbers(section)
+        # The cover carries no running header and no page number; both start
+        # on page 2, so the first page has a header and footer of its own.
+        section.different_first_page_header_footer = True
+        _page_numbers(section, spec=True)
 
+        header = section.header
+        if page_header:
+            company, registration = page_header
+            first_line = header.paragraphs[0]
+            first_line.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            first_line.add_run((company or "").upper()).bold = True
+            second = header.add_paragraph()
+            second.add_run(f"Company Registration No.: {registration or '—'}").italic = True
         if draft:
-            header = document.sections[0].header.paragraphs[0]
-            header.alignment = 1                                   # centre
-            stamp = header.add_run("DRAFT — INCOMPLETE")
-            stamp.bold = True
-            stamp.font.size = Pt(12)
+            for target in (header, section.first_page_header):
+                paragraph = (target.paragraphs[0].insert_paragraph_before()
+                             if target.paragraphs[0].text else target.paragraphs[0])
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                stamp = paragraph.add_run("DRAFT — INCOMPLETE")
+                stamp.bold = True
+                stamp.font.size = Pt(12)
 
-        face = look["face"] if look else "Times New Roman"
-        body_pt = look["body_pt"] if look else 11
+        face, body_pt = look["face"], look["body_pt"]
+        for name in ("Normal", "Header", "Footer"):
+            style = document.styles[name]
+            style.font.name = face
+            style.font.size = Pt(body_pt)
+            rfonts = style.element.get_or_add_rPr().get_or_add_rFonts()
+            for attribute in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+                rfonts.set(qn(attribute), face)
         normal = document.styles["Normal"]
-        normal.font.name = face
-        normal.font.size = Pt(body_pt)
+        # A 10.2 pt line on 9 pt type, and one blank line between paragraphs.
+        normal.paragraph_format.line_spacing = Pt(look["line_pitch"])
+        normal.paragraph_format.space_before = Pt(0)
+        normal.paragraph_format.space_after = Pt(look["line_pitch"])
 
-        # Word's built-in heading styles are a blue sans-serif (Heading 1 is
-        # 365F91, the rest 4F81BD) inherited from its default template, so every
-        # heading in the delivered accounts came out blue and in the wrong face
-        # while the body around it was black Times.
-        #
-        # Restyled rather than abandoned in favour of hand-formatted paragraphs:
-        # keeping the real heading styles is what gives the document its
-        # navigation pane and lets Word build a table of contents from it, which
-        # a set of accounts someone is about to edit wants to keep.
-        offsets = ((0, 3), (1, 2), (2, 1), (3, 0), (4, 0))
-        for level, plus in offsets:
+        # Word's built-in heading styles are a blue sans-serif inherited from
+        # its default template. Restyled, not abandoned, to keep the navigation
+        # pane and the table of contents: 9 pt bold black, as the spec has every
+        # heading.
+        for level in range(0, 5):
             style = document.styles["Title" if level == 0 else f"Heading {level}"]
             style.font.name = face
-            style.font.size = Pt(body_pt + plus)
+            style.font.size = Pt(body_pt)
             style.font.bold = True
             style.font.color.rgb = RGBColor(0, 0, 0)
-            # A heading stranded at the foot of a page, with the table it
-            # introduces starting the next one, was the other half of the
-            # "headings move before the page" report.
+            rfonts = style.element.get_or_add_rPr().get_or_add_rFonts()
+            for attribute in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+                rfonts.set(qn(attribute), face)
             style.paragraph_format.keep_with_next = True
+            style.paragraph_format.space_before = Pt(look["line_pitch"])
+            style.paragraph_format.space_after = Pt(0)
+            style.paragraph_format.line_spacing = Pt(look["line_pitch"])
 
     else:
         # A customer's own Word template keeps its page setup, styles,
@@ -660,16 +744,35 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
         document.add_heading(title, level=0)
 
     table = None
+    table_classes = []
     pending_rows = []
     # The section anchor seen but not yet attached: it is placed on the
     # first heading that follows, which is what the contents page names.
     pending_bookmark = None
     bookmark_number = 0
 
+    pending_format = {}
+
+    def _apply_format(paragraph):
+        """The page break, alignment and space a section asked for, applied to
+        the next paragraph."""
+        if pending_format.get("page_break"):
+            paragraph.paragraph_format.page_break_before = True
+        if pending_format.get("align") == "center":
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if pending_format.get("before"):
+            paragraph.paragraph_format.space_before = Pt(pending_format["before"])
+        pending_format.clear()
+
     for kind, arg, payload in instructions:
+        if kind == "next":
+            pending_format.update(arg)
+            continue
+
         if kind == "table_start":
             pending_rows = []
             table = True
+            table_classes = arg or []
             continue
 
         if kind == "row" and table:
@@ -679,6 +782,10 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
             continue
 
         if kind == "table_end":
+            if pending_rows and pending_format.get("page_break"):
+                lead = document.add_paragraph()
+                lead.paragraph_format.space_after = Pt(0)
+                _apply_format(lead)
             if pending_rows:
                 width = max(len(cells) for _meta, cells in pending_rows)
                 docx_table = document.add_table(rows=0, cols=width)
@@ -699,6 +806,11 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
                 label_mm = max(usable - amounts * AMOUNT_COLUMN_MM,
                                MIN_LABEL_MM)
 
+                spec_mode = look is not None and look.get("spec")
+                widths = (_column_widths(width, usable,
+                                         "matrix" in (table_classes or []))
+                          if spec_mode else None)
+
                 last_index = len(pending_rows) - 1
                 for position, ((is_header, kind_of_row), cells) in enumerate(
                         pending_rows):
@@ -711,9 +823,12 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
                                              if index < len(cells)
                                              else ("", None, ()))
                         cell = row.cells[index]
-                        cell.width = Mm(label_mm if index == 0
-                                        else AMOUNT_COLUMN_MM)
+                        cell.width = Mm(widths[index] if widths else
+                                        (label_mm if index == 0
+                                         else AMOUNT_COLUMN_MM))
                         paragraph = cell.paragraphs[0]
+                        if spec_mode:
+                            paragraph.paragraph_format.space_after = Pt(0)
                         if refs:
                             # A contents entry: the page each section lands
                             # on. A range where the notes run over several.
@@ -723,7 +838,14 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
                                 _page_ref(paragraph, target)
                         else:
                             run = paragraph.add_run(text)
-                            run.bold = is_header or kind_of_row == "total"
+                            run.bold = (is_header or kind_of_row in ("total", "subtotal")
+                                        if spec_mode
+                                        else (is_header or kind_of_row == "total"))
+                            if spec_mode and is_header and re.fullmatch(
+                                    r"\d{4}|Note", (text or "").strip()):
+                                # the rule under a year heading is the width of
+                                # the heading only
+                                run.underline = True
                         # The column's own marked-up class wins; the regex is
                         # a fallback for a table with no such marking at all
                         # (a note an auditor typed by hand, say).
@@ -735,7 +857,19 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
 
                         # The ruling. Under the headings, over a subtotal,
                         # and double under the last total - nowhere else.
-                        if is_header:
+                        amount_column = index >= width - 2
+                        if spec_mode:
+                            # Ruled, not gridded: above a subtotal or total in
+                            # the two amount columns only, doubled under the
+                            # final total. The headings carry their own
+                            # underline (above).
+                            if not is_header and amount_column:
+                                if kind_of_row == "subtotal":
+                                    _rule_over(cell)
+                                elif kind_of_row == "total":
+                                    _rule_over(cell)
+                                    _rule_under(cell, double=position == last_index)
+                        elif is_header:
                             _rule_under(cell)
                         elif kind_of_row == "subtotal":
                             _rule_over(cell)
@@ -753,6 +887,7 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
 
         if kind == "heading":
             document.add_heading("", level=min(arg + 1, 4))
+            _apply_format(document.paragraphs[-1])
             _write_runs(document.paragraphs[-1], payload)
             if pending_bookmark:
                 bookmark_number += 1
@@ -760,11 +895,15 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
                           bookmark_number)
                 pending_bookmark = None
         elif kind == "bullet":
-            _write_runs(document.add_paragraph(style="List Bullet"), payload)
+            bullet = document.add_paragraph(style="List Bullet")
+            _apply_format(bullet)
+            _write_runs(bullet, payload)
         elif kind == "rule":
             document.add_paragraph("_" * 60)
         elif kind == "para":
-            _write_runs(document.add_paragraph(), payload)
+            paragraph = document.add_paragraph()
+            _apply_format(paragraph)
+            _write_runs(paragraph, payload)
 
     _update_fields_on_open(document)
 

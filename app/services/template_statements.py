@@ -149,11 +149,16 @@ def read_profile(template_path):
             bs_lines = _statement_page(
                 pdf, ("financial position", "balance sheet"),
                 ("cash flow", "changes in equity"))
+            equity_matrix_template = _equity_page_is_matrix(pdf)
+            cf_lines = _statement_page(
+                pdf, ("cash flow",), ("changes in equity", "financial position"))
     except Exception:                                      # noqa: BLE001
         log.exception("Could not read the statements of %s", path)
         return {}
 
     profile = {}
+    if equity_matrix_template:
+        profile["changes_in_equity"] = [{"type": "matrix"}]
     if pl_lines:
         rows = _recognise(_captions(pl_lines), PL_TYPES)
         kinds = {r["type"] for r in rows}
@@ -166,7 +171,102 @@ def read_profile(template_path):
         if {"cash", "total_assets", "total_equity_liabilities"} <= kinds \
                 and len(rows) >= 6:
             profile["balance_sheet"] = rows
+            profile["balance_sheet_headings"] = _bs_headings(bs_lines)
+    if cf_lines:
+        wording = _cash_flow_wording(cf_lines)
+        if wording:
+            profile["cash_flow_wording"] = wording
     return profile
+
+
+_CF_LABELS = (
+    (r"^net cash (provided|generated).*operating", "cf_operating_total"),
+    (r"^net cash.*investing", "cf_investing_total"),
+    (r"^net cash.*financing", "cf_financing_total"),
+    (r"^net change in cash", "cf_net_change"),
+    (r"^cash and cash equivalents at beginning", "cf_opening_cash"),
+    (r"^cash and cash equivalents at end", "cf_closing_cash"),
+)
+
+
+def _cash_flow_wording(lines):
+    """The template's own captions for the cash flow's headings and totals.
+
+    Only wording is taken: the figures stay the computed ones, so a line whose
+    meaning differs (the template starts from profit after tax; ours from profit
+    before tax) keeps our label rather than take one that misdescribes it.
+    """
+    labels, headings = {}, {}
+    for raw in lines[2:]:
+        text = _tidy(raw)
+        text = re.sub(r"\s+\(?[\d,.]+\)?(\s+\(?[\d,.]+\)?)*$", "", text).strip()
+        low = _norm(text)
+        if low == "operating activities":
+            headings["operating"] = text
+        elif low == "investing activities":
+            headings["investing"] = text
+        elif low == "financing activities":
+            headings["financing"] = text
+        for pattern, key in _CF_LABELS:
+            if re.match(pattern, low) and key not in labels:
+                labels[key] = text
+    if not labels and not headings:
+        return None
+    defaults = {"operating": "Operating activities",
+                "investing": "Investing activities",
+                "financing": "Financing activities"}
+    return {"labels": labels, "headings": {**defaults, **headings}}
+
+
+def _bs_headings(lines):
+    """The captions the template puts over its groups, in its own wording:
+    "ASSETS", "Current assets", "EQUITY AND LIABILITIES", "Equity",
+    "Non-current liability", "Current liability" - singular where it says so."""
+    found = {}
+    for raw in lines[2:]:
+        text = _tidy(raw)
+        low = _norm(text)
+        if low == "assets":
+            found["assets"] = text
+        elif low == "current assets":
+            found["current_assets"] = text
+        elif low == "equity and liabilities":
+            found["equity_major"] = text
+        elif low in ("equity", "capital and reserves", "shareholders equity"):
+            found["equity"] = text
+        elif low in ("non current liability", "non current liabilities"):
+            found["non_current_liabilities"] = text
+        elif low in ("current liability", "current liabilities"):
+            found["current_liabilities"] = text
+    return found
+
+
+def group_headings(template_headings, presented):
+    """The balance sheet's group captions, from the template's wording.
+
+    "ASSETS" heads the first group of assets whichever it is: the standard
+    layout only printed it over non-current assets, so a company with none
+    (Brown Rock) had no ASSETS caption at all.
+    """
+    t = template_headings or {}
+    groups = {getattr(line, "group_key", None) for line in presented or []}
+    assets = t.get("assets")
+    current = t.get("current_assets", "Current assets")
+    out = {}
+    if "non_current_assets" in groups:
+        out["non_current_assets"] = (f"{assets}|Non-current assets" if assets
+                                     else "Non-current assets")
+        out["current_assets"] = current
+    else:
+        out["current_assets"] = f"{assets}|{current}" if assets else current
+    equity = t.get("equity", "Capital and reserves")
+    out["equity"] = (f"{t['equity_major']}|{equity}" if t.get("equity_major")
+                     else f"EQUITY AND LIABILITIES|{equity}")
+    out["non_current_liabilities"] = t.get("non_current_liabilities",
+                                            "Non-current liabilities")
+    out["current_liabilities"] = t.get("current_liabilities",
+                                        "Current liabilities")
+    return out
 
 
 # ------------------------------------------------------------------ drawing
@@ -411,3 +511,101 @@ def _present_balance_sheet(book, rows):
     out.append(total("total_equity_liabilities", "Total equity and liabilities",
                      "total_equity_and_liabilities", "liabilities_total"))
     return out
+
+
+# ------------------------------------------------- changes in equity, as a matrix
+
+def _equity_page_is_matrix(pdf):
+    """Whether the template's equity statement is the columnar kind: Share
+    capital | Retained earnings | Total, one row per date."""
+    for page in pdf.pages[:12]:
+        lines = (page.extract_text() or "").splitlines()
+        head = _norm(" ".join(lines[:4]))
+        if "changes in equity" not in head:
+            continue
+        body = " ".join(_norm(l) for l in lines[3:12])
+        rows = sum(1 for l in lines if re.match(r"^\s*at \d", l, re.IGNORECASE))
+        return ("retained" in body and "share" in body) and rows >= 2
+    return False
+
+
+def equity_matrix(statement, financial_year):
+    """The statement of changes in equity as the template lays it out.
+
+    Share capital, retained earnings and total across, a row for each date and
+    each year's total comprehensive income down: "At 1 January 2024", "Total
+    comprehensive income for the year", "At 31 December 2024" ... Built from
+    the same equity lines as the standard statement, so no figure can differ.
+
+    Where this year's opening balance is not last year's closing balance the
+    matrix says so in a row of its own - "Adjustment to opening balance" - so
+    the columns add down and the difference is where a reader can see it,
+    rather than being absorbed into a total.
+    """
+    from decimal import Decimal
+
+    book = {line.line_key: line for line in statement.lines}
+
+    def value(key, current):
+        line = book.get(key)
+        if line is None:
+            return None
+        raw = line.effective_amount if current else line.amount_previous
+        return None if raw is None else Decimal(str(raw))
+
+    def triple(prefix, current):
+        share = value(f"soce_{prefix}_share", current)
+        accum = value(f"soce_{prefix}_accum", current)
+        total = value(f"soce_{prefix}_total", current)
+        if total is None and share is not None and accum is not None:
+            total = share + accum
+        return share, accum, total
+
+    def day(d):
+        return f"{d.day} {d.strftime('%B %Y')}"
+
+    start, end = financial_year.start_date, financial_year.end_date
+    previous_start = start.replace(year=start.year - 1) if start else None
+    previous_end = getattr(financial_year, "previous_period_end", None) or (
+        end.replace(year=end.year - 1) if end else None)
+
+    rows = []
+
+    def add(label, share, accum, total, bold=False):
+        rows.append({"label": label, "cells": [share, accum, total],
+                     "bold": bold})
+
+    zero = Decimal("0")
+    have_previous = value("soce_close_total", False) is not None
+    open_p, close_p = triple("open", False), triple("close", False)
+    open_c, close_c = triple("open", True), triple("close", True)
+
+    if have_previous and open_p[2] is not None:
+        add(f"At {day(previous_start)}", *open_p, bold=True)
+        tci = value("soce_income_accum", False)
+        issued = value("soce_issue_share", False)
+        if issued:
+            add("Shares issued during the year", issued, zero, issued)
+        add("Total comprehensive income for the year", zero, tci, tci)
+        add(f"At {day(previous_end)}", *close_p, bold=True)
+    else:
+        previous_end = None
+
+    gap = None
+    if have_previous and open_c[2] is not None and close_p[2] is not None:
+        gap = tuple((c or zero) - (p or zero) for c, p in zip(open_c, close_p))
+        if all(abs(g) < Decimal("0.5") for g in gap):
+            gap = None
+    if gap:
+        add("Adjustment to opening balance", *gap)
+    elif not have_previous:
+        add(f"At {day(start)}", *open_c, bold=True)
+
+    issued = value("soce_issue_share", True)
+    if issued:
+        add("Shares issued during the year", issued, zero, issued)
+    add("Total comprehensive income for the year", zero,
+        value("soce_income_accum", True), value("soce_income_accum", True))
+    add(f"At {day(end)}", *close_c, bold=True)
+    return {"columns": ["Share capital", "Retained earnings", "Total"],
+            "rows": rows, "gap": gap}

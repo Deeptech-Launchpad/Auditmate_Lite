@@ -331,16 +331,26 @@ def apply_to_report(report, template_path):
     statement_profile = {
         "statement_comprehensive_income": profile.get("profit_and_loss"),
         "statement_financial_position": profile.get("balance_sheet"),
+        "statement_changes_equity": profile.get("changes_in_equity"),
     }
     for section in report.sections:
+        if section.section_key == "statement_cash_flows" and profile.get("cash_flow_wording"):
+            binding = dict(section.data_binding or {})
+            binding["cash_flow_wording"] = profile["cash_flow_wording"]
+            section.data_binding = binding
         rows = statement_profile.get(section.section_key)
         if rows and section.section_key in outline:
             binding = dict(section.data_binding or {})
             binding["presentation"] = rows
+            if section.section_key == "statement_financial_position":
+                binding["headings"] = profile.get("balance_sheet_headings") or {}
             section.data_binding = binding
             lined += 1
 
     aligned = _align_notes(report, profile)
+    directors = _directors_statement(report, template_path)
+    if directors:
+        aligned = (aligned or 0) + 1
 
     covered = False
     if cover:
@@ -378,3 +388,132 @@ def apply_to_report(report, template_path):
     if aligned:
         parts.append(f"matched {aligned} note(s) to those lines")
     return "; ".join(parts)
+
+
+_DATE_LINE = re.compile(r"^\d{1,2}\s+[A-Za-z]+\s+\d{4}$")
+
+
+def _shareholdings_html(customer_id, financial_year, template_holdings):
+    """The directors' shareholdings table, in the template's columns.
+
+    This year's figures where the share register (or the signed set's own
+    statement, read into the registers) gives them; otherwise the template's
+    closing holdings carried across - shares are unchanged where the share
+    capital is, which the share capital note already reasons from.
+    """
+    from html import escape
+
+    from . import bindings
+
+    rows = []
+    try:
+        for name, opened, closed in bindings.shareholdings(financial_year):
+            rows.append((name, opened, closed))
+    except Exception:                                        # noqa: BLE001
+        rows = []
+    if not rows:
+        for name, _opened, closed in template_holdings or []:
+            number = float(str(closed).replace(",", "") or 0)
+            rows.append((name, number, number))
+    if not rows:
+        return ('<p class="held-table">Incomplete &mdash; the directors\' '
+                "holdings at both dates need the share register.</p>")
+
+    def figure(value):
+        return "\u2014" if value in (None, "") else "{:,.0f}".format(value)
+
+    body = "".join(
+        '<tr><td class="lbl">%s</td><td class="num">%s</td><td class="num">%s</td></tr>'
+        % (escape(name), figure(opened), figure(closed))
+        for name, opened, closed in rows)
+    return (
+        '<table class="fin note-table shareholdings"><thead>'
+        '<tr><th class="lbl"></th><th class="num" colspan="2">Number of ordinary shares</th></tr>'
+        '<tr><th class="lbl"></th><th class="num" colspan="2">Direct interest</th></tr>'
+        '<tr><th class="lbl">Name of directors in which interest is held</th>'
+        '<th class="num">At the beginning of the year</th>'
+        '<th class="num">At the end of the year</th></tr></thead><tbody>'
+        '<tr><td class="lbl">The Company</td><td></td><td></td></tr>'
+        + body + "</tbody></table>")
+
+
+def directors_statement_html(template_path, financial_year, company_name):
+    """The customer's own directors' statement, or None.
+
+    The wording is the template's - its clauses, its order, its indents - with
+    the year's dates rolled on, and the company, the director(s) and the date
+    of signing taken from this engagement rather than typed. A note that says
+    "the director" stays singular because the template's does; whoever
+    finishes the document edits it, as with any carried wording.
+    """
+    from html import escape
+
+    from . import reports, template_structure
+
+    read = template_structure.read_directors_statement(template_path)
+    if not read or not read["blocks"]:
+        return None
+
+    template_name = (company_name or "").strip()
+    out, after_office_line = [], False
+    for kind, indent, text in read["blocks"]:
+        if kind == "table":
+            out.append(_shareholdings_html(None, financial_year, read["holdings"]))
+            continue
+        text = reports.roll_forward_text(text, financial_year)
+        if template_name and template_name.lower() in text.lower():
+            text = re.sub(re.escape(template_name), "{{ customer.legal_name }}",
+                          text, flags=re.IGNORECASE)
+        if kind == "heading":
+            if re.match(r"^signed by", text, re.IGNORECASE):
+                out.append(f"<p>{escape(text)}</p>")
+            else:
+                # the signature's name line was set in the heading font
+                out.append(f"<p><strong>{{{{ field.signing_directors }}}}</strong></p>"
+                           if not re.match(r"^\d+\.", text) else
+                           f"<h4>{escape(text)}</h4>")
+            continue
+        if re.search(r"in office at the date of this statement is:", text):
+            out.append(f'<p class="ind1">{escape(text)}</p>')
+            after_office_line = True
+            continue
+        if after_office_line:
+            out.append('<p class="ind1">{{ field.director_names }}</p>')
+            after_office_line = False
+            continue
+        if _DATE_LINE.match(text.strip()):
+            out.append("<p>{{ field.report_date }}</p>")
+            continue
+        css = ' class="ind1"' if indent >= 20 else ""
+        out.append(f"<p{css}>{text if '{{' in text else escape(text)}</p>")
+    return "\n".join(out)
+
+
+def _directors_statement(report, template_path):
+    """Put the template's directors' statement in place of the generic one."""
+    financial_year = report.financial_year
+    cover = read_cover(template_path) or {}
+    company = None
+    try:
+        lines = _first_page_lines_pdf(template_path) if str(
+            template_path).lower().endswith(".pdf") else []
+        company = lines[0] if lines else None
+    except Exception:                                        # noqa: BLE001
+        company = None
+    html = directors_statement_html(template_path, financial_year, company)
+    if not html:
+        return False
+    fixed = next((s for s in report.sections
+                  if s.section_key == "directors_statement"), None)
+    if fixed is None:
+        return False
+    fixed.content_html = html
+    fixed.is_enabled = True
+    for section in report.sections:
+        if section.section_key in ("note__S01_DIRECTORS_STATEMENT",
+                                   "note__S03_STATEMENT_BY_DIRECTORS_SIG",
+                                   "note__S02_COMPILATION_REPORT"):
+            # the template's replaces the first and third; it has no
+            # compilation report, so that one stays off (Sections can re-enable)
+            section.is_enabled = False
+    return True

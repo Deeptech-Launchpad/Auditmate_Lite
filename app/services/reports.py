@@ -2042,12 +2042,32 @@ def section_payload(section, customer, financial_year, chips: bool = False):
         # The customer's own lines, where the report was created from their
         # template and the statement is not the detailed breakdown.
         payload["presented"] = None
+        cf_wording = (section.data_binding or {}).get("cash_flow_wording")
+        if cf_wording and statement_type == "cash_flow":
+            payload["headings"] = cf_wording["headings"]
+            payload["cf_labels"] = cf_wording["labels"]
         lines = (section.data_binding or {}).get("presentation")
+        if (lines and payload["statement"] is not None
+                and payload["statement"].statement_type == "changes_in_equity"
+                and lines[0].get("type") == "matrix"):
+            from . import template_statements
+            try:
+                payload["matrix"] = template_statements.equity_matrix(
+                    payload["statement"], financial_year)
+            except Exception:                              # noqa: BLE001
+                log.exception("Could not lay out the equity statement as "
+                              "the template does")
+            lines = None
         if lines and payload["statement"] is not None and not payload["detailed"]:
             from . import template_statements
             try:
                 payload["presented"] = template_statements.present(
                     payload["statement"], lines)
+                if (payload["presented"] and payload["statement"].statement_type
+                        == "balance_sheet"):
+                    payload["headings"] = template_statements.group_headings(
+                        (section.data_binding or {}).get("headings"),
+                        payload["presented"])
             except Exception:                              # noqa: BLE001
                 log.exception("Could not draw %s in the template's lines",
                               section.section_key)
