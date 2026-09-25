@@ -173,7 +173,8 @@
                   <span class="pill pill-red">Nothing matches</span>
                   <div class="muted small">No rule and no prior year. You decide.</div>
                 {% elif row.origin == 'carried' %}
-                  <span class="pill pill-green">Carried forward</span>
+                  <span class="pill pill-green">Carried from previous year</span>
+                  <div class="muted small">Same account, on this line last year.</div>
                 {% elif row.origin == 'manual' %}
                   <span class="pill">You mapped this</span>
                 {% else %}

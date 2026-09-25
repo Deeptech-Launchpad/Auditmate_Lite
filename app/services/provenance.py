@@ -456,6 +456,33 @@ def for_statement_line(line):
     }
 
 
+def for_keys(statement, keys, label=None):
+    """What stands behind a PRESENTED line: the statement lines it adds up,
+    with the accounts under each, in the shape the sources panel draws."""
+    wanted = set(keys or [])
+    parts = [for_statement_line(l) for l in statement.lines
+             if l.line_key in wanted]
+    accounts, seen = [], set()
+    for part in parts:
+        for account in part["accounts"]:
+            if account["id"] in seen:
+                continue
+            seen.add(account["id"])
+            accounts.append(account)
+    depends = []
+    for part in parts:
+        depends += part.get("depends_on") or []
+    computed = any(part["kind"] == "computed" for part in parts)
+    if computed:
+        if accounts and not depends:
+            depends = [{"via": "Accounts on this line", "accounts": accounts}]
+        return {"label": label, "kind": "computed", "accounts": accounts,
+                "depends_on": depends, "formula": None, "overridden": False}
+    return {"label": label, "kind": "accounts" if accounts else "empty",
+            "accounts": accounts, "depends_on": [], "formula": None,
+            "overridden": False}
+
+
 def for_account(account_id):
     """Provenance for a single trial balance account, used by note tables."""
     account = TrialBalanceAccount.query.get(account_id)

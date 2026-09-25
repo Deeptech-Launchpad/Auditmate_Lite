@@ -303,8 +303,12 @@ class PresentedLine:
     statement."""
 
     def __init__(self, key, label, current, previous, *, group,
-                 total=False, subtotal=False, note=None, indent=1):
+                 total=False, subtotal=False, note=None, indent=1, keys=None):
         self.id = None
+        # the statement lines this one is added up from, and (once the page is
+        # drawn) what stands behind them - so the figure can say where it is from
+        self.keys = list(keys) if keys else [key]
+        self.sources = None
         self.line_key = key
         self.label = self.effective_label = label
         self.label_is_overridden = False
@@ -437,14 +441,15 @@ def _present_profit_and_loss(book, rows):
     if show_other:
         add(out, "other_income", _labelled(rows, "other_income", "Other income"),
             _agg(book, [k for k in opex if k in income], -1),
-            note="other_income")
+            note="other_income", keys=[k for k in opex if k in income])
     add(out, "admin_expenses",
         _labelled(rows, "admin_expenses", "Administrative expenses"),
-        _agg(book, admin, -1), note=_note(book, "operating_expenses"))
+        _agg(book, admin, -1), note=_note(book, "operating_expenses"),
+        keys=admin)
     if show_finance:
         add(out, "finance_cost", _labelled(rows, "finance_cost", "Finance cost"),
             _agg(book, [k for k in opex if k in finance], -1),
-            note="finance_costs")
+            note="finance_costs", keys=[k for k in opex if k in finance])
     add(out, "profit_before_tax",
         _labelled(rows, "profit_before_tax", "Profit before tax"),
         _agg(book, ["profit_before_tax"]), subtotal=True,
@@ -458,7 +463,7 @@ def _present_profit_and_loss(book, rows):
                       "Profit for the period, net of tax")
     key = ("total_comprehensive_income" if "comprehensive" in label.lower()
            else "profit_for_year")
-    add(out, "profit_for_year", label, _agg(book, [key]), total=True)
+    add(out, "profit_for_year", label, _agg(book, [key]), total=True, keys=[key])
     return out
 
 
@@ -471,7 +476,7 @@ def _present_balance_sheet(book, rows):
     def line_for(kind, default, keys, group, **kw):
         current, previous = _agg(book, keys)
         return PresentedLine(kind, _labelled(rows, kind, default), current,
-                             previous, group=group, **kw)
+                             previous, group=group, keys=keys, **kw)
 
     receivables = line_for(
         "receivables", "Trade and other receivables",
@@ -514,7 +519,7 @@ def _present_balance_sheet(book, rows):
     def total(kind, default, key, group_name):
         current, previous = _agg(book, [key])
         return PresentedLine(kind, _labelled(rows, kind, default), current,
-                             previous, group=group_name, total=(
+                             previous, group=group_name, keys=[key], total=(
                                  kind in ("total_assets",
                                           "total_equity_liabilities")),
                              subtotal=kind not in ("total_assets",
@@ -545,7 +550,8 @@ def _present_balance_sheet(book, rows):
         "total_liabilities", _labelled(rows, "total_liabilities",
                                        "Total liabilities"),
         nc + cl, ((nc_prev or ZERO) + (cl_prev or ZERO)) if both_known
-        else None, group="liabilities_subtotal", subtotal=True))
+        else None, group="liabilities_subtotal", subtotal=True,
+        keys=["total_non_current_liabilities", "total_current_liabilities"]))
     out.append(total("total_equity_liabilities", "Total equity and liabilities",
                      "total_equity_and_liabilities", "liabilities_total"))
     return out

@@ -130,6 +130,14 @@ def overlay(financial_year, rows):
         key = row.get("key")
         if key and row.get("kind") in ("item", "sub", "total"):
             row["cells"] = (entries.get(key, ZERO), row["cells"][1])
+            row["sources"] = {
+                "label": row["label"], "kind": "accounts", "depends_on": [],
+                "formula": None, "overridden": False,
+                "accounts": [{"id": None, "code": "", "name": "Entered by the preparer",
+                              "amount": float(entries.get(key, ZERO)),
+                              "document": None, "category": None,
+                              "mapped_by": "auto",
+                              "note": "typed on the Cash flow page and saved"}]}
     return rows
 
 

@@ -168,7 +168,15 @@
 {% endmacro %}
 
 {% macro stmt_amount(line) %}
-  {% if editable and line.id %}
+  {% if editable and not line.id and line.sources and line.sources.kind != 'empty' %}
+    {# A line of the customer's own layout: it is added up from lines that are
+       edited on the standard statement, but where it comes from can be read here. #}
+    <td class="num ed-cell from-tb">
+      <span>{{ line.effective_amount|stmt }}</span>
+      <button type="button" class="src-dot" data-sources='{{ line.sources|tojson|forceescape }}'
+              title="Where this figure came from">&#9432;</button>
+    </td>
+  {% elif editable and line.id %}
     {% set from_tb = (line.source_line_item_ids or [])|length %}
     <td class="num ed-cell{{ ' is-overridden' if line.is_overridden }}{{
            ' from-tb' if from_tb and not line.is_overridden }}{{
@@ -419,8 +427,14 @@
                 <tr class="{{ 'total' if row.kind == 'total' else ('subtotal' if row.kind == 'sub') }}">
                   <td class="lbl{% if row.indent %} indent-{{ row.indent }}{% endif %}">{{ row.label }}</td>
                   <td class="notes"></td>
-                  <td class="num">{{ '' if row.cells[0] is none else row.cells[0]|stmt }}</td>
-                  <td class="num">{{ '' if row.cells[1] is none else row.cells[1]|stmt }}</td>
+                  <td class="num">{{ '' if row.cells[0] is none else row.cells[0]|stmt
+                    }}{% if editable and row.sources and row.sources.kind != 'empty' and row.cells[0] is not none %}<button type="button"
+                        class="src-dot" data-sources='{{ row.sources|tojson|forceescape }}'
+                        title="Where this figure came from">&#9432;</button>{% endif %}</td>
+                  <td class="num">{{ '' if row.cells[1] is none else row.cells[1]|stmt
+                    }}{% if editable and row.prior_origin and row.cells[1] is not none %}<button type="button"
+                        class="origin-dot" data-origin="{{ row.prior_origin }}"
+                        title="Where this figure came from">&#9432;</button>{% endif %}</td>
                 </tr>
               {% endif %}
             {% endfor %}

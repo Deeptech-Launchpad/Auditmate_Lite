@@ -79,6 +79,11 @@ def _origin(account, last_year, learned_patterns):
     if account.mapping_is_manual:
         return "manual", None
 
+    # Placed on this line last year, and taken over from there when the trial
+    # balance was built.
+    if getattr(account, "mapping_source", None) == "previous_year":
+        return "carried", None
+
     # Carried forward beats "suggested" wherever last year agrees, because
     # that is the stronger statement: this client, this account, already
     # decided - and consistency between the two years is what makes the

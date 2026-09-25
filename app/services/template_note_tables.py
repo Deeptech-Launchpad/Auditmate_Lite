@@ -673,6 +673,23 @@ def _similar(a, b):
     return len(wa & wb) / max(len(wa), len(wb))
 
 
+MOVEMENT_NOTE = ("how far its balance moved between the two trial balances "
+                 "(a rise in an asset is cash out, a rise in a liability is cash in)")
+
+
+def _cash_flow_sources(label, items):
+    """What stands behind one cash flow figure, in the sources panel's shape."""
+    if items is None:
+        return {"label": label, "kind": "computed", "accounts": [],
+                "depends_on": [], "formula": None, "overridden": False}
+    accounts = [{"id": None, "code": "", "name": name, "amount": float(value or 0),
+                 "document": None, "category": None, "mapped_by": "auto",
+                 "note": note} for name, value, note in items]
+    return {"label": label, "kind": "accounts" if accounts else "empty",
+            "accounts": accounts, "depends_on": [], "formula": None,
+            "overridden": False}
+
+
 def cash_flow_from_template(financial_year, template_rows, entry=False):
     """The cash flow in the customer's own layout, this year built from the
     movement of each account between the two trial balances.
@@ -739,11 +756,20 @@ def cash_flow_from_template(financial_year, template_rows, entry=False):
     # --- lay the template's rows out with this year's figures ---------------
     out, group, sections = [], "", {}
 
-    def new_row(kind, label, cur, prior, indent=1, section=None):
+    def new_row(kind, label, cur, prior, indent=1, section=None, sources=None):
         row = {"label": label, "kind": kind, "cells": (cur, prior),
                "indent": indent, "group": group, "section": section,
                "major": kind == "head" and bool(re.match(
                    r"(?i)^(operating|investing|financing) activities$", label))}
+        if kind == "head":
+            pass
+        elif sources is not None:
+            row["sources"] = _cash_flow_sources(label, sources)
+        elif kind in ("sub", "total"):
+            row["sources"] = _cash_flow_sources(label, None)
+        if prior is not None and kind != "head":
+            row["prior_origin"] = ("Last year's figure is the one printed in last "
+                                   "year's signed accounts, as your template shows it.")
         out.append(row)
         return row
 
@@ -761,11 +787,12 @@ def cash_flow_from_template(financial_year, template_rows, entry=False):
             matches[a.id] = best
             claimed.add(id(best))
 
-    used_accounts, value_of = set(), {}
+    used_accounts, value_of, parts_of = set(), {}, {}
     for a, effect, kind in moves:
         row = matches.get(a.id)
         if row is not None:
             value_of[id(row)] = value_of.get(id(row), ZERO) + effect
+            parts_of.setdefault(id(row), []).append((a, effect))
             used_accounts.add(a.id)
 
     def prior_of(r):
@@ -792,7 +819,8 @@ def cash_flow_from_template(financial_year, template_rows, entry=False):
 
     def flush(kind, label_of=lambda a: a.account_name, indent=1):
         for a, effect in extras[kind]:
-            new_row("item", label_of(a), effect, ZERO, indent, section)
+            new_row("item", label_of(a), effect, ZERO, indent, section,
+                    sources=[(a.account_name, effect, MOVEMENT_NOTE)])
         extras[kind] = []
 
     group_kind = None
@@ -831,25 +859,39 @@ def cash_flow_from_template(financial_year, template_rows, entry=False):
             continue
         # an item
         if re.match(r"(?i)^profit after tax", label):
-            new_row("item", label, profit, prior_of(r), 0, section)
+            new_row("item", label, profit, prior_of(r), 0, section,
+                    sources=[("Profit for the financial year (income statement)",
+                              profit, None)])
         elif re.match(r"(?i)^interest expense$", label) and group.lower().startswith("adjust"):
-            new_row("item", label, interest, prior_of(r), 1, section)
+            new_row("item", label, interest, prior_of(r), 1, section,
+                    sources=[("Finance cost (income statement)", interest, None)])
         elif re.match(r"(?i)^tax expense$", label) and group.lower().startswith("adjust"):
-            new_row("item", label, tax, prior_of(r), 1, section)
+            new_row("item", label, tax, prior_of(r), 1, section,
+                    sources=[("Income tax expense (income statement)", tax, None)])
         elif re.match(r"(?i)^interest expense$", label):
-            new_row("item", label, -interest, prior_of(r), 1, section)
+            new_row("item", label, -interest, prior_of(r), 1, section,
+                    sources=[("Finance cost (income statement), taken out again "
+                              "as cash paid", -interest, None)])
         elif re.match(r"(?i)^tax expense$", label):
-            new_row("item", label, -tax, prior_of(r), 1, section)
+            new_row("item", label, -tax, prior_of(r), 1, section,
+                    sources=[("Income tax expense (income statement), taken out "
+                              "again as cash paid", -tax, None)])
         elif re.match(r"(?i)^proceeds from .*loan", label):
             gain = sum((e for a, e in extras["borrowing"] if e > 0), ZERO)
+            got = [(a.account_name, e, MOVEMENT_NOTE)
+                   for a, e in extras["borrowing"] if e > 0]
             extras["borrowing"] = [(a, e) for a, e in extras["borrowing"] if e <= 0]
-            new_row("item", label, gain, prior_of(r), 1, section)
+            new_row("item", label, gain, prior_of(r), 1, section, sources=got)
         elif re.match(r"(?i)^repayment of .*loan", label):
             spent = sum((e for a, e in extras["borrowing"] if e < 0), ZERO)
+            paid = [(a.account_name, e, MOVEMENT_NOTE)
+                    for a, e in extras["borrowing"] if e < 0]
             extras["borrowing"] = [(a, e) for a, e in extras["borrowing"] if e >= 0]
-            new_row("item", label, spent, prior_of(r), 1, section)
+            new_row("item", label, spent, prior_of(r), 1, section, sources=paid)
         elif id(r) in value_of:
-            new_row("item", label, value_of[id(r)], prior_of(r), 1, section)
+            new_row("item", label, value_of[id(r)], prior_of(r), 1, section,
+                    sources=[(a.account_name, e, MOVEMENT_NOTE)
+                             for a, e in parts_of.get(id(r), [])])
         elif re.match(r"(?i)^cash and cash equivalents at beginning", label):
             new_row("item", label, None, prior_of(r), 0, section)
         elif re.match(r"(?i)^net change in cash", label):

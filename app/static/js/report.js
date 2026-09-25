@@ -848,7 +848,8 @@
     return '<li><div class="src-line">'
          + '<span class="src-name">' + code + account.name + '</span>'
          + '<span class="src-amt">' + fmt(account.amount) + '</span>'
-         + '</div><div class="src-meta">' + where + ' · ' + mapped
+         + '</div><div class="src-meta">'
+         + (account.note ? account.note : where + ' · ' + mapped)
          + '</div></li>';
   }
 
@@ -916,6 +917,13 @@
     if (!dot) return;
     event.preventDefault();
 
+    // a figure that carries its own sources (a line of the customer's layout,
+    // a cash flow row) needs no round trip
+    if (dot.dataset.sources) {
+      try { openPanel(dot, JSON.parse(dot.dataset.sources)); }
+      catch (err) { say('Could not read the sources', 'failed'); }
+      return;
+    }
     const url = dot.dataset.lineId
       ? '/reports/api/line/' + dot.dataset.lineId + '/sources'
       : '/reports/api/account/' + dot.dataset.accountId + '/sources';

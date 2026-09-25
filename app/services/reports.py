@@ -2170,6 +2170,10 @@ def section_payload(section, customer, financial_year, chips: bool = False):
                     payload["statement"], lines)
                 if payload["presented"]:
                     _drop_borrowed_refs(section, payload["presented"], lines)
+                    from . import provenance
+                    for shown in payload["presented"]:
+                        shown.sources = provenance.for_keys(
+                            payload["statement"], shown.keys, shown.effective_label)
                 if (payload["presented"] and payload["statement"].statement_type
                         == "balance_sheet"):
                     payload["headings"] = template_statements.group_headings(

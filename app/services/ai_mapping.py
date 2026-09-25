@@ -252,6 +252,7 @@ def accept(suggestion, user_id=None, commit=True):
     account.line_code = suggestion.code
     account.line_code_source = "ai-accepted"
     account.mapping_is_manual = True
+    account.mapping_source = "ai"
     if not account.standard_key:
         resolved = line_codes.standard_key_for_code(suggestion.code)
         if resolved:

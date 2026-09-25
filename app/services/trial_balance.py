@@ -270,6 +270,39 @@ def detach_account_dependents(account_ids_query):
      .update({"tb_account_id": None}, synchronize_session=False))
 
 
+def _previous_year_mappings(financial_year):
+    """How this client's previous engagement mapped its accounts.
+
+    ({(code, name): (statement line, statement type)}, {name: (...)}). The
+    same account arriving again is placed on the line it was placed on last
+    year - by the person who approved that trial balance, or by the rule that
+    placed it and was accepted - not guessed afresh by whatever rules exist
+    today. A name that last year sat on two different lines is left out of the
+    by-name list: that is a question, not an answer.
+    """
+    from .classify import classify
+    from .outward import previous_year
+
+    previous = previous_year(financial_year)
+    if previous is None:
+        return {}, {}
+    by_key, by_name, clash = {}, {}, set()
+    for account in (TrialBalanceAccount.query
+                    .filter_by(financial_year_id=previous.id)
+                    .filter(TrialBalanceAccount.standard_key.isnot(None)).all()):
+        if not classify(account.standard_key):
+            continue                       # a line the statements no longer have
+        name = (account.account_name or "").strip().lower()
+        value = (account.standard_key, account.statement_type)
+        by_key[((account.account_code or "").strip(), name)] = value
+        if name in by_name and by_name[name][0] != value[0]:
+            clash.add(name)
+        by_name[name] = value
+    for name in clash:
+        by_name.pop(name, None)
+    return by_key, by_name
+
+
 def build(financial_year_id: int, user_id=None) -> dict:
     """(Re)build the standard trial balance from all current sources."""
     financial_year = db.session.get(FinancialYear, financial_year_id)
@@ -339,6 +372,7 @@ def build(financial_year_id: int, user_id=None) -> dict:
                 for d in financial_year.documents}
 
     prior_figures = _prior_by_account(financial_year_id, sources)
+    carried_by_key, carried_by_name = _previous_year_mappings(financial_year)
 
     for item in _source_rows(financial_year_id, sources):
         name = (item.label or "").strip() or "(unnamed account)"
@@ -356,6 +390,15 @@ def build(financial_year_id: int, user_id=None) -> dict:
         # what decides one.
         standard_key = remembered.get(key)
         statement_type = None
+        from_last_year = False
+        if not standard_key:
+            # The same account was mapped last year: take that over. It comes
+            # before the rules, which would otherwise be asked the same
+            # question again and may answer it differently.
+            carried = carried_by_key.get(key) or carried_by_name.get(key[1])
+            if carried:
+                standard_key, statement_type = carried
+                from_last_year = True
         if not standard_key:
             rule = match_label(name, customer_id,
                                account_type=item.account_type)
@@ -399,6 +442,8 @@ def build(financial_year_id: int, user_id=None) -> dict:
             confidence=item.confidence or 1.0,
             needs_review=not standard_key,
             mapping_is_manual=key in remembered,
+            mapping_source=("previous_year" if from_last_year
+                            else "manual" if key in remembered else None),
             created_by=user_id,
         )
         db.session.add(account)
@@ -506,6 +551,7 @@ def set_mapping(account_id, standard_key, user_id=None, learn=True):
     account.needs_review = not standard_key
     # Chosen by a person, so a rebuild must not overwrite it.
     account.mapping_is_manual = bool(standard_key)
+    account.mapping_source = "manual" if standard_key else None
 
     # A new statement line has its own set of finer categories. assign()
     # keeps a person's category only while it is still allowed here, so

@@ -1138,6 +1138,15 @@ class TrialBalanceAccount(db.Model):
     # wrong automatic guess stuck to the account forever.
     mapping_is_manual = db.Column(db.Boolean, default=False, nullable=False)
 
+    # Where the statement line came from when a rule did not guess it:
+    #   "previous_year" - the same account, mapped in this client's previous
+    #                     engagement, taken over as it stood
+    #   "ai"            - an accepted AI suggestion
+    #   "manual"        - a person chose it here
+    # Empty for a rule's own guess. mapping_is_manual stays the flag a rebuild
+    # keeps; this only says why the line is what it is.
+    mapping_source = db.Column(db.String(20))
+
     notes = db.Column(db.Text)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
