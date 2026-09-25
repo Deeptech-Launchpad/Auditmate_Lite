@@ -359,13 +359,19 @@
                         action="{{ url_for('documents.recategorise', document_id=doc.id) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="category" value="{{ base_category }}">
-                    <select name="year" class="small year-select" style="max-width:150px">
+                    {# Choosing saves at once - no second click - and each choice
+                       names the year it stands for. #}
+                    {% set _cur = fy.end_date.year if fy.end_date else none %}
+                    {% set _prev = (fy.previous_period_end.year if fy.previous_period_end
+                                    else (_cur - 1 if _cur else none)) %}
+                    <select name="year" class="small year-select" style="max-width:170px"
+                            onchange="this.form.submit()">
                       <option value="current"
-                              {% if doc.category not in CURRENT_YEAR_TWIN %}selected{% endif %}>Current year</option>
+                              {% if doc.category not in CURRENT_YEAR_TWIN %}selected{% endif %}>Current year{% if _cur %} ({{ _cur }}){% endif %}</option>
                       <option value="previous"
-                              {% if doc.category in CURRENT_YEAR_TWIN %}selected{% endif %}>Previous year</option>
+                              {% if doc.category in CURRENT_YEAR_TWIN %}selected{% endif %}>Previous year{% if _prev %} ({{ _prev }}){% endif %}</option>
                     </select>
-                    <button type="submit" class="btn btn-sm" style="margin-top:4px">Save</button>
+                    <noscript><button type="submit" class="btn btn-sm" style="margin-top:4px">Save</button></noscript>
                   </form>
                 {% endif %}
               </td>
