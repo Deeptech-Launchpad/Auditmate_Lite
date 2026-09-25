@@ -158,6 +158,8 @@
       if (!title) { titleField.focus(); return; }
 
       const parentId = parentSelect.value || null;
+      const afterSelect = document.getElementById('anf-after');
+      const afterId = (!parentId && afterSelect && afterSelect.value) || null;
 
       const accountKeys = Array.from(
         addForm.querySelectorAll('input[name="anf-account"]:checked'))
@@ -170,7 +172,7 @@
           `/reports/api/report/${addForm.dataset.reportId}/section`,
           { method: 'POST', headers: csrfHeaders(),
             body: JSON.stringify({
-              title, parent_section_id: parentId,
+              title, parent_section_id: parentId, after_section_id: afterId,
               account_keys: accountKeys, save_scope: scope,
             }) });
         const data = await response.json().catch(() => ({}));

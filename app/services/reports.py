@@ -2170,7 +2170,6 @@ def section_payload(section, customer, financial_year, chips: bool = False):
                     payload["statement"], lines)
                 if payload["presented"]:
                     _drop_borrowed_refs(section, payload["presented"], lines)
-                    _order_by_note(section, payload["presented"])
                 if (payload["presented"] and payload["statement"].statement_type
                         == "balance_sheet"):
                     payload["headings"] = template_statements.group_headings(
@@ -2234,38 +2233,6 @@ def section_payload(section, customer, financial_year, chips: bool = False):
 
 
 _MISSING_BLANK = re.compile(r'class="[^"]*missing-binding[^"]*"[^>]*>([^<]+)<')
-
-
-def _order_by_note(section, presented):
-    """List a statement's numbered lines in the order of their note numbers.
-
-    When the preparer moves a note the statement's note column stops reading
-    downward ("5, 4, 6"). The numbered lines take one another's places so it does:
-    the line whose note is 4 stands above the line whose note is 5. Only lines that
-    carry a note number move, only among the places numbered lines already hold,
-    and only inside their own group - totals, subtotals and unnumbered lines stay
-    where they are.
-    """
-    numbers = note_number_map(section.report)
-
-    def number(line):
-        ref = getattr(line, "note_ref", None)
-        text = numbers.get(ref) if ref else None
-        return int(text) if text and str(text).isdigit() else None
-
-    start = 0
-    while start < len(presented):
-        end = start
-        while (end < len(presented)
-               and presented[end].group_key == presented[start].group_key):
-            end += 1
-        slots = [i for i in range(start, end)
-                 if not presented[i].is_total and not presented[i].is_subtotal
-                 and number(presented[i]) is not None]
-        ranked = sorted((presented[i] for i in slots), key=number)
-        for slot, line in zip(slots, ranked):
-            presented[slot] = line
-        start = end
 
 
 def _drop_borrowed_refs(section, presented, rows):

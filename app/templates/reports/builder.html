@@ -649,6 +649,18 @@ Anything typed into the report - note wording, edited figures, answers, section 
           </select>
         </label>
 
+        <label class="anf-field">
+          <span class="anf-label">Number it after</span>
+          <select id="anf-after" class="anf-select">
+            <option value="">The end of the list</option>
+            {% for n in attachable_notes %}
+              <option value="{{ n.id }}">Straight after Note {{ n.number }}. {{ n.title }}</option>
+            {% endfor %}
+          </select>
+          <span class="muted small">The notes below it move up by one. The
+            statements stay as they are; only their note numbers change.</span>
+        </label>
+
         <fieldset class="anf-field">
           <span class="anf-label">Pull figures from these accounts (optional)</span>
           <div class="anf-accounts">

@@ -1080,6 +1080,22 @@ def add_section(report_id):
     db.session.add(section)
     db.session.flush()
 
+    # "Place it after Note N": the note goes straight after that one, and the
+    # numbers of everything below it move up by one (they are worked out from
+    # the order, never stored). The statements do not move; only the numbers
+    # against their lines change.
+    after_id = payload.get("after_section_id")
+    if after_id and not parent:
+        anchor = db.session.get(AuditReportSection, int(after_id))
+        if anchor and anchor.report_id == report.id and anchor.parent_section_id is None:
+            top = [s for s in sorted(report.sections,
+                                     key=lambda s: ((s.sort_order or 0), s.id))
+                   if s.parent_section_id is None and s.id != section.id]
+            at = next((i for i, s in enumerate(top) if s.id == anchor.id), len(top) - 1)
+            top.insert(at + 1, section)
+            for position, item in enumerate(top):
+                item.sort_order = position
+
     # "Add to the library": the same note, written once, proposed to every
     # future engagement from then on - not retyped each time the same gap
     # is flagged. Manual by default; nothing an auditor writes for one
