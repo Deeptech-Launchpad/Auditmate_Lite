@@ -575,10 +575,23 @@ Anything typed into the report - note wording, edited figures, answers, section 
              placeholder="Search sections and notes…" autocomplete="off">
       <p id="section-search-empty" class="muted small" hidden>No section or note matches.</p>
       <div id="section-list" data-report-id="{{ report.id }}">
+        {# Included sections first, in their order, each with the number it
+           carries in the report; the ones switched off wait underneath. A
+           section keeps its own place while it is off, so ticking it puts it
+           back where it belongs and the numbers below it move down. A
+           sub-note stays with its parent. #}
+        {% set groups = namespace(on=[], off=[], last='on') %}
         {% for section in ordered_sections %}
+          {% if not section.parent_section_id %}
+            {% set groups.last = 'on' if section.is_enabled else 'off' %}
+          {% endif %}
+          {% if groups.last == 'on' %}{% set _ = groups.on.append(section) %}
+          {% else %}{% set _ = groups.off.append(section) %}{% endif %}
+        {% endfor %}
+        {% for section in groups.on %}
         <div class="section-item {{ '' if section.is_enabled else 'disabled' }} {{ 'section-child' if section.parent_section_id else '' }}"
              id="sec-{{ section.id }}"
-             draggable="{{ 'true' if (editable and not section.parent_section_id) else 'false' }}"
+             draggable="{{ 'true' if (editable and section.is_enabled and not section.parent_section_id) else 'false' }}"
              data-section-id="{{ section.id }}">
           <span class="handle">⠿</span>
           <input type="checkbox" class="toggle" {% if section.is_enabled %}checked{% endif %}
@@ -613,6 +626,50 @@ Anything typed into the report - note wording, edited figures, answers, section 
           {% endif %}
         </div>
         {% endfor %}
+        {% if groups.off %}
+        <div class="section-divider">
+          Not included ({{ groups.off|selectattr('parent_section_id', 'none')|list|length }})
+          <span>tick one to put it back in its place</span>
+        </div>
+        {% for section in groups.off %}
+        <div class="section-item {{ '' if section.is_enabled else 'disabled' }} {{ 'section-child' if section.parent_section_id else '' }}"
+             id="sec-{{ section.id }}"
+             draggable="{{ 'true' if (editable and section.is_enabled and not section.parent_section_id) else 'false' }}"
+             data-section-id="{{ section.id }}">
+          <span class="handle">⠿</span>
+          <input type="checkbox" class="toggle" {% if section.is_enabled %}checked{% endif %}
+                 {% if not editable %}disabled{% endif %}
+                 data-section-id="{{ section.id }}">
+          <span class="stitle">
+            {% set _n = note_numbers.get(section.section_key) if note_numbers else None %}
+            {% if _n %}<span class="note-num">{{ _n }}.</span> {% endif %}{{ section.title }}
+            <div class="stype">
+              {{ section.section_type|replace('_', ' ') }}
+              {# What last year's accounts say about this note. "Carried"
+                 means its text came from them; "last year" means they
+                 disclosed it but this year's figures decide whether it
+                 appears - see prior_year_disclosed(). #}
+              {% if section.prior_note_id %}
+                · <span class="prior-tag carried">carried from last year</span>
+              {% elif prior_disclosed and section.section_key in prior_disclosed %}
+                · <span class="prior-tag">disclosed last year</span>
+              {% endif %}
+            </div>
+          </span>
+          {% if section.section_type != 'statement' %}
+            <button class="icon-btn edit-btn" data-section-id="{{ section.id }}"
+                    title="Edit this section in the preview">✎</button>
+          {% endif %}
+          {# Only a note added here can be deleted. A library section is
+             switched off instead - it is not this report's to remove. #}
+          {% if editable and section.section_key.startswith('custom_') %}
+            <button class="icon-btn no delete-section" data-section-id="{{ section.id }}"
+                    data-confirm="Delete the note &quot;{{ section.title }}&quot;? This cannot be undone."
+                    title="Delete this note">✕</button>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% endif %}
       </div>
 
       {% if editable %}
@@ -750,6 +807,9 @@ Anything typed into the report - note wording, edited figures, answers, section 
   }
   .supply-sep { display:inline-block; width:1px; align-self:stretch;
                 background:var(--border); margin:0 4px; }
+  .section-divider { margin:14px 0 6px; padding:6px 4px 4px; font-size:11.5px; font-weight:700;
+    letter-spacing:.4px; text-transform:uppercase; color:#8a8577; border-top:1px solid var(--border, #d8d4c8); }
+  .section-divider span { display:block; font-weight:400; text-transform:none; letter-spacing:0; margin-top:2px; }
   .gap-fix { display:inline-block; margin-top:6px; font-size:.86em;
               font-weight:600; text-decoration:none; }
   /* Held for a couple of seconds after the jump, so it is obvious which

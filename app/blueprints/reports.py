@@ -1195,10 +1195,24 @@ def reorder(report_id):
     order = (request.get_json(silent=True) or {}).get("order", [])
 
     lookup = {s.id: s for s in report.sections}
-    for position, section_id in enumerate(order):
+    top = sorted((s for s in report.sections if s.parent_section_id is None),
+                 key=lambda s: ((s.sort_order or 0), s.id))
+    for position, section in enumerate(top):        # one distinct place each
+        section.sort_order = position
+
+    # The list shows the included sections first and the others underneath, so
+    # its order says how the INCLUDED ones are arranged and nothing about the
+    # rest. They are dealt the places the included sections already hold, in the
+    # new order; a section switched off keeps its own place, and is found there
+    # again when it is switched back on.
+    wanted = []
+    for section_id in order:
         section = lookup.get(int(section_id))
-        if section:
-            section.sort_order = position
+        if section and section.is_enabled and section.parent_section_id is None:
+            wanted.append(section)
+    places = sorted(s.sort_order for s in top if s.is_enabled)
+    for place, section in zip(places, wanted):
+        section.sort_order = place
 
     db.session.commit()
     return jsonify({"ok": True})
