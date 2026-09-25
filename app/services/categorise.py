@@ -44,13 +44,16 @@ RULES = [
     # Finished statements are named for themselves; tested before the source
     # categories, whose patterns would otherwise claim "statement of financial
     # position" and "statement of comprehensive income".
-    ("fs_detailed_pl", [r"\bdetailed profit and loss\b", r"\bdetailed p and l\b",
-                        r"\bdetailed profit loss\b"]),
-    ("fs_indirect_cash_flow", [r"\bindirect cash flow"]),
-    ("fs_direct_cash_flow", [r"\bdirect cash flow"]),
-    ("fs_changes_in_equity", [r"\bstatement of changes in equity\b",
-                             r"\bchanges in equity\b"]),
-    ("fs_comprehensive_income", [r"\bstatement of comprehensive income\b"]),
+    # Excel cuts a sheet's name at 31 characters, so "Statement of Cash Flows -
+    # Indirect" arrives as "Statement of Cash Flows - Indir" and "Statement of
+    # Detailed Profit and Loss" as "Statement of Detailed Profit a". The
+    # patterns therefore match the part of the name that is always there.
+    ("fs_detailed_pl", [r"\bstatement of detailed", r"\bdetailed profit and loss\b",
+                        r"\bdetailed p and l\b", r"\bdetailed profit loss\b"]),
+    ("fs_indirect_cash_flow", [r"\bindirect cash flow", r"\bcash flows? indir"]),
+    ("fs_direct_cash_flow", [r"\bdirect cash flow", r"\bcash flows? dir"]),
+    ("fs_changes_in_equity", [r"\bstatement of changes in", r"\bchanges in equity\b"]),
+    ("fs_comprehensive_income", [r"\bstatement of comprehensive"]),
     ("fs_financial_position", [r"\bstatement of financial position\b"]),
     ("trial_balance", [
         r"\btrial balance\b", r"\btb\b", r"\btrialbalance\b",

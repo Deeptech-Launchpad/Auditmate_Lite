@@ -2629,6 +2629,25 @@ def section_pages(html: str, base_url: str = None) -> dict:
             for name in (getattr(page, "anchors", None) or {}):
                 if str(name).startswith("sec-"):
                     found.setdefault(str(name), number)
+        if not found:
+            # A WeasyPrint that keeps no anchor table on its pages: read the
+            # section ids off the laid-out boxes instead.
+            for number, page in enumerate(document.pages, start=1):
+                stack = [getattr(page, "_page_box", None)]
+                while stack:
+                    box = stack.pop()
+                    if box is None:
+                        continue
+                    element = getattr(box, "element", None)
+                    ident = element.get("id") if hasattr(element, "get") else None
+                    if ident and str(ident).startswith("sec-"):
+                        found.setdefault(str(ident), number)
+                    stack.extend(getattr(box, "children", None) or [])
+        log.info("Contents page numbers: %d section(s) placed on %d page(s)",
+                 len(found), len(document.pages))
+        if not found:
+            log.warning("Contents page numbers: no section anchors found; the "
+                        "Word contents will show placeholders")
         return found
     except Exception:                                   # noqa: BLE001
         log.warning("Could not work out the contents page numbers", exc_info=True)
