@@ -2049,6 +2049,14 @@ def section_payload(section, customer, financial_year, chips: bool = False):
         if cf_wording and statement_type == "cash_flow":
             payload["headings"] = cf_wording["headings"]
             payload["cf_labels"] = cf_wording["labels"]
+            if not payload["detailed"]:
+                from . import template_statements
+                try:
+                    payload["cf_layout"] = template_statements.cash_flow_layout(
+                        financial_year)
+                except Exception:                          # noqa: BLE001
+                    log.exception("Could not lay out the cash flow as the "
+                                  "template does")
         lines = (section.data_binding or {}).get("presentation")
         if (lines and payload["statement"] is not None
                 and payload["statement"].statement_type == "changes_in_equity"

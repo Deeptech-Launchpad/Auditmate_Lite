@@ -609,3 +609,131 @@ def equity_matrix(statement, financial_year):
     add(f"At {day(end)}", *close_c, bold=True)
     return {"columns": ["Share capital", "Retained earnings", "Total"],
             "rows": rows, "gap": gap}
+
+
+# ------------------------------------------------- cash flow, in the template's layout
+
+def cash_flow_layout(financial_year):
+    """The cash flow as the template lays it out, from the figures already
+    computed for the standard cash flow, so no figure can differ from it.
+
+    Operating (profit after taxation, adjustments for non-cash items, changes
+    in operating assets and liabilities, operating cash flows), Investing,
+    Financing, Net Cash Flows, then the cash section. The template's sub-lines
+    are kept even where nil.
+
+    Interest and tax are added back and then taken out again as cash paid, as
+    the template does; the two cancel, so the operating total is the standard
+    statement's own. What the standard statement could not explain (an opening
+    balance that is not last year's closing balance) is one row of its own,
+    "Adjustment to opening balance", so the columns add - the same row the
+    statement of changes in equity shows.
+    """
+    from decimal import Decimal
+
+    from ..models import FinancialStatement
+
+    def lines(kind):
+        st = FinancialStatement.query.filter_by(
+            financial_year_id=financial_year.id, statement_type=kind).first()
+        return {l.line_key: l for l in st.lines} if st else {}
+
+    cf, pl = lines("cash_flow"), lines("profit_and_loss")
+    if not cf:
+        return None
+    zero = Decimal("0")
+
+    def get(book, key, current):
+        line = book.get(key)
+        if line is None:
+            return None
+        raw = line.effective_amount if current else line.amount_previous
+        return None if raw is None else Decimal(str(raw))
+
+    def pair(book, key):
+        return (get(book, key, True), get(book, key, False))
+
+    def neg(values):
+        return tuple(None if v is None else -v for v in values)
+
+    def plus(*pairs):
+        out = []
+        for i in (0, 1):
+            vals = [p[i] for p in pairs if p[i] is not None]
+            out.append(sum(vals, zero) if vals else None)
+        return tuple(out)
+
+    rows = []
+
+    def head(label):
+        rows.append({"label": label, "kind": "head", "cells": None})
+
+    def item(label, values, indent=1):
+        rows.append({"label": label, "kind": "item", "cells": values,
+                     "indent": indent})
+
+    def total(label, values, final=False):
+        rows.append({"label": label, "kind": "total" if final else "sub",
+                     "cells": values})
+
+    profit = pair(pl, "profit_for_year")
+    interest = pair(pl, "interest_expense")
+    tax = pair(pl, "tax_expense")
+    depreciation = pair(cf, "cf_depreciation")
+    receivables, payables = pair(cf, "cf_receivables"), pair(cf, "cf_payables")
+    tax_paid, expenses = pair(cf, "cf_tax_paid"), pair(cf, "cf_expenses_paid")
+
+    head("Operating activities")
+    item("Profit after taxation", profit, 0)
+    head("Adjustments for non-cash items")
+    item("Interest expense", interest)
+    item("Tax expense", tax)
+    if any(v for v in depreciation if v):
+        item("Depreciation", depreciation)
+    head("Changes in operating assets and liabilities")
+    item("Trade and other receivables", receivables)
+    item("Trade and other payables", payables)
+    head("Operating cash flows")
+    item("Interest expense", neg(interest))
+    item("Tax paid", tax_paid)
+    if any(v for v in expenses if v):
+        item("Expenses paid", expenses)
+    operating = plus(profit, interest, tax, depreciation, receivables, payables,
+                     neg(interest), tax_paid, expenses)
+    total("Net cash provided by operating activities", operating)
+
+    head("Investing activities")
+    purchase, other_inv = pair(cf, "cf_purchase_ppe"), pair(cf, "cf_investing_other")
+    item("Purchase of fixed assets", purchase)
+    item("Other cash items from investing activities", other_inv)
+    investing = plus(purchase, other_inv)
+    total("Net cash provided by investing activities", investing)
+
+    head("Financing activities")
+    borrowing = pair(cf, "cf_borrowings")
+    item("Proceeds from long-term loans",
+         tuple(None if v is None else max(v, zero) for v in borrowing))
+    item("Repayment of long-term loans",
+         tuple(None if v is None else min(v, zero) for v in borrowing))
+    shares, dividends = pair(cf, "cf_share_capital"), pair(cf, "cf_dividends")
+    item("Proceeds from issue of shares", shares)
+    item("Dividends paid", dividends)
+    financing = plus(borrowing, shares, dividends)
+    total("Net cash provided by financing activities", financing)
+
+    net = plus(operating, investing, financing)
+    total("Net Cash Flows", net)
+    change = pair(cf, "cf_net_change")
+    gap = tuple(None if c is None else c - (n or zero) for c, n in zip(change, net))
+    # a difference under one dollar is rounding, not an adjustment
+    gap = tuple(g if g is not None and abs(g) >= 1 else None for g in gap)
+    if any(g is not None for g in gap):
+        item("Adjustment to opening balance", gap, 0)
+
+    head("Cash and cash equivalents")
+    item("Cash and cash equivalents at beginning of period",
+         pair(cf, "cf_opening_cash"), 0)
+    item("Net change in cash for period", change, 0)
+    total("Cash and cash equivalents at end of period",
+          pair(cf, "cf_closing_cash"), final=True)
+    return {"rows": rows}

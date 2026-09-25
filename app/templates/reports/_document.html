@@ -392,6 +392,36 @@
             {% endfor %}
           </tbody>
         </table>
+        {% elif payload.cf_layout %}
+        {# The customer's own cash flow: its headings and sub-lines, nil kept. #}
+        <table class="fin">
+          <thead>
+            <tr class="hdr-dates">
+              <th class="lbl"></th>
+              <th class="notes"><span class="yr">Note</span></th>
+              <th class="num"><span class="yr">{{ yr_cur }}</span></th>
+              <th class="num"><span class="yr">{{ yr_prev }}</span></th>
+            </tr>
+            <tr class="hdr-ccy">
+              <th class="lbl"></th><th class="notes"></th>
+              <th class="num">{{ ccy_sym }}</th><th class="num">{{ ccy_sym }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in payload.cf_layout.rows %}
+              {% if row.kind == 'head' %}
+                <tr class="group-head"><td class="lbl" colspan="4">{{ row.label }}</td></tr>
+              {% else %}
+                <tr class="{{ 'total' if row.kind == 'total' else ('subtotal' if row.kind == 'sub') }}">
+                  <td class="lbl{% if row.indent %} indent-{{ row.indent }}{% endif %}">{{ row.label }}</td>
+                  <td class="notes"></td>
+                  <td class="num">{{ row.cells[0]|stmt }}</td>
+                  <td class="num">{{ row.cells[1]|stmt }}</td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
         {% else %}
         <table class="fin">
           <thead>
