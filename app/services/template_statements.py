@@ -150,6 +150,7 @@ def read_profile(template_path):
                 pdf, ("financial position", "balance sheet"),
                 ("cash flow", "changes in equity"))
             equity_matrix_template = _equity_page_is_matrix(pdf)
+            equity_rows = _equity_template_rows(pdf) if equity_matrix_template else []
             cf_lines = _statement_page(
                 pdf, ("cash flow",), ("changes in equity", "financial position"))
     except Exception:                                      # noqa: BLE001
@@ -158,7 +159,7 @@ def read_profile(template_path):
 
     profile = {}
     if equity_matrix_template:
-        profile["changes_in_equity"] = [{"type": "matrix"}]
+        profile["changes_in_equity"] = [{"type": "matrix", "rows": equity_rows}]
     if pl_lines:
         rows = _recognise(_captions(pl_lines), PL_TYPES)
         kinds = {r["type"] for r in rows}
@@ -529,7 +530,7 @@ def _equity_page_is_matrix(pdf):
     return False
 
 
-def equity_matrix(statement, financial_year):
+def equity_matrix(statement, financial_year, template_rows=None):
     """The statement of changes in equity as the template lays it out.
 
     Share capital, retained earnings and total across, a row for each date and
@@ -575,19 +576,35 @@ def equity_matrix(statement, financial_year):
         rows.append({"label": label, "cells": [share, accum, total],
                      "bold": bold})
 
+    def continues(template_rows, closing_total):
+        """Whether the template's last row is last year's closing balance - the
+        only case its rows can be carried as they stand."""
+        if not template_rows:
+            return False
+        last = template_rows[-1]
+        return (last["label"].lower().startswith("at ")
+                and closing_total is not None
+                and abs(Decimal(last["cells"][2]) - closing_total) < 1)
+
     zero = Decimal("0")
     have_previous = value("soce_close_total", False) is not None
     open_p, close_p = triple("open", False), triple("close", False)
     open_c, close_c = triple("open", True), triple("close", True)
 
-    if have_previous and open_p[2] is not None:
+    carried = continues(template_rows, close_p[2])
+    if carried:
+        for row in template_rows:
+            add(row["label"], *[Decimal(c) for c in row["cells"]],
+                bold=row["label"].lower().startswith("at "))
+    elif have_previous and open_p[2] is not None:
         add(f"At {day(previous_start)}", *open_p, bold=True)
-        tci = value("soce_income_accum", False)
-        issued = value("soce_issue_share", False)
-        if issued:
-            add("Shares issued during the year", issued, zero, issued)
-        add("Total comprehensive income for the year", zero, tci, tci)
-        add(f"At {day(previous_end)}", *close_p, bold=True)
+        if not carried:
+            tci = value("soce_income_accum", False)
+            issued = value("soce_issue_share", False)
+            if issued:
+                add("Shares issued during the year", issued, zero, issued)
+            add("Total comprehensive income for the year", zero, tci, tci)
+            add(f"At {day(previous_end)}", *close_p, bold=True)
     else:
         previous_end = None
 
@@ -737,3 +754,45 @@ def cash_flow_layout(financial_year):
     total("Cash and cash equivalents at end of period",
           pair(cf, "cf_closing_cash"), final=True)
     return {"rows": rows}
+
+
+_MONTH_CASE = re.compile(r"\b(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|"
+                         r"SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\b")
+_EQ_FIGURE = r"(-?[\d,]+(?:\.\d+)?|-|\u2014)"
+_EQ_ROW = re.compile(r"^(?P<label>.*?\S)\s+" + _EQ_FIGURE + r"\s+" + _EQ_FIGURE
+                     + r"\s+" + _EQ_FIGURE + r"\s*$")
+
+
+def _equity_template_rows(pdf):
+    """The template's own rows of the equity statement, as printed:
+    [{"label", "cells": [share, retained, total]}] - "At 1 January 2022",
+    "Total comprehensive income for the year", "At 31 December 2022" ...
+
+    Every year the template already shows stays a row of the new statement;
+    the new year is added under them. Figures are read whatever the grouping
+    ("1,00,000") or sign style ("-1,21,474"); a dash is nil."""
+    from decimal import Decimal
+
+    for page in pdf.pages[:12]:
+        lines = (page.extract_text() or "").splitlines()
+        if "changes in equity" not in _norm(" ".join(lines[:4])):
+            continue
+        rows = []
+        for raw in lines[3:]:
+            match = _EQ_ROW.match(_tidy(raw))
+            if not match or not re.match(r"(?i)^(at |total comprehensive|"
+                                         r"shares? issued|dividend|issue of)",
+                                         match.group("label")):
+                continue
+            cells = []
+            for i in (2, 3, 4):
+                text = match.group(i)
+                if text in ("-", "\u2014"):
+                    cells.append(Decimal("0"))
+                else:
+                    cells.append(Decimal(text.replace(",", "")))
+            label = _MONTH_CASE.sub(lambda m: m.group(1).capitalize(),
+                                    match.group("label"))
+            rows.append({"label": label, "cells": [str(c) for c in cells]})
+        return rows
+    return []

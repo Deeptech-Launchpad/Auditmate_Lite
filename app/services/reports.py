@@ -663,11 +663,27 @@ def _match_customer_template(report, financial_year):
     Only at creation: after that the preparer owns the section switches, and
     a rebuild must not undo a choice they made on purpose.
     """
-    from . import template_outline
+    from . import template_follow, template_outline
+
+    # The customer's own template if one was uploaded; otherwise last year's
+    # signed accounts on file, which is the same thing - the report they
+    # filed. A customer who chose the standard format explicitly keeps it.
+    chosen = financial_year.customer.report_template_path
+    if chosen == "STANDARD":
+        return
+    path = template_follow._template_path(financial_year)
+    if path is None:
+        from pathlib import Path
+        for document in financial_year.documents:
+            if (document.category == "signed_accounts"
+                    and Path(str(document.storage_path)).suffix.lower() == ".pdf"
+                    and Path(str(document.storage_path)).exists()):
+                path = Path(str(document.storage_path))
+                break
+    template = str(path) if path else chosen
 
     try:
-        changed = template_outline.apply_to_report(
-            report, financial_year.customer.report_template_path)
+        changed = template_outline.apply_to_report(report, template)
     except Exception:                                      # noqa: BLE001
         log.exception("Could not match the report to the customer's template")
         return
@@ -2064,7 +2080,8 @@ def section_payload(section, customer, financial_year, chips: bool = False):
             from . import template_statements
             try:
                 payload["matrix"] = template_statements.equity_matrix(
-                    payload["statement"], financial_year)
+                    payload["statement"], financial_year,
+                    lines[0].get("rows"))
             except Exception:                              # noqa: BLE001
                 log.exception("Could not lay out the equity statement as "
                               "the template does")
