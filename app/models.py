@@ -678,6 +678,12 @@ class Document(db.Model):
     # to see whether a person chose it or the app guessed, and a guess must
     # never overwrite a choice.
     category_source = db.Column(db.String(20))
+
+    # Whether a person has said which year this document describes. False for a
+    # document uploaded since the Year box began asking ("Select year"); empty
+    # for the ones that were there before, which are taken as settled. Until it
+    # is answered the document counts as the current year, as it always did.
+    year_chosen = db.Column(db.Boolean, default=False)
     category_reason = db.Column(db.String(255))
     page_count = db.Column(db.Integer)
 

@@ -364,10 +364,18 @@
                     {% set _cur = fy.end_date.year if fy.end_date else none %}
                     {% set _prev = (fy.previous_period_end.year if fy.previous_period_end
                                     else (_cur - 1 if _cur else none)) %}
+                    {# Until a person answers, the box says "Select year" rather
+                       than pretending "Current year" was chosen. #}
+                    {% set _picked = (doc.year_chosen is not sameas false)
+                                     or doc.category in CURRENT_YEAR_TWIN %}
+                    <input type="hidden" name="year_chosen" value="1">
                     <select name="year" class="small year-select" style="max-width:170px"
                             onchange="this.form.submit()">
+                      {% if not _picked %}
+                        <option value="" selected disabled hidden>Select year</option>
+                      {% endif %}
                       <option value="current"
-                              {% if doc.category not in CURRENT_YEAR_TWIN %}selected{% endif %}>Current year{% if _cur %} ({{ _cur }}){% endif %}</option>
+                              {% if _picked and doc.category not in CURRENT_YEAR_TWIN %}selected{% endif %}>Current year{% if _cur %} ({{ _cur }}){% endif %}</option>
                       <option value="previous"
                               {% if doc.category in CURRENT_YEAR_TWIN %}selected{% endif %}>Previous year{% if _prev %} ({{ _prev }}){% endif %}</option>
                     </select>

@@ -906,7 +906,13 @@ def recategorise(document_id):
               "before changing what the document is filed as.", "error")
         return redirect(url_for("documents.index", fy_id=fy_id))
 
+    # The Year box was used: the year is now a person's answer, even when it is
+    # the one the document already carried.
+    if request.form.get("year_chosen"):
+        document.year_chosen = True
+
     if category == document.category:
+        db.session.commit()
         return redirect(url_for("documents.index", fy_id=fy_id))
 
     before = document.category
