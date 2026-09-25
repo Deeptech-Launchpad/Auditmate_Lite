@@ -2167,7 +2167,7 @@ def incomplete_reasons(section, payload, financial_year=None):
         reasons.append(f"Waiting for the preparer: {question}")
 
     for table in payload.get("tables") or []:
-        for reason in table.get("held_table") or []:
+        for reason in (table.get("held_table") or []) + (table.get("flags") or []):
             if reason not in reasons:
                 reasons.append(reason)
         for row in table.get("rows") or []:

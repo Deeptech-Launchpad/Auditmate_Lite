@@ -699,7 +699,9 @@ def cash_flow_layout(financial_year, wording=None):
     rows = []
 
     def head(label):
-        rows.append({"label": label, "kind": "head", "cells": None})
+        rows.append({"label": label, "kind": "head", "cells": None,
+                     "major": bool(re.match(
+                         r"(?i)^(operating|investing|financing) activities$", label))})
 
     def item(label, values, indent=1):
         rows.append({"label": label, "kind": "item", "cells": values,

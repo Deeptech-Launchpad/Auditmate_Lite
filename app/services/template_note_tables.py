@@ -257,9 +257,35 @@ _CODES = [
     (r"total income tax|current year|current income tax|income tax expense",
      ("codes", ["PL-TAX"])),
     (r"profit before (income )?tax|loss before (income )?tax", ("codes", ["PL-PBT"])),
-    (r"tax calculated|tax at the|tax at a|exemption|rebate|tax effects",
-     ("answer", "Needs the tax computation")),
+    (r"tax calculated|tax at the|tax at a", ("tax_rate",)),
+    (r"stepped income exemption|partial (tax )?exemption|tax exemption",
+     ("tax_exemption",)),
+    (r"rebate|tax effects", ("answer", "Needs the tax computation")),
 ]
+
+
+def _tax_row(kind, context, figures):
+    """The two tax lines the template works out for itself.
+
+    Brown Rock's 2023 note reads: profit 27,800, tax at 17% 4,726, statutory
+    stepped income exemption (2,788). 17% of 27,800 is 4,726; the exemption is
+    17% of 75% of the first 10,000 and 50% of the next 190,000 (7,500 + 8,900).
+    Both follow the profit before tax, as the template's own figures do - a loss
+    gives nil - and are for the preparer to confirm against the tax computation.
+    """
+    from decimal import Decimal as D
+
+    profit = figures.resolve("PL-PBT", 0)
+    if not isinstance(profit, D):
+        return profit
+    found = re.search(r"(\d+(?:\.\d+)?)\s*%", context)
+    rate = D(found.group(1)) / D(100) if found else D("0.17")
+    chargeable = max(profit, ZERO)
+    if kind == "tax_rate":
+        return (chargeable * rate).quantize(D("0.01"))
+    exempt = (D("0.75") * min(chargeable, D(10000))
+              + D("0.5") * min(max(chargeable - D(10000), ZERO), D(190000)))
+    return -(exempt * rate).quantize(D("0.01"))
 
 
 def _clean(label):
@@ -305,6 +331,8 @@ def _fill_row(context, figures, financial_year):
     for pattern, how in _CODES:
         if not re.search(pattern, text):
             continue
+        if how[0] in ("tax_rate", "tax_exemption"):
+            return _tax_row(how[0], context, figures), ["PL-PBT"]
         if how[0] == "codes":
             return _sum_codes(figures, how[1]), list(how[1])
         if how[0] == "accounts":
@@ -392,9 +420,9 @@ def build(spec, financial_year, statements=None):
             r for r in block if r["kind"] == "item"]
         stated = None
         if row["kind"] == "total" and re.search(r"(?i)income tax", label):
-            stated = _sum_codes(figures, ["PL-TAX"])
-            members = []
-        current = _sum_members(members, "current") if stated is None else stated
+            members = [r for r in members
+                       if not re.search(r"(?i)profit before", r["label"])]
+        current = _sum_members(members, "current")
         add(shown_label, current, prior, row["kind"], bold=row["kind"] == "total",
             rule=True)
         if row["kind"] == "total":
@@ -459,8 +487,18 @@ def build(spec, financial_year, statements=None):
                 row[column] = None
         row["from_binding"] = row.pop("binding")
         row["ids"] = row.get("ids") or []
+    flags = []
+    total = next((r for r in final if r["kind"] == "total"
+                  and re.search(r"(?i)income tax", r["label"])), None)
+    if total is not None and isinstance(total.get("current"), Decimal):
+        booked = _sum_codes(figures, ["PL-TAX"])
+        if isinstance(booked, Decimal) and abs(booked - total["current"]) >= 1:
+            flags.append(
+                "Income tax in this note is {:,.0f} but the income statement "
+                "carries {:,.0f}. Settle which is right with the tax "
+                "computation.".format(total["current"], booked))
     return {"heading": None, "rows": final, "columns": None,
-            "table_id": table_key}
+            "table_id": table_key, "flags": flags}
 
 
 def _sum_members(members, column):
@@ -487,8 +525,12 @@ def _resum(rows):
         elif row["kind"] == "sub":
             row["current"] = _sum_members(group, "current")
         elif row["kind"] == "total":
-            if row["label"] and not re.search(r"(?i)income tax", row["label"]):
-                row["current"] = _sum_members(block, "current")
+            if row["label"]:
+                members = block
+                if re.search(r"(?i)income tax", row["label"]):
+                    members = [r for r in block
+                               if not re.search(r"(?i)profit before", r["label"])]
+                row["current"] = _sum_members(members, "current")
             block = []
 
 
@@ -643,7 +685,9 @@ def cash_flow_from_template(financial_year, template_rows):
 
     def new_row(kind, label, cur, prior, indent=1, section=None):
         row = {"label": label, "kind": kind, "cells": (cur, prior),
-               "indent": indent, "group": group, "section": section}
+               "indent": indent, "group": group, "section": section,
+               "major": kind == "head" and bool(re.match(
+                   r"(?i)^(operating|investing|financing) activities$", label))}
         out.append(row)
         return row
 

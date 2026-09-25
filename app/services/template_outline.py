@@ -391,6 +391,8 @@ def apply_to_report(report, template_path):
     from . import template_note_tables, template_skeleton
     followed = template_skeleton.apply(report)
     if followed:
+        _notes_intro(report, template_path)
+    if followed:
         tabled = template_note_tables.apply(report, template_path)
         if tabled:
             followed += f"; drew the tables of {tabled} notes as it does"
@@ -547,3 +549,41 @@ def _directors_statement(report, template_path):
             # compilation report, so that one stays off (Sections can re-enable)
             section.is_enabled = False
     return True
+
+
+def read_notes_intro(path):
+    """The sentence the template opens its notes with - "These notes form an
+    integral part of and should be read in conjunction with the financial
+    statements." - or None."""
+    import pdfplumber
+
+    try:
+        with pdfplumber.open(str(path)) as pdf:
+            for page in pdf.pages[:14]:
+                lines = [l.strip() for l in (page.extract_text() or "").splitlines()]
+                if (len(lines) > 3
+                        and lines[1].upper().startswith("NOTES TO THE FINANCIAL")):
+                    body = []
+                    for line in lines[3:]:
+                        if re.match(r"^\d+\.\s", line):
+                            break
+                        body.append(line)
+                    return " ".join(body).strip() or None
+    except Exception:                                        # noqa: BLE001
+        log.exception("Could not read the opening of the notes of %s", path)
+    return None
+
+
+def _notes_intro(report, template_path):
+    """Keep the template's opening line on the first of its notes."""
+    intro = read_notes_intro(template_path)
+    cover = next((s for s in report.sections if s.section_key == "cover_page"), None)
+    skeleton = ((cover.data_binding or {}).get("skeleton") if cover else None)
+    if not intro or not skeleton or not skeleton.get("template"):
+        return
+    first = skeleton["template"][0]["key"]
+    for section in report.sections:
+        if section.section_key == first:
+            binding = dict(section.data_binding or {})
+            binding["intro"] = intro
+            section.data_binding = binding

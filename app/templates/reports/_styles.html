@@ -510,6 +510,7 @@
    furniture the spec lists. The one grid in the document is the credit risk
    grading table.
    ============================================================================ #}
+body { margin: 0; }                 /* the browser's 8 px margin put every line 6 pt in */
 {{ S }} .rpt-doc {
   font-family: {{ body_face|safe }}; font-size: 9pt; line-height: 10.2pt;
   color: #000; text-align: left;
@@ -521,7 +522,7 @@
 }
 {{ S }} .rpt-doc h4 { margin: 10.2pt 0 0; }
 {{ S }} h3.note-title { margin: 20.5pt 0 10.2pt; font-size: 9pt; }
-{{ S }} .rpt-note .rpt-body { margin-left: 33pt; }        /* as the template */
+{{ S }} .rpt-note .rpt-body { margin-left: 33pt; margin-right: 27.8pt; }   /* as the template */
 
 /* page furniture */
 {{ S }} .rpt-head { text-align: left; margin: 0 0 20.5pt; }
@@ -552,13 +553,53 @@
 /* the rule under a year heading is the width of the heading only */
 {{ S }} table.fin th .yr { display: inline-block; padding: 0 1pt;
                             border-bottom: .96pt solid #000; }
-{{ S }} table.fin:not(.by-class) th.num.hdr-space { width: auto; }
-{{ S }} table.fin:not(.by-class) td.notes, {{ S }} table.fin:not(.by-class) th.notes {
-  width: 14.8mm; text-align: center; }
-{{ S }} table.fin:not(.by-class) td.num:nth-last-child(2),
-{{ S }} table.fin:not(.by-class) th.num:nth-last-child(2) { width: 25.8mm; }
-{{ S }} table.fin:not(.by-class) td.num:last-child,
-{{ S }} table.fin:not(.by-class) th.num:last-child { width: 34.6mm; }
+/* Columns where the spec puts them. Measured on Brown Rock (Letter): note
+   centred on 337 pt, amount columns' right edges at 448 and 546, rules across
+   376-454 and 454-551. This is A4, 17 pt narrower, so every position is 17 pt
+   to the left: note centred on 320 pt, figures ending at 431 and 528 - the
+   right edge of the text block - and the table 5 pt wider than the block, as
+   the rules are. Fixed layout, so the columns are these widths and nothing
+   the browser or WeasyPrint works out from the content. */
+{{ S }} table.fin:not(.by-class):not(.matrix) {
+  table-layout: fixed; width: 433pt; margin-right: -5pt; border-collapse: collapse; }
+{{ S }} table.fin:not(.by-class):not(.matrix) td.notes,
+{{ S }} table.fin:not(.by-class):not(.matrix) th.notes {
+  width: 60pt; text-align: center; padding: 0 18pt 0 0; }
+{{ S }} table.fin:not(.by-class):not(.matrix) td.num:nth-last-child(2),
+{{ S }} table.fin:not(.by-class):not(.matrix) th.num:nth-last-child(2) { width: 78pt; }
+{{ S }} table.fin:not(.by-class):not(.matrix) td.num:last-child,
+{{ S }} table.fin:not(.by-class):not(.matrix) th.num:last-child { width: 97pt; }
+{{ S }} table.fin td.num, {{ S }} table.fin th.num { padding: 0 6pt 0 0; text-align: right; }
+{{ S }} table.fin td.lbl, {{ S }} table.fin th.lbl { padding: 0; }
+{{ S }} table.fin.matrix { table-layout: fixed; width: 433pt; margin-right: -5pt; }
+{{ S }} table.fin.matrix td.num, {{ S }} table.fin.matrix th.num { width: 90pt; }
+/* the note tables sit in the note's column: the same figure columns, the
+   caption narrower by the note's indent */
+{{ S }} .rpt-note > table.note-table:not(.by-class) { width: 400pt; margin-right: -5pt; }
+/* a table typed inside a note's own wording fills the wording's column */
+{{ S }} .rpt-body table.fin.fin.fin { table-layout: auto; width: 100%; margin-right: 0; }
+
+/* Three levels in the face statements, 12 pt each: the class (ASSETS), the
+   section (Current assets), the line items. A section total returns to the
+   section, a class total to the class. */
+{{ S }} table.fin tr.group-head.major td { padding-left: 0; }
+{{ S }} table.fin tr.group-head.minor td { padding-left: 12pt; }
+{{ S }} table.fin td.indent-1 { padding-left: 24pt; }
+{{ S }} table.fin td.indent-2 { padding-left: 36pt; }
+{{ S }} table.fin tr.subtotal td.lbl, {{ S }} table.fin tr.total td.lbl { padding-left: 12pt; }
+{{ S }} table.fin tr.class-total td.lbl { padding-left: 0; }
+/* the profit and loss is one flat list */
+{{ S }} table.fin.stmt-profit_and_loss td.lbl { padding-left: 0; }
+/* the cash flow: headings at the margin, their lines one level in */
+{{ S }} table.fin.stmt-cash_flow tr.group-head td { padding-left: 0; }
+{{ S }} table.fin.stmt-cash_flow td.indent-1 { padding-left: 12pt; }
+{{ S }} table.fin.stmt-cash_flow td.indent-0 { padding-left: 0; }
+{{ S }} table.fin.stmt-cash_flow tr.subtotal td.lbl,
+{{ S }} table.fin.stmt-cash_flow tr.total td.lbl { padding-left: 0; }
+{{ S }} table.fin.stmt-cash_flow tr.group-head.sect td { font-size: 9.9pt; }
+{{ S }} table.fin.stmt-changes_in_equity td.lbl { padding-left: 0; }
+{{ S }} table.fin.stmt-profit_and_loss-detailed td.indent-1,
+{{ S }} table.fin.stmt-profit_and_loss-detailed tr.detail td.lbl { padding-left: 12pt; }
 {{ S }} table.fin tr.group-head td { font-weight: bold; padding-top: 10.2pt; }
 {{ S }} table.fin tr.subtotal td.num, {{ S }} table.fin tr.ruled-above td.num,
 {{ S }} table.fin tr.total td.num { border-top: .96pt solid #000; }
@@ -600,7 +641,8 @@
       vertical-align: top; padding-top: 49pt; width: 428pt;
     }
     @bottom-center { font-family: {{ body_face|safe }}; font-size: 9pt;
-                     font-weight: bold; content: counter(page); }
+                     font-weight: bold; content: counter(page);
+                     vertical-align: top; }
   }
   /* the cover carries no running header and no page number */
   @page :first { @top-left { content: none; }
@@ -618,6 +660,7 @@
 {% endif %}
 {% if spec %}
 {{ S }} .rpt-doc p.ind1 { margin-left: 26.8pt; }
+{{ S }} .rpt-doc p.notes-intro { margin: 0 0 20.5pt; text-align: left; }
 /* The cover is one centred block. The paragraph rule above (justified text)
    was overriding it for every <p>, so the title and company centred and the
    subtitle, registration number and date fell to the left. */

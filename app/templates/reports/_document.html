@@ -394,7 +394,7 @@
         </table>
         {% elif payload.cf_layout %}
         {# The customer's own cash flow: its headings and sub-lines, nil kept. #}
-        <table class="fin">
+        <table class="fin stmt-cash_flow">
           <thead>
             <tr class="hdr-dates">
               <th class="lbl"></th>
@@ -410,20 +410,20 @@
           <tbody>
             {% for row in payload.cf_layout.rows %}
               {% if row.kind == 'head' %}
-                <tr class="group-head"><td class="lbl" colspan="4">{{ row.label }}</td></tr>
+                <tr class="group-head{{ ' sect' if row.major }}"><td class="lbl" colspan="4">{{ row.label }}</td></tr>
               {% else %}
                 <tr class="{{ 'total' if row.kind == 'total' else ('subtotal' if row.kind == 'sub') }}">
                   <td class="lbl{% if row.indent %} indent-{{ row.indent }}{% endif %}">{{ row.label }}</td>
                   <td class="notes"></td>
-                  <td class="num">{{ row.cells[0]|stmt }}</td>
-                  <td class="num">{{ row.cells[1]|stmt }}</td>
+                  <td class="num">{{ '' if row.cells[0] is none else row.cells[0]|stmt }}</td>
+                  <td class="num">{{ '' if row.cells[1] is none else row.cells[1]|stmt }}</td>
                 </tr>
               {% endif %}
             {% endfor %}
           </tbody>
         </table>
         {% else %}
-        <table class="fin">
+        <table class="fin stmt-{{ statement.statement_type }}{{ '-detailed' if detailed }}">
           <thead>
             <tr class="hdr-dates">
               <th class="lbl"></th>
@@ -451,7 +451,7 @@
                 {% set heading = headings.get(line.group_key) %}
                 {% if heading %}
                   {% for part in heading.split('|') %}
-                    <tr class="group-head {{ 'major' if loop.first and heading.split('|')|length > 1 else 'minor' }}">
+                    <tr class="group-head {{ 'major' if loop.first and heading.split('|')|length > 1 else 'minor' }}{{ ' sect' if statement.statement_type == 'cash_flow' }}">
                       <td colspan="{{ 4 if show_notes else 3 }}">{{ part }}</td>
                     </tr>
                   {% endfor %}
@@ -482,7 +482,7 @@
                   </tr>
                 {% endif %}
               {% else %}
-              <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}{% if line.is_detail %} detail{% endif %}">
+              <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}{% if line.line_key in ('total_assets', 'total_equity_and_liabilities', 'total_equity_liabilities') %} class-total{% endif %}{% if line.is_detail %} detail{% endif %}">
                 <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ stmt_label(line, payload.cf_labels) }}</td>
                 {% if show_notes %}<td class="notes">{{ note_numbers.get(line.note_ref, '') if note_numbers else '' }}</td>{% endif %}
                 {{ stmt_amount(line) }}
@@ -521,6 +521,10 @@
              'Notes to the Financial Statements' if is_note else section.title,
              period_heading(fy.start_date, fy.end_date) if is_note else '',
              section_id=section.id if (editable and not is_note) else None) }}
+        {# The line the template opens its notes with. #}
+        {% if is_note and section.data_binding and section.data_binding.get('intro') %}
+          <p class="notes-intro">{{ section.data_binding.get('intro') }}</p>
+        {% endif %}
       {% endif %}
 
       {#
