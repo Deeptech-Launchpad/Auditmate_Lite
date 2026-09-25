@@ -142,8 +142,6 @@ def check(report):
         problems.append(f"The template's note \"{missing}\" is not in the report.")
     for extra in [t for t in have if t not in wanted]:
         problems.append(f"\"{extra}\" is in the report but not in the template.")
-    if not problems and [t for t in have if t in wanted] != wanted:
-        problems.append("The notes are not in the template's order.")
     for name in skeleton.get("unmatched") or []:
         problems.append(f"The template's note \"{name}\" has no matching note "
                         f"in the library - add it by hand.")

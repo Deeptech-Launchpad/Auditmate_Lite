@@ -66,9 +66,14 @@
 
   let dragged = null;
 
+  let orderBefore = '';
+  const currentOrder = () => Array.from(list.querySelectorAll('.section-item'))
+    .map(item => item.dataset.sectionId).join(',');
+
   list.addEventListener('dragstart', event => {
     const item = event.target.closest('.section-item');
     if (!item) return;
+    orderBefore = currentOrder();
     dragged = item;
     item.classList.add('dragging');
     event.dataTransfer.effectAllowed = 'move';
@@ -77,7 +82,7 @@
   list.addEventListener('dragend', () => {
     if (dragged) dragged.classList.remove('dragging');
     dragged = null;
-    persistOrder();
+    if (currentOrder() !== orderBefore) persistOrder();
   });
 
   list.addEventListener('dragover', event => {
@@ -97,13 +102,23 @@
       .map(item => item.dataset.sectionId);
 
     try {
-      await fetch(`/reports/api/report/${reportId}/reorder`, {
+      const response = await fetch(`/reports/api/report/${reportId}/reorder`, {
         method: 'POST',
         headers: csrfHeaders(),
         body: JSON.stringify({ order })
       });
+      if (response.ok) {
+        /* The note numbers follow the order - here, in the notes, and in the
+           statements' references - so the page is drawn again from the saved
+           order, at the same place in the list. */
+        try {
+          sessionStorage.setItem('am-list-scroll', String(list.scrollTop));
+          sessionStorage.setItem('am-page-scroll', String(window.scrollY));
+        } catch (err) { /* nothing to restore */ }
+        location.reload();
+      }
     } catch (err) {
-      /* order is cosmetic until reload — not worth interrupting the user */
+      alert('Could not save the new order.');
     }
   }
 
@@ -497,6 +512,20 @@
       say('Could not save the answer', 'failed');
     }
   });
+
+  /* After moving a note, come back to the same place. */
+  try {
+    const at = sessionStorage.getItem('am-list-scroll');
+    const page = sessionStorage.getItem('am-page-scroll');
+    if (at !== null) {
+      sessionStorage.removeItem('am-list-scroll');
+      list.scrollTop = Number(at);
+    }
+    if (page !== null) {
+      sessionStorage.removeItem('am-page-scroll');
+      window.scrollTo(0, Number(page));
+    }
+  } catch (err) { /* nothing to restore */ }
 
   /* After answering, come back to the same note. */
   try {

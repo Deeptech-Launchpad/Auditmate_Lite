@@ -868,3 +868,53 @@ def cash_flow_from_template(financial_year, template_rows):
                 continue
         cleaned.append(r)
     return {"rows": cleaned}
+
+
+def strip_table_labels(html, specs):
+    """Take the template's table captions out of the note's wording.
+
+    The signed set's text was read with its tables flattened, so a note's
+    sentence still carries the rows of the table beside it: "... due to the
+    following factors: Profit before income tax Tax calculated at a tax rate
+    of 17% Tax effects of: - Statutory stepped income exemption Total income
+    tax expenses for the financial year". The table is drawn as a table now,
+    so those captions go from the sentence. Only a RUN of two or more captions
+    is removed: one caption on its own may be an ordinary word of the note
+    ("Trade receivables are non-interest bearing ...").
+    """
+    if not html:
+        return html
+    seen, labels = set(), []
+    for spec in specs or []:
+        if spec.get("source") != "template" or spec.get("note") in seen:
+            continue
+        seen.add(spec.get("note"))
+        for table in read(spec.get("path")).get(str(spec.get("note")), []):
+            for row in table["rows"]:
+                text = re.sub(r"^[\-\u2013\u2022]\s*", "", row["label"] or "").strip()
+                if len(text) >= 4:
+                    labels.append(text)
+    if len(labels) < 2:
+        return html
+
+    def one(label):
+        label = label.replace("’", "'")
+        parts = [re.escape(word) for word in label.split()]
+        return r"\s+".join(parts).replace("'", "['’]")
+
+    variants = set(labels)
+    for label in labels:
+        bare = re.sub(r"\s*\([^)]*\)\s*$", "", label).strip()   # "... 17% (2022: 17%)"
+        if len(bare) >= 4:
+            variants.add(bare)
+    alternation = "|".join(one(l) for l in sorted(variants, key=len, reverse=True))
+    caption = "(?:" + alternation + r")(?:\s*\[update:[^\]]*\])?"
+    run = re.compile(r"(?:^|(?<=[\s>]))" + caption
+                     + r"(?:\s*[\-–]?\s*" + caption + r")+", re.IGNORECASE)
+    cleaned = run.sub("", html)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([.:;,])", r"\1", cleaned)
+    cleaned = re.sub(r"<p>\s+", "<p>", cleaned)
+    cleaned = re.sub(r"\s+</p>", "</p>", cleaned)
+    cleaned = re.sub(r"<p>\s*</p>", "", cleaned)
+    return cleaned

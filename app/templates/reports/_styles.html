@@ -572,12 +572,26 @@ body { margin: 0; }                 /* the browser's 8 px margin put every line 
 {{ S }} table.fin td.num, {{ S }} table.fin th.num { padding: 0 6pt 0 0; text-align: right; }
 {{ S }} table.fin td.lbl, {{ S }} table.fin th.lbl { padding: 0; }
 {{ S }} table.fin.matrix { table-layout: fixed; width: 433pt; margin-right: -5pt; }
-{{ S }} table.fin.matrix td.num, {{ S }} table.fin.matrix th.num { width: 90pt; }
+{{ S }} table.fin.matrix td.num, {{ S }} table.fin.matrix th.num { width: 78pt; }
 /* the note tables sit in the note's column: the same figure columns, the
    caption narrower by the note's indent */
 {{ S }} .rpt-note > table.note-table:not(.by-class) { width: 400pt; margin-right: -5pt; }
 /* a table typed inside a note's own wording fills the wording's column */
 {{ S }} .rpt-body table.fin.fin.fin { table-layout: auto; width: 100%; margin-right: 0; }
+
+/* The app's own stylesheet (app.css) also styles table.fin - shaded subtotal
+   and total rows, grey uppercase 11 px headings, 13 px figures, a hairline
+   under every cell. It reaches the report in the builder and made the screen
+   disagree with the file. Put back to the spec's plain table here. */
+{{ S }} table.fin { font-size: inherit; }
+{{ S }} table.fin th { text-transform: none; letter-spacing: 0; color: #000;
+                       font-size: inherit; font-weight: bold; border: 0; }
+{{ S }} table.fin tr td, {{ S }} table.fin tr th { background: none; border-bottom: 0; }
+{{ S }} table.fin tr.subtotal td, {{ S }} table.fin tr.total td,
+{{ S }} table.fin tr.group-head td { background: none; border-bottom: 0;
+                                     text-transform: none; letter-spacing: 0;
+                                     color: #000; font-size: inherit; }
+{{ S }} table.fin tr.group-head.major td { text-transform: uppercase; }
 
 /* Three levels in the face statements, 12 pt each: the class (ASSETS), the
    section (Current assets), the line items. A section total returns to the
@@ -589,7 +603,9 @@ body { margin: 0; }                 /* the browser's 8 px margin put every line 
 {{ S }} table.fin tr.subtotal td.lbl, {{ S }} table.fin tr.total td.lbl { padding-left: 12pt; }
 {{ S }} table.fin tr.class-total td.lbl { padding-left: 0; }
 /* the profit and loss is one flat list */
-{{ S }} table.fin.stmt-profit_and_loss td.lbl { padding-left: 0; }
+{{ S }} table.fin.stmt-profit_and_loss tr td.lbl,
+{{ S }} table.fin.stmt-profit_and_loss tr.subtotal td.lbl,
+{{ S }} table.fin.stmt-profit_and_loss tr.total td.lbl { padding-left: 0; }
 /* the cash flow: headings at the margin, their lines one level in */
 {{ S }} table.fin.stmt-cash_flow tr.group-head td { padding-left: 0; }
 {{ S }} table.fin.stmt-cash_flow td.indent-1 { padding-left: 12pt; }
@@ -671,6 +687,9 @@ body { margin: 0; }                 /* the browser's 8 px margin put every line 
 {{ S }} .rpt-note .rpt-body h4 { margin-left: 0; }
 {{ S }} .rpt-note .rpt-body h4 ~ p, {{ S }} .rpt-note .rpt-body h4 ~ ul { margin-left: 33pt; }
 /* A table is not split from its heading or torn across a page. */
+{{ S }} .rpt-note .rpt-body { break-after: avoid; page-break-after: avoid; }
+{{ S }} .rpt-note > table.note-table, {{ S }} .rpt-note > p.tbl-head {
+  break-before: avoid; page-break-before: avoid; }
 {{ S }} table.note-table, {{ S }} table.fin { break-inside: avoid; page-break-inside: avoid; }
 {{ S }} table.fin tr { break-inside: avoid; page-break-inside: avoid; }
 {{ S }} h3.note-title, {{ S }} .rpt-note .rpt-body h4, {{ S }} p.tbl-head {

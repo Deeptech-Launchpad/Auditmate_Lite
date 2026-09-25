@@ -2111,6 +2111,11 @@ def section_payload(section, customer, financial_year, chips: bool = False):
             note_table_spec = section.data_binding.get("note_table_specs")
         payload["tables"] = notes_service.build_tables(
             note_table_spec, financial_year)
+        if any(s.get("source") == "template" for s in (note_table_spec or [])
+               if isinstance(s, dict)):
+            from . import template_note_tables
+            payload["html"] = template_note_tables.strip_table_labels(
+                payload["html"], note_table_spec)
         # A row label is wording, and one of them carries a firm setting:
         # the credit risk gradings table names a category as "more than 30
         # days past due". Substituted here, where every other piece of
