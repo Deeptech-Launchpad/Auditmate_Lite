@@ -610,6 +610,148 @@ class Figures:
                         self.present(code, net)))
         return sorted(out, key=lambda row: abs(row[2]), reverse=True)
 
+    # -- last year, split by account, from the other documents on file --------
+
+    def _signed_line_totals(self):
+        """Last year's line totals from the signed accounts, or None.
+
+        Only when the signed set is what last year was read from - that is the
+        case where a line is known in total and no account names are."""
+        if "_signed" not in self.__dict__:
+            from . import prior_year
+
+            available = prior_year.sources(self.financial_year)
+            self._signed = available.get("signed_accounts") or None
+        return self._signed
+
+    def _detail_sources(self):
+        """[(origin text, [(account name, statement key, debit-positive net)])]
+        for last year, from everything on file that lists it account by account.
+
+        The signed accounts give a line in total. The same year is often also on
+        file as a breakdown: this year's trial balance prints last year beside it
+        account by account, and a Xero pack or an aged listing carries a column
+        for last year. Nothing here replaces the signed figure. These are only
+        the split of it, and only used where they add up to it."""
+        if "_detail" in self.__dict__:
+            return self._detail
+        from ..models import ExtractedLineItem
+        from . import prior_year
+        from .mapping import match_label
+
+        out = []
+        # 1. this year's trial balance, last year's column
+        rows, files = [], set()
+        for account in TrialBalanceAccount.query.filter_by(
+                financial_year_id=self.financial_year.id).all():
+            if account.prior_debit is None and account.prior_credit is None:
+                continue
+            if not account.standard_key:
+                continue
+            net = (Decimal(str(account.prior_debit or 0))
+                   - Decimal(str(account.prior_credit or 0)))
+            rows.append((account.account_name, account.standard_key, net,
+                         self._code_of(account)))
+            document = account.source_document
+            if document is not None:
+                files.add(document.original_filename)
+        if rows:
+            name = ", ".join(sorted(files)) or "this year's trial balance"
+            out.append(("last year's column of the trial balance (%s)" % name, rows))
+
+        # 2. any other document that states this year with last year beside it
+        skip = {"trial_balance", "signed_accounts", "general_ledger",
+                "bank_statement", "vendor_invoice", "customer_invoice",
+                "salary_schedule", "fixed_asset_register", "tax_document",
+                "compilation_report", "reporting_pack", "other"}
+        for document in self.financial_year.documents:
+            category = document.category or ""
+            if (category in skip or category.startswith("prior_")
+                    or document.review_status != "verified"):
+                continue
+            rows = []
+            for item in document.line_items:
+                if item.period != "previous" or item.status == "discarded":
+                    continue
+                label = (item.label or "").strip()
+                if not label:
+                    continue
+                figures = prior_year._figures_from_rows(
+                    [item], self.financial_year.customer_id, None,
+                    period="previous")
+                for key, net in (figures or {}).items():
+                    rows.append((label, key, net, self._code_for_key(key)))
+            if rows:
+                out.append(("last year's column of %s (%s)"
+                            % (document.category_label,
+                               document.original_filename), rows))
+        self._detail = out
+        return out
+
+    def _code_for_key(self, key):
+        options = (self.categories.get(key) or {}).get("codes") or []
+        if len(options) == 1:
+            return options[0]
+        return (self.categories.get(key) or {}).get("default")
+
+    def _agreement_keys(self, code, signed):
+        """The statement lines whose last-year total the split must add up to.
+
+        Administrative expenses are one line in a signed set, so a code inside
+        them is checked against that whole line, not against a part of it."""
+        mine = self.keys_for_code(code)
+        admin = set(self.keys_for_code("PL-ADM"))
+        expense_codes = [c for c, row in self.lines.items()
+                         if str(row.get("Statement")) == "SOCI"
+                         and (row.get("Section") or "").strip().lower() == "expenses"
+                         and c in self.account_codes]
+        for c in expense_codes:
+            admin |= self.keys_for_code(c)
+        if (code == "PL-ADM" or code in expense_codes) and any(
+                signed.get(key) for key in admin):
+            return admin
+        return mine
+
+    def last_year_split(self, code):
+        """{"by_name": {name: figure}, "origin": text} for one line code, or None.
+
+        Used only when last year is known from the signed accounts in total, and
+        only from a document whose split ADDS UP to that total within a dollar.
+        A split that does not is not used - a figure that does not agree to what
+        was filed is not last year's - and the reason is kept for the note."""
+        if code in self.__dict__.setdefault("_splits", {}):
+            return self._splits[code]
+        result, why = None, None
+        signed = self._signed_line_totals()
+        if signed:
+            keys = self._agreement_keys(code, signed)
+            wanted = sum((Decimal(str(signed.get(key) or 0)) for key in keys), ZERO)
+            for origin, rows in self._detail_sources():
+                chosen = [r for r in rows if r[1] in keys]
+                if not chosen:
+                    continue
+                found = sum((r[2] for r in chosen), ZERO)
+                if abs(found - wanted) <= Decimal("1.00"):
+                    by_name = {}
+                    for name, key, net, row_code in chosen:
+                        if row_code != code:
+                            continue
+                        norm = " ".join((name or "").split()).lower()
+                        by_name[norm] = by_name.get(norm, ZERO) + self.present(code, net)
+                    result = {"by_name": by_name, "origin": origin,
+                              "total": sum(by_name.values(), ZERO)}
+                    break
+                why = ("%s adds to %s but the signed accounts give %s"
+                       % (origin, "{:,.0f}".format(found), "{:,.0f}".format(wanted)))
+        self._splits[code] = result
+        self._split_why = getattr(self, "_split_why", {})
+        if why and result is None:
+            self._split_why[code] = why
+        return result
+
+    def split_disagreement(self, code):
+        return getattr(self, "_split_why", {}).get(code)
+
     def named_totals(self, offset=0):
         """{comparable account name: figure} for the period, or None.
 
@@ -1088,10 +1230,24 @@ def build_table(spec, financial_year, statements=None):
                     # nothing else can be split out of it.
                     whole = (figures.resolve(code, 1)
                              if len(on_line) == 1 else None)
-                    row["previous"] = (
-                        whole if isinstance(whole, Decimal) else Held(
+                    split = figures.last_year_split(code)
+                    if isinstance(whole, Decimal):
+                        row["previous"] = whole
+                    elif split is not None:
+                        # another document lists last year account by account
+                        # and adds up to the signed total: its figure is used,
+                        # and the row says where it came from
+                        row["previous"] = split["by_name"].get(
+                            " ".join(name.split()).lower(), ZERO)
+                        row["previous_origin"] = (
+                            "Last year's figure is the signed accounts' total, "
+                            "split by account from " + split["origin"] + ".")
+                    else:
+                        row["previous"] = Held(
                             "Last year is known only in total, so it cannot "
-                            "be split by account"))
+                            "be split by account"
+                            + (" (" + figures.split_disagreement(code) + ")"
+                               if figures.split_disagreement(code) else ""))
                 else:
                     row["previous"] = last_year.get(
                         " ".join(name.split()).lower(), ZERO)
@@ -1271,6 +1427,16 @@ def _fill(row, binding, figures, first_year, scope=""):
     row["current"] = figures.resolve(binding, 0, scope)
     row["previous"] = (None if first_year
                        else figures.resolve(binding, 1, scope))
+    # Last year for this line is held as "not split" (the signed accounts give a
+    # total only). Another document on file may list it, and add up: use it.
+    if (not first_year and _is_held(row["previous"])
+            and (binding or "").startswith(("BS-", "PL-", "CF-", "EQ-"))):
+        split = figures.last_year_split(binding)
+        if split is not None:
+            row["previous"] = split["total"]
+            row["previous_origin"] = (
+                "Last year's figure is the signed accounts' total, split by "
+                "account from " + split["origin"] + ".")
 
 
 def _optional_gap(row):

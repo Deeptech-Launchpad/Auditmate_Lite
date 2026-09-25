@@ -643,8 +643,7 @@ def recalculate(statement_id: int) -> None:
 # statement disagree with the books it was built from, and with the other
 # statements that draw on the same figures. The cash flow, the payables and the
 # receivables listings are not built from the trial balance alone and stay open.
-LOCKED_WITH_TRIAL_BALANCE = ("trial_balance", "profit_and_loss", "balance_sheet",
-                             "changes_in_equity")
+LOCKED_WITH_TRIAL_BALANCE = ("trial_balance", "profit_and_loss", "balance_sheet")
 
 
 def is_locked(financial_year, statement_type):

@@ -48,7 +48,7 @@
                             or draft_incomplete|default(false)
                             or not for_pdf|default(false) %}
 
-{% macro amount_cell(value, edit=none) %}
+{% macro amount_cell(value, edit=none, origin=none) %}
   {% if value is none and edit and editable %}
     <td class="num unsourced is-editable">
       <span class="held-answer" contenteditable="true"
@@ -58,7 +58,11 @@
             title="Type what the signed set gives for this line &mdash; click to answer it here"></span>
     </td>
   {% else %}
-    <td class="num{{ ' unsourced' if value is none }}">{{ value|stmt }}</td>
+    <td class="num{{ ' unsourced' if value is none }}">{{ value|stmt }}
+      {%- if origin and editable %}
+        <button type="button" class="origin-dot" data-origin="{{ origin }}"
+                title="Where this figure came from" aria-label="Where this figure came from">&#9432;</button>
+      {%- endif %}</td>
   {% endif %}
 {% endmacro %}
 
@@ -713,7 +717,7 @@
                 </td>
                 {% if row.held_current or row.held_previous %}
                   {% if row.held_current %}{{ held_cell(row.held_current, row.held_current_edit) }}{% else %}{{ amount_cell(row.current) }}{% endif %}
-                  {% if row.held_previous %}{{ held_cell(row.held_previous, row.held_previous_edit) }}{% else %}{{ amount_cell(row.previous) }}{% endif %}
+                  {% if row.held_previous %}{{ held_cell(row.held_previous, row.held_previous_edit) }}{% else %}{{ amount_cell(row.previous, none, row.previous_origin) }}{% endif %}
                 {% elif row.current is none and row.previous is none %}
                   <td class="num"></td><td class="num"></td>
                 {% elif editable %}
@@ -736,13 +740,13 @@
                               title="Where this figure came from">&#9432;</button>
                     {% endif %}
                   </td>
-                  {{ amount_cell(row.previous) }}
+                  {{ amount_cell(row.previous, none, row.previous_origin) }}
                 {% elif row.override_record and show_working_marks %}
                   {{ overridden_cell(row.current, row.override_record) }}
-                  {{ amount_cell(row.previous) }}
+                  {{ amount_cell(row.previous, none, row.previous_origin) }}
                 {% else %}
                   {{ amount_cell(row.current) }}
-                  {{ amount_cell(row.previous) }}
+                  {{ amount_cell(row.previous, none, row.previous_origin) }}
                 {% endif %}
               </tr>
             {% endfor %}

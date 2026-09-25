@@ -1039,3 +1039,28 @@ window.__auditmateAskReason = (function () {
     });
   };
 })();
+
+/* The little (i) beside a last-year figure that was split from another
+ * document: click it and it says which document, and how it was used. */
+(function () {
+  'use strict';
+  let pop = null;
+  function close() { if (pop) { pop.remove(); pop = null; } }
+  document.addEventListener('click', event => {
+    const dot = event.target.closest('.origin-dot');
+    if (!dot) { close(); return; }
+    event.preventDefault();
+    const same = pop && pop.dataset.for === dot.dataset.origin;
+    close();
+    if (same) return;
+    pop = document.createElement('div');
+    pop.className = 'origin-pop';
+    pop.dataset.for = dot.dataset.origin;
+    pop.textContent = dot.dataset.origin;
+    document.body.appendChild(pop);
+    const box = dot.getBoundingClientRect();
+    pop.style.top = (window.scrollY + box.bottom + 6) + 'px';
+    pop.style.left = Math.max(8, window.scrollX + box.right - pop.offsetWidth) + 'px';
+  });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
+})();

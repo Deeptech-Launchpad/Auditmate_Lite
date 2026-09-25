@@ -50,8 +50,12 @@ RULES = [
     # patterns therefore match the part of the name that is always there.
     ("fs_detailed_pl", [r"\bstatement of detailed", r"\bdetailed profit and loss\b",
                         r"\bdetailed p and l\b", r"\bdetailed profit loss\b"]),
-    ("fs_indirect_cash_flow", [r"\bindirect cash flow", r"\bcash flows? indir"]),
-    ("fs_direct_cash_flow", [r"\bdirect cash flow", r"\bcash flows? dir"]),
+    # Xero cuts these two names after two letters ("Statement of Cash Flows -
+    # Di...", "- In..."), so "di" and "in" as the last word are all there is.
+    ("fs_indirect_cash_flow", [r"\bindirect cash flow", r"\bcash flows? indir",
+                               r"\bcash flows? in\s*$"]),
+    ("fs_direct_cash_flow", [r"\bdirect cash flow", r"\bcash flows? dir",
+                             r"\bcash flows? di\s*$"]),
     ("fs_changes_in_equity", [r"\bstatement of changes in", r"\bchanges in equity\b"]),
     ("fs_comprehensive_income", [r"\bstatement of comprehensive"]),
     ("fs_financial_position", [r"\bstatement of financial position\b"]),
