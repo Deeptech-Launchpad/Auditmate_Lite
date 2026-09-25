@@ -6,8 +6,11 @@ so there is no separate OCR step.
 import base64
 import json
 import logging
+import time
 
 from flask import current_app
+
+from ... import ai_usage
 
 log = logging.getLogger(__name__)
 
@@ -66,27 +69,44 @@ def structured_call(system, parts, schema_model, max_tokens=16000):
 
     messages = [{"role": "user", "content": _to_content(parts)}]
 
+    started = time.monotonic()
+
+    def done(response, ok=True, error=None):
+        ai_usage.record(provider="anthropic", model=model_name(),
+                        seconds=time.monotonic() - started, ok=ok, error=error,
+                        **(ai_usage.anthropic_tokens(response) if response else {}))
+
     # messages.parse() validates the response against the schema for us.
     # Older SDK releases lack it, so fall back to an explicit json_schema.
     if hasattr(client.messages, "parse"):
-        response = client.messages.parse(
-            model=model_name(),
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-            output_format=schema_model,
-        )
+        try:
+            response = client.messages.parse(
+                model=model_name(),
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                output_format=schema_model,
+            )
+        except Exception as exc:                   # noqa: BLE001
+            done(None, ok=False, error=str(exc))
+            raise
+        done(response)
         return response.parsed_output
 
     schema = schema_model.model_json_schema()
     schema["additionalProperties"] = False
-    response = client.messages.create(
-        model=model_name(),
-        max_tokens=max_tokens,
-        system=system,
-        messages=messages,
-        output_config={"format": {"type": "json_schema", "schema": schema}},
-    )
+    try:
+        response = client.messages.create(
+            model=model_name(),
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+            output_config={"format": {"type": "json_schema", "schema": schema}},
+        )
+    except Exception as exc:                       # noqa: BLE001
+        done(None, ok=False, error=str(exc))
+        raise
+    done(response)
     text = next(b.text for b in response.content if b.type == "text")
     return schema_model.model_validate(json.loads(text))
 

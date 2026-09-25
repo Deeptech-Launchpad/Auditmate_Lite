@@ -762,8 +762,10 @@ def _fill_details_from_template(customer, saved_path):
     if template_details.fill_missing(customer):
         db.session.commit()
     try:
-        outcome = extract_company_profile(
-            path, path.suffix.lower().lstrip("."), raw_text="")
+        from ..services import ai_usage
+        with ai_usage.context(customer=customer):
+            outcome = extract_company_profile(
+                path, path.suffix.lower().lstrip("."), raw_text="")
     except Exception:                                      # noqa: BLE001
         logging.getLogger(__name__).exception(
             "Could not read details from the template of customer %s",

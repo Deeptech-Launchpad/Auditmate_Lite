@@ -36,6 +36,8 @@ from pydantic import BaseModel, Field
 from .base import ExtractedRow, ExtractionResult
 from .providers import get_provider, provider_name
 
+from .. import ai_usage  # noqa: E402
+
 log = logging.getLogger(__name__)
 
 
@@ -310,6 +312,7 @@ decision, a wrong match silently corrupts the accounts."""
 # Document extraction
 # --------------------------------------------------------------------------
 
+@ai_usage.purpose("document_reading")
 def extract_with_ai(path: Path, file_type: str, category: str = "other",
                     raw_text: str = "") -> ExtractionResult:
     """Send a document to the configured model and return structured rows."""
@@ -425,6 +428,7 @@ is not.
 at all, score confidence below 0.4 and say so in notes."""
 
 
+@ai_usage.purpose("company_profile")
 def extract_company_profile(path: Path, file_type: str,
                             raw_text: str = "") -> dict:
     """Read company particulars out of an ACRA profile or signed accounts.
@@ -508,6 +512,7 @@ say which part in `unreadable` rather than inventing what it probably said. \
 An honest gap is useful; a plausible fabrication is dangerous."""
 
 
+@ai_usage.purpose("prior_year_notes")
 def extract_prior_year_notes(path: Path, file_type: str,
                              raw_text: str = "") -> dict:
     """Read the note wording out of last year's signed accounts.
@@ -585,6 +590,7 @@ day of that month.
 say which part in `unreadable` rather than inventing what it probably said."""
 
 
+@ai_usage.purpose("fixed_assets")
 def extract_fixed_asset_register(path: Path, file_type: str,
                                  raw_text: str = "") -> dict:
     """Read per-asset cost, purchase date and useful life off a fixed asset
@@ -653,6 +659,7 @@ def extract_fixed_asset_register(path: Path, file_type: str,
 # Account classification
 # --------------------------------------------------------------------------
 
+@ai_usage.purpose("account_mapping")
 def classify_accounts(labels: List[str], line_keys: List[str],
                       statement_type: str) -> dict:
     """Ask the model to map unfamiliar account labels onto statement lines.

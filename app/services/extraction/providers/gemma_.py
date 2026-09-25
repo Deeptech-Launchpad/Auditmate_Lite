@@ -13,8 +13,11 @@ leaving our infrastructure; calling Gemma through this API does not.
 """
 import json
 import logging
+import time
 
 from flask import current_app
+
+from ... import ai_usage
 
 log = logging.getLogger(__name__)
 
@@ -64,17 +67,27 @@ def structured_call(system, parts, schema_model, max_tokens=16000):
     if client is None:
         raise RuntimeError("GEMMA_API_KEY or GEMMA_MODEL is not set")
 
-    response = client.models.generate_content(
-        model=model_name(),
-        contents=_to_contents(parts),
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            response_mime_type="application/json",
-            response_schema=schema_model,
-            max_output_tokens=max_tokens,
-            temperature=0.0,
-        ),
-    )
+    started = time.monotonic()
+    try:
+        response = client.models.generate_content(
+            model=model_name(),
+            contents=_to_contents(parts),
+            config=types.GenerateContentConfig(
+                system_instruction=system,
+                response_mime_type="application/json",
+                response_schema=schema_model,
+                max_output_tokens=max_tokens,
+                temperature=0.0,
+            ),
+        )
+    except Exception as exc:                       # noqa: BLE001
+        ai_usage.record(provider="gemma", model=model_name(),
+                        seconds=time.monotonic() - started, ok=False,
+                        error=str(exc))
+        raise
+    ai_usage.record(provider="gemma", model=model_name(),
+                    seconds=time.monotonic() - started,
+                    **ai_usage.gemini_tokens(response))
 
     parsed = getattr(response, "parsed", None)
     if isinstance(parsed, schema_model):

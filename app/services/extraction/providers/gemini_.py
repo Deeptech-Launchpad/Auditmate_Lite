@@ -15,8 +15,11 @@ data, not appropriate for real client documents. See SETUP.md.
 """
 import json
 import logging
+import time
 
 from flask import current_app
+
+from ... import ai_usage
 
 log = logging.getLogger(__name__)
 
@@ -92,18 +95,32 @@ def structured_call(system, parts, schema_model, max_tokens=16000):
         raise RuntimeError("GEMINI_API_KEY is not set")
 
     def call(model):
-        return client.models.generate_content(
-            model=model,
-            contents=_to_contents(parts),
-            config=types.GenerateContentConfig(
-                system_instruction=system,
-                response_mime_type="application/json",
-                response_schema=schema_model,
-                max_output_tokens=max_tokens,
-                # Extraction is a reading task, not a creative one.
-                temperature=0.0,
-            ),
-        )
+        # Timed and recorded here, once per request, whichever model answers:
+        # a failed attempt costs nothing but is worth seeing, and the one that
+        # succeeds is what the tokens were spent on.
+        started = time.monotonic()
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=_to_contents(parts),
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    response_mime_type="application/json",
+                    response_schema=schema_model,
+                    max_output_tokens=max_tokens,
+                    # Extraction is a reading task, not a creative one.
+                    temperature=0.0,
+                ),
+            )
+        except Exception as exc:                   # noqa: BLE001
+            ai_usage.record(provider="gemini", model=model,
+                            seconds=time.monotonic() - started, ok=False,
+                            error=str(exc))
+            raise
+        ai_usage.record(provider="gemini", model=model,
+                        seconds=time.monotonic() - started,
+                        **ai_usage.gemini_tokens(response))
+        return response
 
     try:
         response = call(model_name())
@@ -134,8 +151,13 @@ def test_connection() -> dict:
         client = _client()
         if client is None:
             return {"ok": False, "error": "GEMINI_API_KEY is not set"}
-        client.models.generate_content(
-            model=model_name(), contents="Reply with the word OK.")
+        started = time.monotonic()
+        with ai_usage.context(purpose="connection_test"):
+            reply = client.models.generate_content(
+                model=model_name(), contents="Reply with the word OK.")
+            ai_usage.record(provider="gemini", model=model_name(),
+                            seconds=time.monotonic() - started,
+                            **ai_usage.gemini_tokens(reply))
         return {"ok": True, "error": None, "model": model_name()}
     except Exception as exc:                       # noqa: BLE001
         return {"ok": False, "error": str(exc)}

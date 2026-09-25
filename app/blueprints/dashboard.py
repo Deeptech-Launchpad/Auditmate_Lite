@@ -46,8 +46,16 @@ def index():
     ai_docs = Document.query.filter_by(ai_used=True).count()
     total_docs = Document.query.count()
 
+    from flask_login import current_user
+
+    from ..services import ai_usage
+    ai_month = (ai_usage.this_month_totals()
+                if current_user.is_authenticated and current_user.is_partner
+                else None)
+
     return render_template(
         "dashboard/index.html",
+        ai_month=ai_month,
         metrics=metrics,
         needs_attention=needs_attention,
         active_years=active_years,

@@ -40,6 +40,10 @@
          href="{{ url_for('users.index') }}">
         <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6.5" r="2.5"/><path d="M2 17c0-3 2.2-5 5-5s5 2 5 5"/><circle cx="15" cy="7" r="2"/><path d="M12.5 12.2c1.7.3 3 1.8 3.5 4.8"/></svg></span> Users
       </a>
+      <a class="nav-item {% if request.endpoint == 'settings.gemini_usage' %}active{% endif %}"
+         href="{{ url_for('settings.gemini_usage') }}">
+        <span class="icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l1.8 5.2L17 9l-5.2 1.8L10 16l-1.8-5.2L3 9l5.2-1.8z"/></svg></span> Gemini usage
+      </a>
       {% endif %}
 
       {% if fy is defined and fy %}

@@ -71,6 +71,11 @@ class Config:
 
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+    # What a million tokens cost, in US dollars, for the usage page's estimate.
+    # Set them in .env to the model's current published prices; the bill itself
+    # is in the Google Cloud billing page.
+    AI_PRICE_INPUT_PER_M = os.getenv("AI_PRICE_INPUT_PER_M", "0.30")
+    AI_PRICE_OUTPUT_PER_M = os.getenv("AI_PRICE_OUTPUT_PER_M", "2.50")
     # Optional: a model of the same tier or cheaper, tried once when the main
     # one is overloaded. Empty means no fallback.
     GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "").strip()

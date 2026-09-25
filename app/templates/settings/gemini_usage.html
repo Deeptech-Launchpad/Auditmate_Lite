@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Gemini usage · Auditmate Lite{% endblock %}
+{% block breadcrumb %}<span class="current">Gemini usage</span>{% endblock %}
+
+{% macro n(value) %}{{ '{:,}'.format(value or 0) }}{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Gemini usage</h1>
+    <p class="subtitle">How many tokens the model has used, and what it was used for · partner-only screen</p>
+  </div>
+  {% if data %}
+  <form method="get" style="display:flex;gap:8px;align-items:center">
+    <label class="muted small" for="month-pick">Month</label>
+    <select id="month-pick" onchange="var v=this.value.split('-');window.location='?year='+v[0]+'&month='+v[1]">
+      {% for m in months %}
+        <option value="{{ m.year }}-{{ m.month }}" {% if picked == (m.year, m.month) %}selected{% endif %}>{{ m.label }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  {% endif %}
+</div>
+
+{% if problem %}
+  <div class="card"><div class="card-body">{{ problem }}</div></div>
+{% else %}
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-body" style="display:flex;gap:28px;flex-wrap:wrap">
+    <div><div class="muted small">AI</div><strong>{{ 'On' if ai_enabled else 'Off' }}</strong></div>
+    <div><div class="muted small">Provider</div><strong>{{ provider|title }}</strong></div>
+    <div><div class="muted small">Model</div><strong>{{ model }}</strong></div>
+    <div><div class="muted small">Estimate priced at</div>
+      <strong>US${{ price_in }} in / US${{ price_out }} out</strong>
+      <span class="muted small">per million tokens</span></div>
+  </div>
+</div>
+
+<div class="statement-grid" style="margin-bottom:16px">
+  <div class="statement-card"><div class="st-name">Tokens used</div>
+    <div style="font-size:26px;font-weight:700">{{ n(data.total.total) }}</div>
+    <div class="muted small">{{ n(data.total.input) }} in &middot; {{ n(data.total.output) }} out</div></div>
+  <div class="statement-card"><div class="st-name">Calls</div>
+    <div style="font-size:26px;font-weight:700">{{ n(data.total.calls) }}</div>
+    <div class="muted small">{{ data.total.failed }} failed</div></div>
+  <div class="statement-card"><div class="st-name">Estimated cost</div>
+    <div style="font-size:26px;font-weight:700">US${{ '%.2f'|format(data.total.cost) }}</div>
+    <div class="muted small">an estimate; the bill is in Google Cloud</div></div>
+</div>
+
+{% if not data.total.calls %}
+  <div class="card"><div class="card-body">
+    No Gemini calls were recorded in {{ data.start.strftime('%B %Y') }}. Usage is counted from the day this
+    screen was switched on; nothing earlier was kept.
+  </div></div>
+{% else %}
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-head"><h2>What it was used for</h2></div>
+  <div class="card-body tight"><div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Purpose</th><th class="num">Calls</th><th class="num">Tokens in</th>
+        <th class="num">Tokens out</th><th class="num">Total tokens</th><th class="num">Est. cost</th></tr></thead>
+      <tbody>
+        {% for row in data.by_purpose %}
+        <tr><td class="strong">{{ row.label }}</td><td class="num">{{ n(row.calls) }}</td>
+          <td class="num">{{ n(row.input) }}</td><td class="num">{{ n(row.output) }}</td>
+          <td class="num"><strong>{{ n(row.total) }}</strong></td>
+          <td class="num">US${{ '%.2f'|format(row.cost) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-head"><h2>By day</h2><span class="hint">tokens per day</span></div>
+  <div class="card-body">
+    <div style="display:flex;align-items:flex-end;gap:3px;height:120px">
+      {% for d in data.by_day %}
+        <div title="{{ d.day.strftime('%d %b') }}: {{ n(d.tokens) }} tokens"
+             style="flex:1;min-width:4px;background:#2563a8;border-radius:2px 2px 0 0;
+                    height:{{ (4 if not d.tokens else (d.tokens / data.busiest * 100)|round(0)|int) }}%;
+                    opacity:{{ 0.25 if not d.tokens else 1 }}"></div>
+      {% endfor %}
+    </div>
+    <div class="muted small" style="display:flex;justify-content:space-between;margin-top:4px">
+      <span>{{ data.by_day[0].day.strftime('%d %b') }}</span>
+      <span>{{ data.by_day[-1].day.strftime('%d %b') }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-head"><h2>By client and engagement</h2></div>
+  <div class="card-body tight"><div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Client</th><th>Year</th><th class="num">Calls</th><th class="num">Total tokens</th>
+        <th class="num">Est. cost</th></tr></thead>
+      <tbody>
+        {% for row in data.by_customer %}
+        <tr><td class="strong">{{ row.customer }}</td><td>{{ row.year }}</td>
+          <td class="num">{{ n(row.calls) }}</td><td class="num"><strong>{{ n(row.total) }}</strong></td>
+          <td class="num">US${{ '%.2f'|format(row.cost) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Recent calls</h2><span class="hint">the last 50 this month</span></div>
+  <div class="card-body tight"><div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>When</th><th>Purpose</th><th>Client</th><th>By</th><th class="num">In</th>
+        <th class="num">Out</th><th class="num">Seconds</th><th>Result</th></tr></thead>
+      <tbody>
+        {% for r in data.recent %}
+        <tr><td class="small">{{ r.when.strftime('%d %b %H:%M') }}</td><td>{{ r.purpose }}</td>
+          <td>{{ r.customer }}{% if r.year %} <span class="muted small">{{ r.year }}</span>{% endif %}</td>
+          <td class="small">{{ r.user }}</td>
+          <td class="num">{{ n(r.input) }}</td><td class="num">{{ n(r.output) }}</td>
+          <td class="num">{{ '%.1f'|format(r.seconds) if r.seconds is not none else '' }}</td>
+          <td>{% if r.ok %}<span class="pill pill-green">ok</span>{% else %}
+              <span class="pill pill-red" title="{{ r.error }}">failed</span>{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

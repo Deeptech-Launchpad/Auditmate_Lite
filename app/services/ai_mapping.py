@@ -172,9 +172,12 @@ def suggest(financial_year, user_id=None):
                      for row in accounts],
         "line_codes": _codes(financial_year),
     }
-    reply = provider.structured_call(
-        _SYSTEM, [{"type": "text", "text": json.dumps(payload, indent=1)}],
-        _schema(), max_tokens=4000)
+    from . import ai_usage
+
+    with ai_usage.context(purpose="account_mapping", financial_year=financial_year):
+        reply = provider.structured_call(
+            _SYSTEM, [{"type": "text", "text": json.dumps(payload, indent=1)}],
+            _schema(), max_tokens=4000)
 
     by_name = {row["name"]: row["id"] for row in accounts}
     known = {entry["code"] for entry in payload["line_codes"]}

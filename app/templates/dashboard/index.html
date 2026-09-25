@@ -188,6 +188,23 @@
     {% endif %}
 </div>
 
+{% if ai_month is not none and ai_month %}
+<div class="card" style="margin-top:4px;margin-bottom:12px">
+  <div class="card-body" style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+    <div>
+      <div class="muted small">Gemini this month</div>
+      <div style="font-size:18px;font-weight:700">
+        {{ '{:,}'.format(ai_month.total) }} tokens
+        <span class="muted small" style="font-weight:400">
+          &middot; {{ ai_month.calls }} call{{ '' if ai_month.calls == 1 else 's' }}
+          &middot; about US${{ '%.2f'|format(ai_month.cost) }}</span>
+      </div>
+    </div>
+    <a class="btn btn-sm" href="{{ url_for('settings.gemini_usage') }}">See what it was used for &rarr;</a>
+  </div>
+</div>
+{% endif %}
+
 {% if not AI_ENABLED %}
 <div class="ai-note" style="margin-top:4px">
   <span class="icon">✦</span>

@@ -25,6 +25,46 @@ def _posted():
     return {key: request.form.get(key, "") for key in DISCLOSURE_SETTING_KEYS}
 
 
+@bp.route("/gemini-usage")
+@login_required
+@partner_required
+def gemini_usage():
+    """How many tokens the model has used, and what for. Partner-only."""
+    from datetime import datetime
+
+    from flask import current_app
+
+    from ..services import ai_usage
+
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    try:
+        data = ai_usage.summary(year, month)
+        problem = None
+    except Exception:                                      # noqa: BLE001
+        db.session.rollback()
+        data, problem = None, ("The usage table is not there yet. Run "
+                               "`flask init-db` on the server, then reload.")
+
+    # The last twelve months, newest first, for the month picker.
+    months, cursor = [], datetime.utcnow().replace(day=1)
+    for _ in range(12):
+        months.append({"year": cursor.year, "month": cursor.month,
+                       "label": cursor.strftime("%B %Y")})
+        cursor = (cursor.replace(year=cursor.year - 1, month=12)
+                  if cursor.month == 1 else cursor.replace(month=cursor.month - 1))
+
+    config = current_app.config
+    return render_template(
+        "settings/gemini_usage.html", data=data, problem=problem, months=months,
+        picked=(data["start"].year, data["start"].month) if data else None,
+        provider=config.get("AI_PROVIDER"), ai_enabled=config.get("AI_ENABLED"),
+        model=(config.get("GEMINI_MODEL") if config.get("AI_PROVIDER") == "gemini"
+               else config.get("AI_PROVIDER")),
+        price_in=config.get("AI_PRICE_INPUT_PER_M"),
+        price_out=config.get("AI_PRICE_OUTPUT_PER_M"))
+
+
 @bp.route("/disclosures", methods=["GET", "POST"])
 @login_required
 @partner_required

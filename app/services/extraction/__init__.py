@@ -27,6 +27,8 @@ from ...models import Document, ExtractedLineItem
 from .base import ExtractionResult, reconcile_trial_balance, score_row
 from .parsers import detect_file_type, run_rule_based
 
+from .. import ai_usage  # noqa: E402
+
 log = logging.getLogger(__name__)
 
 # Below this average confidence, a rule-based result is considered shaky
@@ -172,7 +174,8 @@ def _read_prior_year_notes(document, path, file_type, raw_text) -> str:
         return 0, None
 
     try:
-        outcome = extract_prior_year_notes(path, file_type, raw_text=raw_text)
+        with ai_usage.context(document=document):
+            outcome = extract_prior_year_notes(path, file_type, raw_text=raw_text)
     except Exception:                              # noqa: BLE001
         log.exception("Prior-year note extraction raised")
         return 0, "The notes in this document could not be read."
@@ -234,7 +237,8 @@ def _read_fixed_asset_register(document, path, file_type, raw_text) -> tuple:
         return 0, None
 
     try:
-        outcome = extract_fixed_asset_register(path, file_type, raw_text=raw_text)
+        with ai_usage.context(document=document):
+            outcome = extract_fixed_asset_register(path, file_type, raw_text=raw_text)
     except Exception:                              # noqa: BLE001
         log.exception("Fixed asset register extraction raised")
         return 0, "The fixed asset register could not be read."
@@ -431,9 +435,10 @@ def extract_document(document_id: int) -> dict:
     if use_ai:
         from .ai import extract_with_ai
         log.info("Document %s: using AI (%s)", document_id, reason)
-        ai_result = extract_with_ai(path, file_type,
-                                    category=document.category or "other",
-                                    raw_text=result.raw_text)
+        with ai_usage.context(document=document):
+            ai_result = extract_with_ai(path, file_type,
+                                        category=document.category or "other",
+                                        raw_text=result.raw_text)
         if ai_result.rows:
             result = ai_result
             engine_used = ai_result.engine or "ai"

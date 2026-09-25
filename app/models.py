@@ -2599,3 +2599,34 @@ class CashFlowEntry(db.Model):
 
     def __repr__(self):
         return f"<CashFlowEntry fy={self.financial_year_id} {self.row_key}={self.amount}>"
+
+
+class AiUsage(db.Model):
+    """One request to the language model: what for, for whom, how many tokens.
+
+    Counts and labels only - never a document's text or the model's reply. The
+    ids are plain integers, not foreign keys, so a usage row survives the
+    deletion of the client or document it was for.
+    """
+
+    __tablename__ = "ai_usage"
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False,
+                           index=True)
+    purpose = db.Column(db.String(30), nullable=False, index=True)
+    provider = db.Column(db.String(20))
+    model = db.Column(db.String(80))
+    customer_id = db.Column(db.Integer, index=True)
+    financial_year_id = db.Column(db.Integer, index=True)
+    document_id = db.Column(db.Integer)
+    user_id = db.Column(db.Integer)
+    input_tokens = db.Column(db.Integer)
+    output_tokens = db.Column(db.Integer)
+    total_tokens = db.Column(db.Integer)
+    seconds = db.Column(db.Float)
+    ok = db.Column(db.Boolean, default=True, nullable=False)
+    error = db.Column(db.String(300))
+
+    def __repr__(self):
+        return f"<AiUsage {self.purpose} {self.total_tokens}>"
