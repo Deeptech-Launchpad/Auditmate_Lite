@@ -32,6 +32,8 @@ def index(fy_id):
                         if d.review_status == "verified")
 
     return render_template("statements/index.html",
+                           locked_types=(statement_service.LOCKED_WITH_TRIAL_BALANCE
+                                         if financial_year.tb_is_approved else ()),
                            fy=financial_year,
                            customer=financial_year.customer,
                            statement_types=STATEMENT_TYPES,
@@ -91,6 +93,8 @@ def detail(statement_id):
     unmapped = _unmapped_for(financial_year, statement.statement_type)
 
     return render_template("statements/detail.html",
+                           locked=statement_service.is_locked(
+                               financial_year, statement.statement_type),
                            statement=statement, fy=financial_year,
                            customer=financial_year.customer,
                            groups=groups, check=check, unmapped=unmapped,
@@ -142,6 +146,11 @@ def preview(statement_id):
 def update_line(line_id):
     """Override one figure. The auto-calculated value is kept underneath."""
     line = db.session.get(StatementLine, line_id) or abort(404)
+    if statement_service.is_locked(line.statement.financial_year,
+                                  line.statement.statement_type):
+        return jsonify({"ok": False, "error": "This statement is locked with the "
+                        "approved trial balance. Reopen the trial balance to "
+                        "change it."}), 403
     payload = request.get_json(silent=True) or {}
 
     raw = payload.get("amount")
@@ -184,6 +193,10 @@ def map_account():
     statement_id = payload.get("statement_id")
 
     statement = db.session.get(FinancialStatement, statement_id) or abort(404)
+    if statement_service.is_locked(statement.financial_year,
+                                   statement.statement_type):
+        return jsonify({"ok": False, "error": "This statement is locked with the "
+                        "approved trial balance."}), 403
 
     if not label or not line_key:
         return jsonify({"ok": False, "error": "label and line_key required"}), 400

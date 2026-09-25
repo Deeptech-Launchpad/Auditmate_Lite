@@ -636,3 +636,18 @@ def recalculate(statement_id: int) -> None:
         statement.lines,
         _prior_context(statement.financial_year, statement.statement_type))
     db.session.commit()
+
+
+# The statements that ARE the approved trial balance. Once the trial balance is
+# approved they are read-only: an override typed over one would make the
+# statement disagree with the books it was built from, and with the other
+# statements that draw on the same figures. The cash flow, the payables and the
+# receivables listings are not built from the trial balance alone and stay open.
+LOCKED_WITH_TRIAL_BALANCE = ("trial_balance", "profit_and_loss", "balance_sheet",
+                             "changes_in_equity")
+
+
+def is_locked(financial_year, statement_type):
+    """Whether this statement can no longer be edited by hand."""
+    return bool(financial_year.tb_is_approved
+                and statement_type in LOCKED_WITH_TRIAL_BALANCE)

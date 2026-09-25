@@ -42,6 +42,16 @@
 </div>
 {% endif %}
 
+{% if locked %}
+<div class="notice ok">
+  <span>🔒</span>
+  <div>
+    <strong>Locked.</strong> This statement is drawn from the approved trial balance
+    and cannot be edited here. To change a figure, reopen the trial balance,
+    correct it there and approve it again &mdash; every statement then follows.
+  </div>
+</div>
+{% else %}
 <div class="notice">
   <span>✎</span>
   <div>
@@ -50,6 +60,7 @@
     survive a regenerate.
   </div>
 </div>
+{% endif %}
 
 <div class="card">
   <div class="card-head">
@@ -86,9 +97,13 @@
                 {% if line.is_overridden %}<span class="override-flag">overridden</span>{% endif %}
               </td>
               <td class="num">
+                {% if locked %}
+                  {{ line.effective_amount|money if line.effective_amount else '—' }}
+                {% else %}
                 <input class="amount" data-line-id="{{ line.id }}"
                        value="{{ '%.2f'|format(line.effective_amount) if line.effective_amount else '' }}"
                        placeholder="—">
+                {% endif %}
               </td>
               <td class="num muted">{{ line.amount_previous|money }}</td>
             </tr>
@@ -99,7 +114,7 @@
   </div>
 </div>
 
-{% if unmapped %}
+{% if unmapped and not locked %}
 <div class="card">
   <div class="card-head">
     <h2>Unmapped accounts ({{ unmapped|length }})</h2>

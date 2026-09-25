@@ -80,7 +80,9 @@
         <div class="st-name">{{ label }}</div>
         <div class="st-meta">
           {{ statement.lines|length }} lines ·
-          {% if statement.status == 'draft' %}
+          {% if key in locked_types %}
+            <span class="pill pill-green">Locked</span>
+          {% elif statement.status == 'draft' %}
             <span class="pill pill-grey">Draft</span>
           {% elif statement.status == 'shared' %}
             <span class="pill pill-amber">Shared</span>
