@@ -390,7 +390,12 @@ def build(spec, financial_year, statements=None):
     head, group, block = "", [], []      # group: since the last head; block: since the last total
     tax_total = None
 
+    end_year = getattr(financial_year.end_date, "year", None)
+
     def add(label, current, previous, kind, bold=False, rule=False):
+        if end_year and label:
+            # the bracket is the comparative: always the year before this one
+            label = re.sub(r"\((20\d\d):", "(%d:" % (end_year - 1), label)
         rows.append({"label": label, "binding": "STATIC" if kind == "head" else "TEMPLATE",
                      "current": current, "previous": previous, "bold": bold,
                      "rule": rule, "ref": None, "kind": kind})
@@ -427,6 +432,24 @@ def build(spec, financial_year, statements=None):
             rule=True)
         if row["kind"] == "total":
             block = []
+
+    # a sum at the very end of a table that the template left uncaptioned
+    # (cash at bank, then a bare line adding it up) is the table's total
+    if rows and rows[-1]["kind"] == "sub" and not (rows[-1]["label"] or "").strip():
+        rows[-1]["label"] = "Total"
+        rows[-1]["kind"] = "total"
+        rows[-1]["bold"] = True
+
+    # A list of figures with nothing under it - no subtotal, no total, no
+    # heading - is closed with a Total, as a note of amounts is. The template
+    # ended some of its own lists without one (revenue, finance cost, the
+    # charges in profit before tax); a reader adding the column up finds the
+    # figure the note is about.
+    if (not any(r["kind"] in ("sub", "total", "head") for r in rows)
+            and any(r["kind"] == "item" for r in rows)):
+        items = [r for r in rows if r["kind"] == "item"]
+        add("Total", _sum_members(items, "current"), _sum_members(items, "previous"),
+            "total", bold=True, rule=True)
 
     # accounts the template never had, added where the rows end
     if statement and spec.get("note_code"):
@@ -926,6 +949,9 @@ def strip_table_labels(html, specs):
     run = re.compile(r"(?:^|(?<=[\s>]))" + caption
                      + r"(?:\s*[\-–]?\s*" + caption + r")+", re.IGNORECASE)
     cleaned = run.sub("", html)
+    # a single caption trailing the colon that introduces the table
+    trailing = re.compile(r"(:)\s+(?:" + alternation + r")(\s*</p>)", re.IGNORECASE)
+    cleaned = trailing.sub(r"\1\2", cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\s+([.:;,])", r"\1", cleaned)
     cleaned = re.sub(r"<p>\s+", "<p>", cleaned)

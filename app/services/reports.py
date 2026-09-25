@@ -1303,6 +1303,23 @@ def roll_forward_text(text, financial_year):
                 return new.upper() if match.group(0).isupper() else new
 
             text = pattern.sub(move, text)
+            # "... ended 31 DECEMBER 2025 and 31 December 2025": the template
+            # named the same year end twice, the second being the comparative;
+            # and "unchanged from <date>" means the previous year end.
+            now = f"{end.day} {end.strftime('%B')} {end.year}"
+            before = f"{previous.day} {previous.strftime('%B')} {previous.year}"
+            text = re.sub(
+                r"(?i)(\bended\s+%s)(\s+and\s+)%s\b" % (re.escape(now), re.escape(now)),
+                lambda m: m.group(1) + m.group(2) + before, text)
+            text = re.sub(
+                r"(?i)(\b(?:remains?\s+)?unchanged\s+from\s+)%s\b" % re.escape(now),
+                lambda m: m.group(1) + before, text)
+        # "effective for annual periods beginning on or after 1 January 2023"
+        # in a set for a later year: the sentence is about this year's periods
+        text = re.sub(
+            r"(?i)(beginning\s+on\s+or\s+after\s+1\s+January\s+)(20\d\d)\b",
+            lambda m: m.group(1) + str(end.year) if int(m.group(2)) < end.year else m.group(0),
+            text)
     return _STALE_FIGURE.sub(lambda m: f"[update: {m.group(0)}]", text)
 
 
@@ -2533,7 +2550,7 @@ _CLEAN_RULES = [
     (re.compile(r'<span class="missing-binding"[^>]*>.*?</span>', re.S), ""),
     (re.compile(r'<tr class="working-note">.*?</tr>', re.S), ""),
     # last year's wording awaiting this year's figure, and stray placeholders
-    (re.compile(r"\s?\[update:[^\]]*\]"), ""),
+    (re.compile(r"\s?\[update:[^\]]*\]"), lambda m: " S$______" if "S$" in m.group(0) else ""),
     (re.compile(r"\s?\[[^\]]*\bnot (?:provided|set)\]"), ""),
 ]
 
