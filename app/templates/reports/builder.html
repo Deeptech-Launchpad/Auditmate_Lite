@@ -588,12 +588,19 @@ Anything typed into the report - note wording, edited figures, answers, section 
           {% if groups.last == 'on' %}{% set _ = groups.on.append(section) %}
           {% else %}{% set _ = groups.off.append(section) %}{% endif %}
         {% endfor %}
+        {% set run = namespace(n=0) %}
         {% for section in groups.on %}
+          {% if not section.parent_section_id %}{% set run.n = run.n + 1 %}{% endif %}
+          {% set pos = run.n if not section.parent_section_id else None %}
         <div class="section-item {{ '' if section.is_enabled else 'disabled' }} {{ 'section-child' if section.parent_section_id else '' }}"
              id="sec-{{ section.id }}"
              draggable="{{ 'true' if (editable and section.is_enabled and not section.parent_section_id) else 'false' }}"
              data-section-id="{{ section.id }}">
           <span class="handle">⠿</span>
+          {# One running number down the whole list - the order the sections
+             print in - whatever they are. A note also carries its own number in
+             the report, shown before its title. #}
+          <span class="pos">{% if pos %}{{ pos }}{% endif %}</span>
           <input type="checkbox" class="toggle" {% if section.is_enabled %}checked{% endif %}
                  {% if not editable %}disabled{% endif %}
                  data-section-id="{{ section.id }}">
@@ -632,11 +639,16 @@ Anything typed into the report - note wording, edited figures, answers, section 
           <span>tick one to put it back in its place</span>
         </div>
         {% for section in groups.off %}
+          {% set pos = None %}
         <div class="section-item {{ '' if section.is_enabled else 'disabled' }} {{ 'section-child' if section.parent_section_id else '' }}"
              id="sec-{{ section.id }}"
              draggable="{{ 'true' if (editable and section.is_enabled and not section.parent_section_id) else 'false' }}"
              data-section-id="{{ section.id }}">
           <span class="handle">⠿</span>
+          {# One running number down the whole list - the order the sections
+             print in - whatever they are. A note also carries its own number in
+             the report, shown before its title. #}
+          <span class="pos">{% if pos %}{{ pos }}{% endif %}</span>
           <input type="checkbox" class="toggle" {% if section.is_enabled %}checked{% endif %}
                  {% if not editable %}disabled{% endif %}
                  data-section-id="{{ section.id }}">
@@ -807,6 +819,8 @@ Anything typed into the report - note wording, edited figures, answers, section 
   }
   .supply-sep { display:inline-block; width:1px; align-self:stretch;
                 background:var(--border); margin:0 4px; }
+  .section-item .pos { min-width:22px; text-align:right; font-size:11.5px;
+    font-weight:700; color:#8a8577; font-variant-numeric:tabular-nums; }
   .section-divider { margin:14px 0 6px; padding:6px 4px 4px; font-size:11.5px; font-weight:700;
     letter-spacing:.4px; text-transform:uppercase; color:#8a8577; border-top:1px solid var(--border, #d8d4c8); }
   .section-divider span { display:block; font-weight:400; text-transform:none; letter-spacing:0; margin-top:2px; }
