@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "documents/_category_options.html" import category_options with context %}
 {% block title %}Choose sheets · {{ document.original_filename }}{% endblock %}
 {% block breadcrumb %}
   <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
@@ -107,9 +108,13 @@
             <input type="checkbox" name="sheets" value="{{ sheet.name }}">
             <span class="strong" style="min-width:160px">{{ sheet.name }}</span>
             <select name="category_{{ sheet.name }}" class="small">
-              {% for key, label in DOCUMENT_CATEGORIES if key not in CURRENT_YEAR_TWIN %}
-                <option value="{{ key }}" {% if sheet.category == key %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
+              {{ category_options(sheet.category) }}
+            </select>
+            {# The year, as the upload page has it: a sheet that holds LAST year's
+               figures must not count as this year's evidence. #}
+            <select name="year_{{ sheet.name }}" class="small" title="Which year this sheet describes">
+              <option value="current">This year</option>
+              <option value="prior">Last year</option>
             </select>
           </div>
         {% endfor %}

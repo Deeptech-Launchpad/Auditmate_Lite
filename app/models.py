@@ -76,6 +76,15 @@ DOCUMENT_CATEGORIES = [
     # for the practitioner's name and address, when they are filled in.
     ("compilation_report", "Compilation report"),
     ("other", "Other"),
+    # Finished statements the client (or an accounting system) hands over.
+    # Reference only, like the reporting pack: never a source, never in
+    # TB_SOURCE_PRECEDENCE, so they cannot build or overrule the accounts.
+    ("fs_comprehensive_income", "Statement of Comprehensive Income"),
+    ("fs_financial_position", "Statement of Financial Position"),
+    ("fs_indirect_cash_flow", "Statement of Indirect Cash Flow"),
+    ("fs_direct_cash_flow", "Statement of Direct Cash Flow"),
+    ("fs_changes_in_equity", "Statement of Changes in Equity"),
+    ("fs_detailed_pl", "Statement of Detailed Profit and Loss"),
     # The prior-year half of every OTHER category a client might also send
     # twice - the same reasoning PRIOR_YEAR_TWIN gives for a trial balance
     # applies just as much to a bank statement or an aged listing: a client
@@ -97,6 +106,23 @@ DOCUMENT_CATEGORIES = [
     ("prior_fixed_asset_register", "Fixed Asset Register (prior year)"),
     ("prior_tax_document", "Tax Document / GST Return (prior year)"),
     ("prior_other", "Other (prior year)"),
+]
+
+# How the category dropdowns are grouped: the client's management accounts (the
+# books and the papers that support them) apart from finished financial
+# statements. Current-year categories only - last year's are reached through the
+# Year column.
+CATEGORY_GROUPS = [
+    ("Management accounts", [
+        "trial_balance", "balance_sheet", "profit_and_loss", "cash_flow",
+        "general_ledger", "bank_statement", "vendor_invoice", "customer_invoice",
+        "salary_schedule", "payables", "receivables", "fixed_asset_register",
+        "tax_document"]),
+    ("Financial statements", [
+        "fs_comprehensive_income", "fs_financial_position", "fs_indirect_cash_flow",
+        "fs_direct_cash_flow", "fs_changes_in_equity", "fs_detailed_pl",
+        "signed_accounts", "reporting_pack"]),
+    ("Other", ["compilation_report", "other"]),
 ]
 
 # Categories that come in a current-year / prior-year pair.

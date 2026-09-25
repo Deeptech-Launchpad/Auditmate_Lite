@@ -1,0 +1,20 @@
+{# The category choices, grouped: Management accounts, Financial statements,
+   Other. `with_prior` adds last year's categories as a group of their own, for a
+   filter; the pickers leave them out because the Year control chooses them. #}
+{% macro category_options(selected=None, with_prior=False) -%}
+  {%- set names = dict(DOCUMENT_CATEGORIES) -%}
+  {%- for group, keys in CATEGORY_GROUPS -%}
+    <optgroup label="{{ group }}">
+      {%- for key in keys %}
+        <option value="{{ key }}" {% if selected == key %}selected{% endif %}>{{ names[key] }}</option>
+      {%- endfor %}
+    </optgroup>
+  {%- endfor -%}
+  {%- if with_prior %}
+    <optgroup label="Last year">
+      {%- for key in PRIOR_YEAR_TWIN.values() %}
+        <option value="{{ key }}" {% if selected == key %}selected{% endif %}>{{ names[key] }}</option>
+      {%- endfor %}
+    </optgroup>
+  {%- endif -%}
+{%- endmacro %}

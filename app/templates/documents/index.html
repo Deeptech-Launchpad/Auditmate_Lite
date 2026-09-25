@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "documents/_category_options.html" import category_options with context %}
 {% block title %}Documents · {{ fy.year_label }} · Auditmate Lite{% endblock %}
 {% block breadcrumb %}
   <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
@@ -221,9 +222,7 @@
     <select name="category" onchange="this.form.submit()"
             {% if not total_documents %}disabled{% endif %}>
       <option value="">All</option>
-      {% for key, label in DOCUMENT_CATEGORIES %}
-        <option value="{{ key }}" {% if category == key %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
+      {{ category_options(category, with_prior=True) }}
     </select>
 
     <label class="muted small">Review status</label>
@@ -326,10 +325,7 @@
                       <input type="hidden" name="year"
                              value="{{ 'previous' if doc.category in CURRENT_YEAR_TWIN else 'current' }}">
                       <select name="category" class="small cat-select" style="max-width:190px">
-                        {% for key, label in DOCUMENT_CATEGORIES if key not in CURRENT_YEAR_TWIN %}
-                          <option value="{{ key }}"
-                                  {% if base_category == key %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
+                        {{ category_options(base_category) }}
                       </select>
                       <button type="submit" class="btn btn-sm">Save</button>
                     </form>

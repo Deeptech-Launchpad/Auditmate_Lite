@@ -92,7 +92,8 @@ def create_app(config_object=Config):
     app.register_blueprint(users_bp)
 
     # --- Template helpers ---
-    from .models import (CURRENT_YEAR_TWIN, DOCUMENT_CATEGORIES, ENTITY_TYPES,
+    from .models import (CATEGORY_GROUPS, CURRENT_YEAR_TWIN, DOCUMENT_CATEGORIES,
+                         ENTITY_TYPES,
                          FY_STATUSES, PRIOR_YEAR_TWIN, ROLES, STATEMENT_TYPES)
     from .services import period as period_service
 
@@ -100,6 +101,7 @@ def create_app(config_object=Config):
     def inject_globals():
         return {
             "DOCUMENT_CATEGORIES": DOCUMENT_CATEGORIES,
+            "CATEGORY_GROUPS": CATEGORY_GROUPS,
             "PRIOR_YEAR_TWIN": PRIOR_YEAR_TWIN,
             "CURRENT_YEAR_TWIN": CURRENT_YEAR_TWIN,
             "ENTITY_TYPES": ENTITY_TYPES,

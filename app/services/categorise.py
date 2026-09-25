@@ -41,6 +41,17 @@ RULES = [
     # inside their names must not send them to a source category.
     ("compilation_report", [r"\bcompilation report\b"]),
     ("reporting_pack", [r"\bfinancial reporting for sme"]),
+    # Finished statements are named for themselves; tested before the source
+    # categories, whose patterns would otherwise claim "statement of financial
+    # position" and "statement of comprehensive income".
+    ("fs_detailed_pl", [r"\bdetailed profit and loss\b", r"\bdetailed p and l\b",
+                        r"\bdetailed profit loss\b"]),
+    ("fs_indirect_cash_flow", [r"\bindirect cash flow"]),
+    ("fs_direct_cash_flow", [r"\bdirect cash flow"]),
+    ("fs_changes_in_equity", [r"\bstatement of changes in equity\b",
+                             r"\bchanges in equity\b"]),
+    ("fs_comprehensive_income", [r"\bstatement of comprehensive income\b"]),
+    ("fs_financial_position", [r"\bstatement of financial position\b"]),
     ("trial_balance", [
         r"\btrial balance\b", r"\btb\b", r"\btrialbalance\b",
     ]),

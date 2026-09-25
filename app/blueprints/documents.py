@@ -1140,6 +1140,8 @@ def split(document_id):
         category = request.form.get(f"category_{name}") or "other"
         if category not in valid_categories:
             category = "other"
+        if request.form.get(f"year_{name}") == "prior":
+            category = category_for_year(category, True)     # last year's twin, where it has one
         meta = storage.duplicate_upload(document)
         new_document = Document(
             financial_year_id=fy_id,
