@@ -131,6 +131,24 @@ def _recognise(captions, types):
     return rows
 
 
+def _mark_notes(rows, lines):
+    """Say, for each recognised row, whether the template printed a note number
+    against it ("Trade and other receivables  8  39,953 ..."). A row that had none
+    - Income tax payable, Retained earnings - keeps none, whatever the library
+    would like to refer it to."""
+    for row in rows:
+        want = _norm(row["label"])
+        row["note"] = False
+        for raw in lines:
+            text = _tidy(raw)
+            if _norm(text).startswith(want) and want:
+                rest = text[len(row["label"]):].strip() if text.lower().startswith(
+                    row["label"].lower()) else ""
+                if re.match(r"^\d{1,2}\s+[\(\-\d]", rest):
+                    row["note"] = True
+                break
+
+
 def read_profile(template_path):
     """{"profit_and_loss": [...], "balance_sheet": [...]} as the template has
     them, or {} for a template whose statements are not recognised."""
@@ -165,12 +183,14 @@ def read_profile(template_path):
         kinds = {r["type"] for r in rows}
         if "revenue" in kinds and "profit_before_tax" in kinds \
                 and len(rows) >= 5:
+            _mark_notes(rows, pl_lines)
             profile["profit_and_loss"] = rows
     if bs_lines:
         rows = _recognise(_captions(bs_lines), BS_TYPES)
         kinds = {r["type"] for r in rows}
         if {"cash", "total_assets", "total_equity_liabilities"} <= kinds \
                 and len(rows) >= 6:
+            _mark_notes(rows, bs_lines)
             profile["balance_sheet"] = rows
             profile["balance_sheet_headings"] = _bs_headings(bs_lines)
     if cf_lines:
@@ -369,6 +389,12 @@ def present(statement, rows):
     # year had some - and printing a row of dashes for a company with no tax
     # in either year only asks the reader what is missing. Subtotals and
     # totals always stay, since they anchor the statement.
+    # The notes column is the template's: a line it printed no note against
+    # prints none here.
+    unnoted = {r["type"] for r in rows if r.get("note") is False}
+    for row in drawn:
+        if row.line_key in unnoted:
+            row.note_ref = None
     return [row for row in drawn
             if row.is_total or row.is_subtotal
             or row.amount_current or row.amount_previous]

@@ -2091,6 +2091,8 @@ def section_payload(section, customer, financial_year, chips: bool = False):
             try:
                 payload["presented"] = template_statements.present(
                     payload["statement"], lines)
+                if payload["presented"]:
+                    _drop_borrowed_refs(section, payload["presented"], lines)
                 if (payload["presented"] and payload["statement"].statement_type
                         == "balance_sheet"):
                     payload["headings"] = template_statements.group_headings(
@@ -2154,6 +2156,33 @@ def section_payload(section, customer, financial_year, chips: bool = False):
 
 
 _MISSING_BLANK = re.compile(r'class="[^"]*missing-binding[^"]*"[^>]*>([^<]+)<')
+
+
+def _drop_borrowed_refs(section, presented, rows):
+    """A line the template never had does not borrow another line's note number.
+
+    "Short-term borrowings" is not in last year's balance sheet, and the note it
+    would point to - the template's own "Loan from a bank" - says nothing about
+    it, so two lines then carried the same number for figures only one of them
+    has in its note. The line stays, without a reference, until a note of its own
+    exists (a new note the preparer switches on carries its own number).
+    """
+    cover = next((s for s in section.report.sections
+                  if s.section_key == "cover_page"), None)
+    skeleton = ((cover.data_binding or {}).get("skeleton") if cover else None)
+    if not skeleton:
+        return
+    owned = set()
+    for entry in skeleton.get("template") or []:
+        key = entry.get("key") or ""
+        owned.add(key)
+        owned.add(key[len(NOTE_PREFIX):] if key.startswith(NOTE_PREFIX) else key)
+    types = {r["type"] for r in rows} | {"loan"}
+    for line in presented:
+        if line.line_key in types or line.is_total or line.is_subtotal:
+            continue
+        if line.note_ref and line.note_ref in owned:
+            line.note_ref = None
 
 
 def incomplete_reasons(section, payload, financial_year=None):
