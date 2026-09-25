@@ -511,6 +511,17 @@ def build(spec, financial_year, statements=None):
         row["from_binding"] = row.pop("binding")
         row["ids"] = row.get("ids") or []
     flags = []
+    staff = next((r for r in final if r["kind"] == "item"
+                  and re.search(r"(?i)staff cost", r["label"] or "")
+                  and isinstance(r.get("current"), Decimal)), None)
+    if staff is not None:
+        names, expected = _staff_accounts(financial_year)
+        if names and abs(expected - staff["current"]) >= 1:
+            flags.append(
+                "Staff costs in this note are {:,.0f} but the salary, CPF, "
+                "allowance, levy and director's fee accounts in the trial balance "
+                "add to {:,.0f} ({}). Check how these accounts are mapped."
+                .format(staff["current"], expected, ", ".join(names)))
     total = next((r for r in final if r["kind"] == "total"
                   and re.search(r"(?i)income tax", r["label"])), None)
     if total is not None and isinstance(total.get("current"), Decimal):
@@ -522,6 +533,28 @@ def build(spec, financial_year, statements=None):
                 "computation.".format(total["current"], booked))
     return {"heading": None, "rows": final, "columns": None,
             "table_id": table_key, "flags": flags}
+
+
+_STAFF_ACCOUNT = re.compile(
+    r"(?i)salar|wage|\bcpf\b|allowance|director.{0,3}s?\W*fee|\blevy\b")
+
+
+def _staff_accounts(financial_year):
+    """The trial balance's own staff accounts, by their names: (names, total).
+    An independent reading of the books, to set beside what the note drew."""
+    from ..models import TrialBalanceAccount
+
+    names, total = [], ZERO
+    for account in TrialBalanceAccount.query.filter_by(
+            financial_year_id=financial_year.id,
+            statement_type="profit_and_loss").all():
+        if not _STAFF_ACCOUNT.search(account.account_name or ""):
+            continue
+        net = Decimal(str(account.debit or 0)) - Decimal(str(account.credit or 0))
+        if net:
+            names.append("%s %s" % (account.account_name, "{:,.0f}".format(net)))
+            total += net
+    return names, total
 
 
 def _sum_members(members, column):
@@ -937,7 +970,7 @@ def strip_table_labels(html, specs):
     def one(label):
         label = label.replace("’", "'")
         parts = [re.escape(word) for word in label.split()]
-        return r"\s+".join(parts).replace("'", "['’]")
+        return r"\s+".join(parts).replace("'", "(?:['’]|&#39;|&#x27;|&rsquo;)")
 
     variants = set(labels)
     for label in labels:

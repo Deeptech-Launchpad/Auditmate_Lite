@@ -2482,6 +2482,44 @@ def _plain_amount(value):
     return "(%s)" % text if number < 0 else text
 
 
+def statement_note_gaps(payloads):
+    """Balance sheet lines that carry an amount, that the customer's template
+    never had, and that no note explains.
+
+    The template lists the lines it printed, and the notes it had for them. A
+    line this year's accounts need that it never had (other payables, short-term
+    borrowings) prints without a note reference, and the set quietly explains
+    less than it shows. It is put to the preparer instead: add a note for it, or
+    say none is needed.
+    """
+    found = []
+    for payload in payloads:
+        section = payload["section"]
+        presented = payload.get("presented")
+        binding = section.data_binding or {}
+        rows = binding.get("presentation") or []
+        if not presented or binding.get("statement_type") != "balance_sheet" or not rows:
+            continue
+        known = {r.get("type") for r in rows} | {"loan"}
+        reasons = []
+        for line in presented:
+            if line.is_total or line.is_subtotal or line.line_key in known:
+                continue
+            if getattr(line, "note_ref", None):
+                continue
+            amounts = [a for a in (line.amount_current, line.amount_previous) if a]
+            if not amounts:
+                continue
+            reasons.append(
+                "\u201c%s\u201d (%s) is on the balance sheet but the customer's "
+                "template has no note for it. Add a note for it, or confirm that "
+                "none is needed." % (line.label, _plain_amount(
+                    line.amount_current or line.amount_previous)))
+        if reasons:
+            found.append((section.title, reasons))
+    return found
+
+
 def record_completeness(report, payloads):
     """Remember how many sections are incomplete, for screens that list many
     engagements and cannot afford to render every report. Returns the list
@@ -2493,6 +2531,7 @@ def record_completeness(report, payloads):
     # The statements as well as the notes. A set whose cash flow does not
     # reconcile is not a finished set, however complete its notes are.
     incomplete += statement_blockers(report.financial_year)
+    incomplete += statement_note_gaps(payloads)
     if report.incomplete_notes != len(incomplete):
         report.incomplete_notes = len(incomplete)
         report.completeness_checked_at = datetime.utcnow()

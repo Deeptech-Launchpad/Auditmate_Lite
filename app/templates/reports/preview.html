@@ -69,6 +69,20 @@
      set of financial statements it is a document the firm cannot send
      anywhere, and one that reaches a client with it still attached is an
      incident. The preparer reads it here, where it is addressed to them. #}
+  {# A DRAFT copy says what is still open, on a last page of its own. It is
+     printed only where the stamp already says this is not the finished set, and
+     never in a set with nothing open - a finished set has no such page. #}
+  {% if for_pdf and draft_incomplete and incomplete_list %}
+  <div class="rpt-page page-break" id="draft-review">
+    <div class="rpt-head"><div class="rpt-sect">Draft review: items to complete before issue</div></div>
+    <p>This page is on draft copies only and is not part of the financial statements.
+       Each item below holds the set back from being issued.</p>
+    {% for title, reasons in incomplete_list %}
+      <h4>{{ title }}</h4>
+      <ul>{% for reason in reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% if checks and not for_pdf %}
     {% include "reports/_preparer_checks.html" %}
   {% endif %}

@@ -94,6 +94,7 @@ class _Reader(HTMLParser):
         # knows to be centred without the converter reading CSS.
         self._div_stack = []
         self._div_looks = []
+        self._rule_head = False
         self._upper = 0
         self._centred = 0
 
@@ -199,6 +200,11 @@ class _Reader(HTMLParser):
             self._italic += look[1]
             self._upper += look[2]
             self._div_looks.append(look)
+            if "with-rule" in classes:
+                self._rule_head = True
+            if "rpt-period" in classes and self._rule_head:
+                self._rule_head = False
+                self._format_next(rule_under=True)
             centred = "cover" in classes
             self._div_stack.append(centred)
             if centred:
@@ -790,6 +796,18 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
             paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         if pending_format.get("before"):
             paragraph.paragraph_format.space_before = Pt(pending_format["before"])
+        if pending_format.get("rule_under"):
+            borders = _element("w:pBdr")
+            borders.append(_element("w:bottom", val="single", sz="6", space="4",
+                                    color="000000"))
+            paragraph._p.get_or_add_pPr().insert_element_before(
+                borders, "w:shd", "w:tabs", "w:suppressAutoHyphens", "w:kinsoku",
+                "w:wordWrap", "w:overflowPunct", "w:topLinePunct", "w:autoSpaceDE",
+                "w:autoSpaceDN", "w:bidi", "w:adjustRightInd", "w:snapToGrid",
+                "w:spacing", "w:ind", "w:contextualSpacing", "w:mirrorIndents",
+                "w:suppressOverlap", "w:jc", "w:textDirection", "w:textAlignment",
+                "w:textboxTightWrap", "w:outlineLvl", "w:divId", "w:cnfStyle",
+                "w:rPr", "w:sectPr", "w:pPrChange")
         pending_format.clear()
 
     for kind, arg, payload in instructions:

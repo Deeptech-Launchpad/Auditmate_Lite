@@ -1402,6 +1402,7 @@ def export_word(report_id):
                                report, financial_year, payloads),
                            look=_template_look(report.financial_year.customer),
                            toc_pages=toc_pages,
+                           incomplete_list=incomplete,
                            for_pdf=True, word_export=True)
     html = report_service.clean_for_client(html)
 
@@ -1459,6 +1460,7 @@ def export(report_id):
                            checks=checks_service.build(
                                report, report.financial_year, payloads),
                            look=_template_look(report.financial_year.customer),
+                           incomplete_list=incomplete,
                            for_pdf=True)
     html = report_service.clean_for_client(html)
 
