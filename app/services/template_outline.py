@@ -228,13 +228,17 @@ def read_titles(template_path):
             # line would otherwise be stamped over every statement heading.
             titles[key] = line[:1].upper() + (line[1:].lower()
                                               if line.isupper() else line[1:])
+        if "notes_heading" not in titles and re.match(
+                r"^notes to the financial statements?$", line, re.IGNORECASE):
+            titles["notes_heading"] = line[:1].upper() + (
+                line[1:].lower() if line.isupper() else line[1:])
     return titles
 
 
-# Only the statements take their title from the template. The directors'
-# statement is left as it is: whether it is "Director's" or "Directors'" is a
-# fact about the client, not the firm the template came from.
-TITLED_SECTIONS = {"statement_comprehensive_income",
+# The statements and the directors' statement take their title from the
+# template: it is the customer's own report, so "Director's statement" stays
+# singular where the company has one director.
+TITLED_SECTIONS = {"directors_statement", "statement_comprehensive_income",
                    "statement_financial_position",
                    "statement_changes_equity", "statement_cash_flows"}
 
@@ -336,7 +340,20 @@ def apply_to_report(report, template_path):
     for section in report.sections:
         if section.section_key == "statement_cash_flows" and profile.get("cash_flow_wording"):
             binding = dict(section.data_binding or {})
-            binding["cash_flow_wording"] = profile["cash_flow_wording"]
+            wording = dict(profile["cash_flow_wording"])
+            try:
+                from . import template_note_tables
+                table = template_note_tables.read_statement(
+                    template_path, r"statement of cash flows")
+            except Exception:                              # noqa: BLE001
+                log.exception("Could not read the template's cash flow rows")
+                table = None
+            if table:
+                wording["rows"] = [
+                    {"label": r["label"], "kind": r["kind"],
+                     "cells": [str(c) for c in r["cells"]] if r["cells"] else None}
+                    for r in table["rows"]]
+            binding["cash_flow_wording"] = wording
             section.data_binding = binding
         rows = statement_profile.get(section.section_key)
         if rows and section.section_key in outline:
@@ -365,13 +382,18 @@ def apply_to_report(report, template_path):
                     "registration_label": (cover["registration_label"]
                                            or "Registration No"),
                     "upper_date": cover["upper_date"],
+                    "notes_title": titles.get("notes_heading"),
                 })
                 binding["labels"] = labels
                 section.data_binding = binding
                 covered = True
 
-    from . import template_skeleton
+    from . import template_note_tables, template_skeleton
     followed = template_skeleton.apply(report)
+    if followed:
+        tabled = template_note_tables.apply(report, template_path)
+        if tabled:
+            followed += f"; drew the tables of {tabled} notes as it does"
 
     if not (switched_off or switched_on or retitled or covered
             or lined or aligned or followed):
@@ -514,6 +536,9 @@ def _directors_statement(report, template_path):
         return False
     fixed.content_html = html
     fixed.is_enabled = True
+    title = read_titles(template_path).get("directors_statement")
+    if title:
+        fixed.title = title           # "Director's statement", as the template
     for section in report.sections:
         if section.section_key in ("note__S01_DIRECTORS_STATEMENT",
                                    "note__S03_STATEMENT_BY_DIRECTORS_SIG",

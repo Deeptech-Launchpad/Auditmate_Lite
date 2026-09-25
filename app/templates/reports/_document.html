@@ -328,7 +328,7 @@
             {% elif not ns_toc.notes_done %}
               {% set ns_toc.notes_done = true %}
               <tr>
-                <td class="c-title">Notes to the Financial Statements</td>
+                <td class="c-title">{{ cover_labels.get('notes_title') or 'Notes to the Financial Statements' }}</td>
                 <td class="c-dots"><span class="leader"></span></td>
                 <td class="c-page">
                   <a href="#sec-{{ note_keys|first }}"></a>{% if note_keys|length > 1 %}

@@ -2069,7 +2069,7 @@ def section_payload(section, customer, financial_year, chips: bool = False):
                 from . import template_statements
                 try:
                     payload["cf_layout"] = template_statements.cash_flow_layout(
-                        financial_year)
+                        financial_year, cf_wording)
                 except Exception:                          # noqa: BLE001
                     log.exception("Could not lay out the cash flow as the "
                                   "template does")

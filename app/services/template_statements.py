@@ -197,17 +197,20 @@ def _cash_flow_wording(lines):
     meaning differs (the template starts from profit after tax; ours from profit
     before tax) keeps our label rather than take one that misdescribes it.
     """
-    labels, headings = {}, {}
+    labels, headings, found = {}, {}, []
     for raw in lines[2:]:
         text = _tidy(raw)
         text = re.sub(r"\s+\(?[\d,.]+\)?(\s+\(?[\d,.]+\)?)*$", "", text).strip()
         low = _norm(text)
         if low == "operating activities":
             headings["operating"] = text
+            found.append("operating")
         elif low == "investing activities":
             headings["investing"] = text
+            found.append("investing")
         elif low == "financing activities":
             headings["financing"] = text
+            found.append("financing")
         for pattern, key in _CF_LABELS:
             if re.match(pattern, low) and key not in labels:
                 labels[key] = text
@@ -216,7 +219,8 @@ def _cash_flow_wording(lines):
     defaults = {"operating": "Operating activities",
                 "investing": "Investing activities",
                 "financing": "Financing activities"}
-    return {"labels": labels, "headings": {**defaults, **headings}}
+    return {"labels": labels, "headings": {**defaults, **headings},
+            "found": found}
 
 
 def _bs_headings(lines):
@@ -630,7 +634,7 @@ def equity_matrix(statement, financial_year, template_rows=None):
 
 # ------------------------------------------------- cash flow, in the template's layout
 
-def cash_flow_layout(financial_year):
+def cash_flow_layout(financial_year, wording=None):
     """The cash flow as the template lays it out, from the figures already
     computed for the standard cash flow, so no figure can differ from it.
 
@@ -649,6 +653,18 @@ def cash_flow_layout(financial_year):
     from decimal import Decimal
 
     from ..models import FinancialStatement
+
+    template_rows = (wording or {}).get("rows")
+    if template_rows:
+        from . import template_note_tables
+        try:
+            drawn = template_note_tables.cash_flow_from_template(
+                financial_year, template_rows)
+        except Exception:                                  # noqa: BLE001
+            log.exception("Could not draw the cash flow from the accounts")
+            drawn = None
+        if drawn:
+            return drawn
 
     def lines(kind):
         st = FinancialStatement.query.filter_by(
@@ -700,7 +716,10 @@ def cash_flow_layout(financial_year):
     receivables, payables = pair(cf, "cf_receivables"), pair(cf, "cf_payables")
     tax_paid, expenses = pair(cf, "cf_tax_paid"), pair(cf, "cf_expenses_paid")
 
-    head("Operating activities")
+    words = (wording or {}).get("headings") or {}
+    found = (wording or {}).get("found")
+    if found is None or "operating" in found:
+        head(words.get("operating", "Operating activities"))
     item("Profit after taxation", profit, 0)
     head("Adjustments for non-cash items")
     item("Interest expense", interest)
@@ -719,14 +738,14 @@ def cash_flow_layout(financial_year):
                      neg(interest), tax_paid, expenses)
     total("Net cash provided by operating activities", operating)
 
-    head("Investing activities")
+    head(words.get("investing", "Investing activities"))
     purchase, other_inv = pair(cf, "cf_purchase_ppe"), pair(cf, "cf_investing_other")
     item("Purchase of fixed assets", purchase)
     item("Other cash items from investing activities", other_inv)
     investing = plus(purchase, other_inv)
     total("Net cash provided by investing activities", investing)
 
-    head("Financing activities")
+    head(words.get("financing", "Financing activities"))
     borrowing = pair(cf, "cf_borrowings")
     item("Proceeds from long-term loans",
          tuple(None if v is None else max(v, zero) for v in borrowing))

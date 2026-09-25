@@ -372,6 +372,10 @@ BUILDERS = {
     "currency": _block_currency,
     # Library 2.x tables, row by row from each row's own binding.
     "bindings": bindings.build_table,
+    # the customer's own table, read from their signed accounts
+    "template": lambda block, fy, statements=None: __import__(
+        "app.services.template_note_tables", fromlist=["build"]).build(
+            block, fy, statements),
 }
 
 
