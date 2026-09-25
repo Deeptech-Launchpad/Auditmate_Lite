@@ -1425,8 +1425,9 @@ def _carried_html(prior, financial_year):
             body = rebuilt
     html = prior_text_to_html(roll_forward_text(body, financial_year),
                               drop_labels=drop)
-    return template_tables.restore_standards_table(
-        html, getattr(financial_year.customer, "report_template_path", None))
+    template_path = _template_pdf_path(financial_year)
+    html = template_tables.restore_standards_table(html, template_path)
+    return template_tables.restore_grading_table(html, template_path)
 
 
 def prior_text_to_html(text, drop_labels=True):
@@ -1570,7 +1571,16 @@ def carry_forward_prior_wording(report, financial_year) -> int:
         if current and current != (default_html or "").strip():
             continue
 
-        section.content_html = _carried_html(prior, financial_year)
+        carried_html = _carried_html(prior, financial_year)
+        if not _has_narrative(carried_html):
+            # The template's note was a table and nothing else (revenue, finance
+            # cost). That is not the library missing: it holds the note's own
+            # wording, and a note with a table and no sentence about it reads
+            # as unfinished. The reviewed wording the library ticks "always"
+            # (or ticks for the accounts present) leads the table; what it
+            # leaves to the preparer stays out.
+            carried_html = _library_lead_in(note, present) + carried_html
+        section.content_html = carried_html
         section.prior_note_id = prior.id
         filled += 1
 
@@ -1579,6 +1589,56 @@ def carry_forward_prior_wording(report, financial_year) -> int:
         log.info("FY %s: carried %d note(s) forward from last year's accounts",
                  financial_year.id, filled)
     return filled
+
+
+def _template_pdf_path(financial_year):
+    """The PDF this report follows: the customer's uploaded template, else last
+    year's signed accounts on file - the same choice _match_customer_template
+    makes. Tables lost in the text (the standards list, the credit risk grading)
+    are read back from it, so it has to be the file the notes were read from."""
+    from pathlib import Path
+
+    from . import template_follow
+
+    chosen = getattr(financial_year.customer, "report_template_path", None)
+    if chosen and chosen != "STANDARD" and Path(str(chosen)).exists():
+        return chosen
+    path = template_follow._template_path(financial_year)
+    if path is not None and Path(str(path)).exists():
+        return str(path)
+    for document in financial_year.documents:
+        if (document.category == "signed_accounts"
+                and Path(str(document.storage_path)).suffix.lower() == ".pdf"
+                and Path(str(document.storage_path)).exists()):
+            return str(document.storage_path)
+    return chosen
+
+
+def _has_narrative(html):
+    """Whether carried note wording has a real sentence in it."""
+    from html import unescape
+    for paragraph in re.findall(r"<p[^>]*>(.*?)</p>", html or "", re.S):
+        text = unescape(re.sub(r"<[^>]+>", "", paragraph)).strip()
+        if len(text) >= 60 and " " in text:
+            return True
+    return False
+
+
+def _library_lead_in(note, present):
+    """The library's own sentences for a note, as paragraphs: reviewed, no table
+    placeholder, no blank for a person to fill, ticked always or by the accounts."""
+    from html import escape
+
+    out = []
+    for piece in _all_pieces(note):
+        text = (piece.get("wording") or "").strip()
+        if (not text or TABLE_PLACEHOLDER.match(text) or _OPEN_BLANK.search(text)
+                or piece.get("review_status") == "unreviewed"):
+            continue
+        if not _piece_triggered(piece.get("tick_state"), piece.get("tb_keys"), present):
+            continue
+        out.append("<p>%s</p>" % escape(text))
+    return "".join(out)
 
 
 def prior_year_disclosed(financial_year) -> set:
@@ -2228,6 +2288,8 @@ def _drop_borrowed_refs(section, presented, rows):
         owned.add(key)
         owned.add(key[len(NOTE_PREFIX):] if key.startswith(NOTE_PREFIX) else key)
     types = {r["type"] for r in rows} | {"loan"}
+    if "income_tax" in types:
+        types.add("tax_expense")          # the template's "Income tax expenses"
     for line in presented:
         if line.line_key in types or line.is_total or line.is_subtotal:
             continue

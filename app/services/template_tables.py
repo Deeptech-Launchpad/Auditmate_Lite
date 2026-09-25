@@ -143,3 +143,53 @@ def restore_standards_table(html, template_path):
     if not table:
         return html
     return html[:marker.start()] + table + "\n" + html[marker.start():]
+
+
+def grading_rows(path):
+    """The credit risk grading table (Category | Description | Basis of
+    recognising ECL) as the template's page draws it, or None.
+
+    Read as a table off the page: through the note's flowing text its columns
+    interleave into one paragraph ("1 Low credit risks Note 1 12-months ECL 2
+    Non-significant ..."), which cannot be put back."""
+    if not path or not Path(str(path)).exists():
+        return None
+    try:
+        import pdfplumber
+        with pdfplumber.open(str(path)) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                if "Basis of recognising ECL" not in text:
+                    continue
+                for table in page.extract_tables():
+                    rows = [[" ".join((c or "").split()) for c in r] for r in table]
+                    if (rows and len(rows[0]) == 3
+                            and rows[0][0].lower() == "category"
+                            and "ecl" in rows[0][2].lower()):
+                        return rows
+    except Exception:                                         # noqa: BLE001
+        return None
+    return None
+
+
+def restore_grading_table(html, template_path):
+    """Put the credit risk grading table back as a table, where the note carries
+    its heading and the flattened rows under it."""
+    if not html or "Basis of recognising ECL" not in html:
+        return html
+    if "<table" in html[html.find("Basis of recognising ECL"):][:200]:
+        return html
+    rows = grading_rows(template_path)
+    if not rows:
+        return html
+    from html import escape
+
+    head = "".join("<th>%s</th>" % escape(c) for c in rows[0])
+    body = "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % escape(c) for c in r)
+                   for r in rows[1:])
+    table = ('<table class="fin note-table grading"><thead><tr>%s</tr></thead>'
+             "<tbody>%s</tbody></table>" % (head, body))
+    pattern = re.compile(
+        r"(?:<h[3-5][^>]*>\s*)?Category\s+Description\s+Basis of recognising ECL"
+        r"(?:\s*</h[3-5]>)?\s*(?:<p[^>]*>.*?</p>)?", re.S)
+    return pattern.sub(lambda m: table, html, count=1)

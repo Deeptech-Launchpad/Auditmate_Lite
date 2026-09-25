@@ -395,9 +395,16 @@ def present(statement, rows):
     for row in drawn:
         if row.line_key in unnoted:
             row.note_ref = None
+    # ... except a line the template printed a note number against: the note
+    # is part of the set, and the face has to point at it. Brown Rock's "Income
+    # tax expenses  7" is nil in both years and still the only line that tells
+    # a reader Note 7 is about the tax charge.
+    noted = {r["type"] for r in rows if r.get("note") is True}
+    alias = {"tax_expense": "income_tax"}
     return [row for row in drawn
             if row.is_total or row.is_subtotal
-            or row.amount_current or row.amount_previous]
+            or row.amount_current or row.amount_previous
+            or alias.get(row.line_key, row.line_key) in noted]
 
 
 def _present_profit_and_loss(book, rows):
@@ -446,7 +453,7 @@ def _present_profit_and_loss(book, rows):
     if "income_tax" in have or _nonzero(*tax):
         add(out, "tax_expense", _labelled(rows, "income_tax",
                                           "Income tax expense"),
-            tax, note=_note(book, "tax_expense"))
+            tax, note=_note(book, "tax_expense") or "income_tax_expense")
     label = _labelled(rows, "profit_for_year",
                       "Profit for the period, net of tax")
     key = ("total_comprehensive_income" if "comprehensive" in label.lower()
