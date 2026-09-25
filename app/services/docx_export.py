@@ -93,6 +93,8 @@ class _Reader(HTMLParser):
         # Which open <div>s centre their text (the cover), so a paragraph
         # knows to be centred without the converter reading CSS.
         self._div_stack = []
+        self._div_looks = []
+        self._upper = 0
         self._centred = 0
 
     def _format_next(self, **what):
@@ -104,9 +106,13 @@ class _Reader(HTMLParser):
         # A <br> arrives as a LINE_BREAK run. Filtering on strip() alone drops
         # it, which silently joined two directors' names into one on the first
         # page of the accounts - so keep it, and drop only real whitespace.
-        runs = [r for r in self._text
-                if r[0].strip() or r[0] == LINE_BREAK]
+        runs = list(self._text)
         self._text = []
+        # spaces at either end are indentation; one between two runs is a word gap
+        while runs and not runs[0][0].strip() and runs[0][0] != LINE_BREAK:
+            runs.pop(0)
+        while runs and not runs[-1][0].strip() and runs[-1][0] != LINE_BREAK:
+            runs.pop()
 
         # A break at either end of a block is spacing, not content.
         while runs and runs[0][0] == LINE_BREAK:
@@ -145,8 +151,10 @@ class _Reader(HTMLParser):
             if self._text and not self._text[-1][0].endswith(" "):
                 self._text.append((" ", False, False))
             return
-        self._text.append((re.sub(r"\s+", " ", data),
-                           bool(self._bold), bool(self._italic)))
+        text = re.sub(r"\s+", " ", data)
+        if self._upper:
+            text = text.upper()
+        self._text.append((text, bool(self._bold), bool(self._italic)))
 
     # -- structure --------------------------------------------------------
 
@@ -181,6 +189,16 @@ class _Reader(HTMLParser):
             # converter used to run every section into the last.
             if "page-break" in classes:
                 self._format_next(page_break=True)
+            # what the PDF's stylesheet does to these blocks, which the Word
+            # file cannot read: the statement title in bold capitals, the period
+            # line in italic capitals, the contents heading in bold capitals
+            look = ((1, 0, 1) if ("rpt-sect" in classes or "contents-title" in classes
+                                  or "rpt-co" in classes)
+                    else (0, 1, 1) if "rpt-period" in classes else (0, 0, 0))
+            self._bold += look[0]
+            self._italic += look[1]
+            self._upper += look[2]
+            self._div_looks.append(look)
             centred = "cover" in classes
             self._div_stack.append(centred)
             if centred:
@@ -249,6 +267,11 @@ class _Reader(HTMLParser):
             self._heading = None
         elif tag == "div" and not self._in_table:
             self._emit_block()
+            if self._div_looks:
+                look = self._div_looks.pop()
+                self._bold = max(0, self._bold - look[0])
+                self._italic = max(0, self._italic - look[1])
+                self._upper = max(0, self._upper - look[2])
             if self._div_stack and self._div_stack.pop():
                 self._centred = max(0, self._centred - 1)
         elif tag in ("td", "th") and self._in_table:
@@ -816,6 +839,15 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
                                          "matrix" in (table_classes or []))
                           if spec_mode else None)
 
+                # Words in columns - the standards not yet effective, the credit
+                # risk grading - are not amounts: a wide middle column, left
+                # aligned, not the two narrow figure columns.
+                text_table = "grading" in (table_classes or [])
+                if text_table and width == 3:
+                    first = (pending_rows[0][1][0][0] or "").strip().lower()
+                    share = (0.14, 0.50, 0.36) if first == "category" else (0.18, 0.57, 0.25)
+                    widths = [usable * s for s in share]
+
                 last_index = len(pending_rows) - 1
                 for position, ((is_header, kind_of_row), cells) in enumerate(
                         pending_rows):
@@ -855,8 +887,8 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
                         # The column's own marked-up class wins; the regex is
                         # a fallback for a table with no such marking at all
                         # (a note an auditor typed by hand, say).
-                        if align == "right" or (align is None
-                                                and NUMERIC.match(text or "")):
+                        if not text_table and (align == "right" or (
+                                align is None and NUMERIC.match(text or ""))):
                             paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                         elif align == "center":
                             paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -894,7 +926,8 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
         if kind == "heading":
             document.add_heading("", level=min(arg + 1, 4))
             _apply_format(document.paragraphs[-1])
-            _write_runs(document.paragraphs[-1], payload)
+            _write_runs(document.paragraphs[-1],
+                        [(text, True, italic) for text, bold, italic in payload])
             if pending_bookmark:
                 bookmark_number += 1
                 _bookmark(document.paragraphs[-1], pending_bookmark,
