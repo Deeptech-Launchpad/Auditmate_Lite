@@ -74,6 +74,12 @@ profit_and_loss:
     - {key: gst_payables_expense,  label: "GST payables", group: operating_expenses, detail: true}
     - {key: training_expenses,     label: "Training expenses", group: operating_expenses, detail: true}
     - {key: staff_house_rental,    label: "Staff house rental", group: operating_expenses, detail: true}
+    # Added with standard statement lines v8. They roll into the operating
+    # expenses subtotal exactly as the lines around them do; v8's separate
+    # face lines for them are a later step.
+    - {key: distribution_costs,    label: "Selling and distribution expenses", group: operating_expenses, detail: true}
+    - {key: commission_sales,      label: "Commission on sales", group: operating_expenses, detail: true}
+    - {key: impairment_receivables, label: "Bad debts and expected credit losses", group: operating_expenses, detail: true}
     - {key: other_expenses,        label: "Other expenses", group: operating_expenses, detail: true}
     # Income items sit in the expense block as credits, mirroring the way the
     # client template shows "IRAS rebate" among operating expenses.
@@ -107,6 +113,11 @@ balance_sheet:
     - {key: intangible_assets,     label: "Intangible assets", group: non_current_assets, indent: 1, note: intangible_assets}
     - {key: right_of_use_assets,   label: "Right-of-use assets", group: non_current_assets, indent: 1, note: right_of_use_assets}
     - {key: investments,           label: "Investments", group: non_current_assets, indent: 1, note: investments_in_subsidiaries}
+    # Standard statement lines v8: FRS 1.54 minimum line items and non-current receivables.
+    - {key: investments_associates, label: "Investments in associates and joint ventures", group: non_current_assets, indent: 1, no_note: true}
+    - {key: other_financial_assets, label: "Other financial assets", group: non_current_assets, indent: 1, no_note: true}
+    - {key: other_receivables_noncurrent, label: "Other receivables (non-current)", group: non_current_assets, indent: 1, no_note: true}
+    - {key: deferred_tax_assets,   label: "Deferred tax assets", group: non_current_assets, indent: 1, note: deferred_tax_liabilities}
     - {key: total_non_current_assets, label: "Total non-current assets", group: non_current_assets, subtotal: true, formula: sum_group_non_current_assets}
 
     - {key: inventories,           label: "Inventories", group: current_assets, indent: 1, note: inventories}
@@ -114,12 +125,15 @@ balance_sheet:
     - {key: trade_receivables,     label: "Trade receivables", group: current_assets, indent: 1, note: trade_receivables}
     - {key: prepayments,           label: "Deposits & Other Receivables", group: current_assets, indent: 1, note: trade_receivables}
     - {key: assets_held_for_sale,  label: "Assets held for sale", group: current_assets, indent: 1, note: assets_held_for_sale}
+    - {key: tax_recoverable,       label: "Income tax recoverable", group: current_assets, indent: 1, note: income_tax_expense}
     - {key: cash_and_equivalents,  label: "Cash and cash equivalents", group: current_assets, indent: 1, note: cash_and_cash_equivalents}
     - {key: total_current_assets,  label: "Total current assets", group: current_assets, subtotal: true, formula: sum_group_current_assets}
     - {key: total_assets,          label: "Total assets", group: assets_total, total: true, formula: total_assets}
 
     - {key: share_capital,         label: "Share capital", group: equity, indent: 1, note: share_capital}
     - {key: working_capital,       label: "Working Capital", group: equity, indent: 1, no_note: true}
+    - {key: share_application_money, label: "Share application money", group: equity, indent: 1, no_note: true}
+    - {key: other_reserves,        label: "Other reserves", group: equity, indent: 1, note: reserves}
     - {key: retained_earnings,     label: "Accumulated profit/ (loss)", group: equity, indent: 1, formula: retained_earnings, note: reserves}
     - {key: total_equity,          label: "Total capital and reserves", group: equity, subtotal: true, formula: sum_group_equity}
 
@@ -133,6 +147,8 @@ balance_sheet:
     - {key: accruals,              label: "Accruals", group: current_liabilities, indent: 1, note: N75_TRADE_OTHER_PAYABLES}
     - {key: contract_liabilities,  label: "Contract liabilities", group: current_liabilities, indent: 1, note: contract_balances}
     - {key: short_term_borrowings, label: "Short-term borrowings", group: current_liabilities, indent: 1, note: borrowings}
+    - {key: lease_liabilities_current, label: "Lease liabilities (current)", group: current_liabilities, indent: 1, note: lease_liabilities}
+    - {key: provisions_current,    label: "Provisions (current)", group: current_liabilities, indent: 1, note: provisions}
     - {key: tax_payable,           label: "Provision for income tax", group: current_liabilities, indent: 1, note: income_tax_expense}
     - {key: total_current_liabilities, label: "Total current liabilities", group: current_liabilities, subtotal: true, formula: sum_group_current_liabilities}
     - {key: total_equity_and_liabilities, label: "Total equity and liabilities", group: liabilities_total, total: true, formula: total_equity_and_liabilities}

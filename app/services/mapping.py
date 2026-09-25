@@ -180,6 +180,49 @@ def _side_of_line(line_key):
     return None
 
 
+def standard_class(account_type):
+    from . import standard_lines
+
+    return standard_lines.account_class(account_type)
+
+
+def _standard_rule(label, account_type):
+    """(rule or None, decided) from the client's standard statement lines.
+
+    decided is True when they settle the account - placed on a line, or sent to
+    the accountant because it is a tie or on the never-place list - and False
+    when they have nothing to say and the older rules may still be asked.
+    """
+    from . import standard_lines as sl
+
+    if not sl.load().get("lines"):
+        return None, False
+    if sl.never_auto(label):
+        return None, True
+    klass = sl.account_class(account_type)
+    if klass is None:
+        return None, False
+    result, detail = sl.place(label, klass)
+    if result == "tie":
+        log.info("Account %r ties between %s - left to the accountant", label,
+                 ", ".join(h[0]["key"] for h in detail))
+        return None, True
+    if result != "placed":
+        # Rule 5: nothing recognised. An expense becomes Other expenses (the
+        # caller adds it, flagged); anything else goes to the accountant.
+        # Decided either way - the older rules are not asked once the class
+        # is known, or a stray word ("charg") would overrule the client's list.
+        if klass == "pl_expense":
+            return ({"pattern": "", "match_type": "contains",
+                     "statement_type": "profit_and_loss", "line_key": "other_expenses",
+                     "sign": 1, "priority": 999, "source": "standard_review"}, True)
+        return None, True
+    line, keyword = detail
+    return ({"pattern": keyword, "match_type": "contains",
+             "statement_type": line["statement"], "line_key": sl.app_key(line["key"]),
+             "sign": 1, "priority": 0, "source": "standard"}, True)
+
+
 def match_label(label: str, customer_id: int, statement_type: str = None,
                 account_type: str = None):
     """Find the best rule for one label without calling the AI.
@@ -242,10 +285,26 @@ def match_label(label: str, customer_id: int, statement_type: str = None,
             break
 
     if best is None:
+        # The client's standard statement lines, when the account's class is
+        # known: class first, longest keyword, a tie or a never-place name goes
+        # to the accountant. See services/standard_lines.py.
+        standard, decided = _standard_rule(label, account_type)
+        if decided:
+            return standard if (standard and (
+                not statement_type or standard["statement_type"] == statement_type)) else None
+
+    if best is None:
         for rule in _seed_rules():
             if _matches(rule, normalised) and fits(rule):
                 best = rule
                 break
+
+    if best is None and standard_class(account_type) == "pl_expense":
+        # Rule 5 of the standard lines: an expense nothing recognises is Other
+        # expenses, and is flagged for a glance.
+        best = {"pattern": "", "match_type": "contains",
+                "statement_type": "profit_and_loss", "line_key": "other_expenses",
+                "sign": 1, "priority": 999, "source": "standard_review"}
 
     if best is None:
         return None

@@ -145,6 +145,7 @@
 <script>
   window.CSRF_TOKEN = "{{ csrf_token() }}";
 </script>
+<script src="{{ url_for('static', filename='js/searchable_select.js') }}" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

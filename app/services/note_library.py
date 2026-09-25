@@ -1006,7 +1006,13 @@ def load_line_code_map():
         return {}, set()
     with open(path, "r", encoding="utf-8") as handle:
         doc = yaml.safe_load(handle) or {}
-    return (doc.get("codes") or {}), set(doc.get("non_figure") or [])
+    codes = doc.get("codes") or {}
+    try:
+        from . import standard_lines
+        standard_lines.overlay_code_map(codes)
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not merge the standard statement lines' codes")
+    return codes, set(doc.get("non_figure") or [])
 
 
 def load_condition_classes():

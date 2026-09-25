@@ -1,0 +1,2984 @@
+# Read from the client's AuditMate Standard Statement Lines workbook by `flask import-standard-lines`.
+# Do not edit by hand: import the next version instead.
+version: Financial statement lines used by AuditMate  (version 8, 25 September 2026)
+lines:
+- statement: profit_and_loss
+  section: Revenue
+  caption: Revenue
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Revenue
+  - Turnover
+  - Sales
+  key: pl_face_revenue
+  default_code: PL-REV
+  codes:
+  - PL-REV
+  status: New
+- statement: profit_and_loss
+  section: Revenue
+  caption: Revenue
+  level: Detail line
+  rolls_into: Revenue
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: pl_income
+  keywords:
+  - revenue
+  - sales
+  - turnover
+  - fee income
+  - service income
+  - contract revenue
+  - project income
+  - renovation income
+  - fit-out
+  - fitout
+  prior_captions: []
+  key: revenue
+  default_code: PL-REV
+  codes:
+  - PL-REV
+  status: Unchanged
+- statement: profit_and_loss
+  section: Cost of sales
+  caption: Cost of sales
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Cost of sales
+  - Cost of services
+  - Cost of goods sold
+  - Direct costs
+  key: cost_of_sales
+  default_code: PL-COS
+  codes:
+  - PL-COS
+  status: Changed
+- statement: profit_and_loss
+  section: Cost of sales
+  caption: Purchases
+  level: Detail line
+  rolls_into: Cost of sales
+  nature_group: Raw materials and consumables used and changes in inventories
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - purchases
+  - cost of sales
+  - cost of goods sold
+  - cost of goods
+  - material
+  prior_captions: []
+  key: purchases
+  default_code: PL-COS
+  codes:
+  - PL-COS
+  status: Changed
+- statement: profit_and_loss
+  section: Cost of sales
+  caption: Subcontractor costs
+  level: Detail line
+  rolls_into: Cost of sales
+  nature_group: Subcontractor and project costs
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - subcontractor
+  - sub-contractor
+  - sub contract
+  - contractor & subcontractor
+  prior_captions: []
+  key: subcontractor_costs
+  default_code: PL-COS
+  codes:
+  - PL-COS
+  status: Changed
+- statement: profit_and_loss
+  section: Cost of sales
+  caption: Design & implementation
+  level: Detail line
+  rolls_into: Cost of sales
+  nature_group: Subcontractor and project costs
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - design & implementation
+  - design and implementation
+  - design cost
+  prior_captions: []
+  key: design_implementation
+  default_code: PL-COS
+  codes:
+  - PL-COS
+  status: Changed
+- statement: profit_and_loss
+  section: Cost of sales
+  caption: Service charges for project
+  level: Detail line
+  rolls_into: Cost of sales
+  nature_group: Subcontractor and project costs
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - cost of services
+  - cost of service
+  - service charge
+  - project cost
+  prior_captions: []
+  key: service_charges
+  default_code: PL-COS
+  codes:
+  - PL-COS
+  status: Changed
+- statement: profit_and_loss
+  section: Gross profit
+  caption: Gross profit
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Gross profit
+  - Gross (loss)/profit
+  key: gross_profit
+  default_code: PL-GP
+  codes:
+  - PL-GP
+  status: Unchanged
+- statement: profit_and_loss
+  section: Other income
+  caption: Other income
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Other income
+  - Other operating income
+  - Other revenue
+  key: pl_face_other_income
+  default_code: PL-OI
+  codes:
+  - PL-OI
+  status: New
+- statement: profit_and_loss
+  section: Other income
+  caption: IRAS rebate
+  level: Detail line
+  rolls_into: Other income
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: pl_income
+  keywords:
+  - iras rebate
+  - tax rebate
+  - cit rebate
+  prior_captions: []
+  key: iras_rebate
+  default_code: PL-GRANT
+  codes:
+  - PL-GRANT
+  - PL-OI
+  status: Changed
+- statement: profit_and_loss
+  section: Other income
+  caption: Other income
+  level: Detail line
+  rolls_into: Other income
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: pl_income
+  keywords:
+  - other income
+  - other revenue
+  - sundry income
+  - government grant
+  - grant
+  - jobs growth incentive
+  - wage credit
+  - rental income
+  - gain on disposal
+  prior_captions: []
+  key: other_income
+  default_code: PL-OI
+  codes:
+  - PL-OI
+  - PL-GRANT
+  - PL-FX
+  - PL-GAINDISP
+  - PL-LEASEINC
+  status: Changed
+- statement: profit_and_loss
+  section: Other income
+  caption: Interest income
+  level: Detail line
+  rolls_into: Other income
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: pl_income
+  keywords:
+  - interest income
+  - interest received
+  - fixed deposit interest
+  prior_captions: []
+  key: interest_income
+  default_code: PL-OI
+  codes:
+  - PL-OI
+  status: Changed
+- statement: profit_and_loss
+  section: Distribution costs
+  caption: Distribution costs
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Distribution costs
+  - Selling and distribution expenses
+  - Distribution expenses
+  key: pl_face_distribution
+  default_code: PL-DIST
+  codes:
+  - PL-DIST
+  status: New
+- statement: profit_and_loss
+  section: Distribution costs
+  caption: Selling and distribution expenses
+  level: Detail line
+  rolls_into: Distribution costs
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - distribution cost
+  - distribution expense
+  - delivery expense
+  - delivery charge
+  - freight out
+  - freight outward
+  - carriage outward
+  - selling and distribution
+  - selling expense
+  prior_captions: []
+  key: distribution_costs
+  default_code: PL-DIST
+  codes:
+  - PL-DIST
+  status: New
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Administrative expenses
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Administrative expenses
+  - Other operating expenses
+  - Operating expenses
+  - Other items of expenses
+  key: operating_expenses
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Accounting charges
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - accounting fee
+  - accounting charge
+  - accounts fee
+  - accounting & bookkeeping
+  - bookkeeping
+  - audit fee
+  - auditor
+  - audit and tax
+  - tax fee
+  - professional fee
+  - legal fee
+  - prof & service charge
+  - professional & service charge
+  prior_captions: []
+  key: accounting_charges
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  - PL-AUDIT
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Bank charges
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - bank charge
+  - bank fee
+  - bank service charge
+  prior_captions: []
+  key: bank_charges
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  - PL-FIN
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Website development expenses
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - website
+  prior_captions: []
+  key: website_expenses
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  status: Unchanged
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Consulting fee
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - consulting
+  - consultancy
+  - consultant
+  prior_captions: []
+  key: consulting_fee
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  - PL-MGMTFEE
+  status: Unchanged
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Depreciation
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Depreciation expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - depreciation
+  - amortisation
+  - amortization
+  prior_captions: []
+  key: depreciation
+  default_code: PL-DEP
+  codes:
+  - PL-DEP
+  - PL-DEPROU
+  - PL-AMORT
+  status: Unchanged
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Director's fee
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Employee benefit costs
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - director fee
+  - directors fee
+  - director's fee
+  - directors' fee
+  - director remuneration
+  - directors' remuneration
+  - director's remuneration
+  - directors remuneration
+  prior_captions: []
+  key: directors_remuneration
+  default_code: PL-DIRFEE
+  codes:
+  - PL-DIRFEE
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Staff salaries
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Employee benefit costs
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - salary
+  - salaries
+  - wages
+  - salaries & wages
+  - payroll
+  - employee benefit
+  - staff cost
+  - allowance
+  prior_captions: []
+  key: staff_salaries
+  default_code: PL-STAFF
+  codes:
+  - PL-STAFF
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Staff bonus
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Employee benefit costs
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - staff bonus
+  - bonus
+  - incentive
+  - salaries & wages - bonus
+  prior_captions: []
+  key: staff_bonus
+  default_code: PL-STAFF
+  codes:
+  - PL-STAFF
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: CPF
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Employee benefit costs
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - cpf
+  - cpf contribution
+  - superannuation
+  prior_captions: []
+  key: cpf
+  default_code: PL-CPF
+  codes:
+  - PL-CPF
+  status: Unchanged
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Statutory levies
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Employee benefit costs
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - levy
+  - foreign worker levy
+  - sdl
+  - skills development
+  prior_captions: []
+  key: statutory_levies
+  default_code: PL-LEVY
+  codes:
+  - PL-LEVY
+  - PL-CPF
+  - PL-ADM
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Commission to employee
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Employee benefit costs
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - commission to employee
+  - staff commission
+  - employee commission
+  prior_captions: []
+  key: commission_employee
+  default_code: PL-STAFF
+  codes:
+  - PL-STAFF
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Commission on sales
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - commission on sales
+  - sales commission
+  - agent commission
+  - commission
+  prior_captions: []
+  key: commission_sales
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  status: New
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Manpower supply cost
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - manpower
+  - manpower supply
+  - labour supply
+  prior_captions: []
+  key: manpower_supply
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: MOM application fee
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - mom application
+  - mom fee
+  - work pass
+  - work permit
+  prior_captions: []
+  key: mom_application_fee
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Office rent
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - office rent
+  - office rental
+  - rent expense
+  - rental of premises
+  - rent
+  prior_captions: []
+  key: office_rent
+  default_code: PL-LEASE-ST
+  codes:
+  - PL-LEASE-ST
+  - PL-LEASE-LV
+  - PL-LEASE-VAR
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Entertainment expenses
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - entertainment
+  prior_captions: []
+  key: entertainment
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  status: Unchanged
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Petty cash expenses
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - petty cash exp
+  prior_captions: []
+  key: petty_cash_expenses
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  status: Unchanged
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Secretarial fee
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - secretarial
+  - company secretary
+  prior_captions: []
+  key: secretarial_fee
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  status: Unchanged
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: GST expense (not claimable)
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - gst payment
+  - gst expense
+  - non-claimable gst
+  - gst not claimable
+  prior_captions: []
+  key: gst_payables_expense
+  default_code: PL-GST
+  codes:
+  - PL-GST
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Training expenses
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - training
+  prior_captions: []
+  key: training_expenses
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  status: Unchanged
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Staff house rental
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - staff house
+  - staff rental
+  - staff accommodation
+  - dormitory
+  prior_captions: []
+  key: staff_house_rental
+  default_code: PL-LEASE-ST
+  codes:
+  - PL-LEASE-ST
+  - PL-LEASE-LV
+  - PL-LEASE-VAR
+  status: Changed
+- statement: profit_and_loss
+  section: Administrative expenses
+  caption: Other expenses
+  level: Detail line
+  rolls_into: Administrative expenses
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - other expense
+  - sundry expense
+  - general expense
+  - utilities
+  - power
+  - water
+  - telephone
+  - insurance
+  - medical
+  - travel
+  - transport
+  - advertising
+  - computer
+  - software
+  - office exp
+  - staff amenities
+  - staff refreshment
+  - staff welfare
+  - food
+  - repairs
+  - maintenance
+  - printing
+  - stationery
+  - postage
+  - courier
+  - subscription
+  - site inspection
+  - expense claim
+  - exp claim
+  - rental of equipment
+  - equipment rental
+  - upkeep
+  - business development
+  - travelling
+  - foreign currency loss
+  - exchange loss
+  - insurance premium
+  prior_captions: []
+  key: other_expenses
+  default_code: PL-ADM
+  codes:
+  - PL-ADM
+  - PL-DIST
+  - PL-IMPAIR
+  - PL-FX
+  - PL-RD
+  - PL-SBP
+  status: Changed
+- statement: profit_and_loss
+  section: Other operating expenses
+  caption: Other operating expenses
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Other operating expenses
+  key: pl_face_other_opex
+  default_code: PL-OTHEXP
+  codes:
+  - PL-OTHEXP
+  status: New
+- statement: profit_and_loss
+  section: Impairment losses on financial assets
+  caption: Impairment losses on trade and other receivables
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Impairment losses on trade receivables
+  - Bad debts written off
+  - Allowance for doubtful debts
+  key: pl_face_impairment
+  default_code: PL-ECL
+  codes:
+  - PL-ECL
+  status: New
+- statement: profit_and_loss
+  section: Impairment losses on financial assets
+  caption: Bad debts and expected credit losses
+  level: Detail line
+  rolls_into: Impairment losses on trade and other receivables
+  nature_group: Other operating expenses
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - bad debt
+  - doubtful debt
+  - expected credit loss
+  - impairment loss on trade
+  - impairment of receivable
+  - allowance for doubtful
+  prior_captions: []
+  key: impairment_receivables
+  default_code: PL-ECL
+  codes:
+  - PL-ECL
+  status: New
+- statement: profit_and_loss
+  section: Finance costs
+  caption: Finance costs
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Finance cost
+  - Finance costs
+  - Interest expense
+  key: pl_face_finance_costs
+  default_code: PL-FIN
+  codes:
+  - PL-FIN
+  status: New
+- statement: profit_and_loss
+  section: Finance costs
+  caption: Interest expenses
+  level: Detail line
+  rolls_into: Finance costs
+  nature_group: Finance costs
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - interest expense
+  - loan interest
+  - interest on loan
+  - finance cost
+  - hire purchase interest
+  - lease interest
+  prior_captions: []
+  key: interest_expense
+  default_code: PL-FIN
+  codes:
+  - PL-FIN
+  status: Changed
+- statement: profit_and_loss
+  section: Share of results of associates
+  caption: Share of results of associates and joint ventures
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: pl_income
+  keywords:
+  - share of profit of associate
+  - share of results of associate
+  - share of loss of associate
+  - share of results of joint venture
+  prior_captions:
+  - Share of results of associates
+  - Share of profit of associates
+  key: share_of_associates
+  default_code: PL-ASSOC
+  codes:
+  - PL-ASSOC
+  status: New
+- statement: profit_and_loss
+  section: Result for the year
+  caption: Profit before tax
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Profit before tax
+  - Profit before income tax
+  - Profit/(Loss) before taxation
+  key: profit_before_tax
+  default_code: PL-PBT
+  codes:
+  - PL-PBT
+  status: Unchanged
+- statement: profit_and_loss
+  section: Result for the year
+  caption: Income tax expense
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: pl_expense
+  keywords:
+  - income tax expense
+  - tax expense
+  - income tax
+  - provision for tax
+  - income tax payment
+  prior_captions:
+  - Income tax expense
+  - Income tax expenses
+  - Income tax (expense)/credit
+  - Income tax (expense) benefit
+  key: tax_expense
+  default_code: PL-TAX
+  codes:
+  - PL-TAX
+  status: Changed
+- statement: profit_and_loss
+  section: Result for the year
+  caption: Profit for the year, net of tax
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Profit for the year
+  - Profit for the financial year
+  - Profit/(Loss) for the financial year
+  key: profit_for_year
+  default_code: PL-PAT
+  codes:
+  - PL-PAT
+  status: Changed
+- statement: profit_and_loss
+  section: Result for the year
+  caption: Other comprehensive income for the year
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_equity
+  keywords:
+  - other comprehensive
+  - revaluation surplus
+  - fair value through oci
+  prior_captions:
+  - Other comprehensive income for the year, net of tax
+  key: other_comprehensive_income
+  default_code: PL-OCI
+  codes:
+  - PL-OCI
+  status: Unchanged
+- statement: profit_and_loss
+  section: Result for the year
+  caption: Total comprehensive income for the year
+  level: Total
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total comprehensive income
+  - Total comprehensive profit
+  - Profit for the year, representing total comprehensive income
+  key: total_comprehensive_income
+  default_code: PL-TCI
+  codes:
+  - PL-TCI
+  status: Changed
+- statement: profit_and_loss
+  section: 'Alternative face: by nature'
+  caption: Raw materials and consumables used and changes in inventories
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Raw materials and consumables used and changes in inventories
+  key: pl_nature_materials
+  default_code: PL-NAT-MAT
+  codes:
+  - PL-NAT-MAT
+  status: New
+- statement: profit_and_loss
+  section: 'Alternative face: by nature'
+  caption: Subcontractor and project costs
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Subcontractor costs
+  - Cost of services
+  key: pl_nature_project_costs
+  default_code: PL-NAT-PROJ
+  codes:
+  - PL-NAT-PROJ
+  status: New
+- statement: profit_and_loss
+  section: 'Alternative face: by nature'
+  caption: Employee benefit costs
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Employee benefit costs
+  - Employee benefits expense
+  - Staff costs
+  key: pl_nature_employee_benefits
+  default_code: PL-NAT-EMP
+  codes:
+  - PL-NAT-EMP
+  status: New
+- statement: profit_and_loss
+  section: 'Alternative face: by nature'
+  caption: Depreciation expenses
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Depreciation expenses
+  - Depreciation
+  key: pl_nature_depreciation
+  default_code: PL-NAT-DEP
+  codes:
+  - PL-NAT-DEP
+  status: New
+- statement: profit_and_loss
+  section: 'Alternative face: by nature'
+  caption: Other operating expenses
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Other operating expenses
+  key: pl_nature_other_opex
+  default_code: PL-NAT-OTH
+  codes:
+  - PL-NAT-OTH
+  status: New
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Plant and equipment
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Plant and equipment
+  - Property, plant and equipment
+  - Fixed assets
+  key: ppe_net
+  default_code: BS-PPE
+  codes:
+  - BS-PPE
+  status: New
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Fixed assets (cost)
+  level: Detail line
+  rolls_into: Plant and equipment
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - fixed asset
+  - plant
+  - equipment
+  - machinery
+  - motor vehicle
+  - vehicle
+  - computer
+  - laptop
+  - furniture
+  - fitting
+  - renovation
+  - leasehold improvement
+  - office equipment
+  - property
+  - plant and equipment
+  prior_captions: []
+  key: ppe
+  default_code: BS-PPE
+  codes:
+  - BS-PPE
+  status: Changed
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Accumulated depreciation
+  level: Detail line
+  rolls_into: Plant and equipment
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - accumulated depreciation
+  - accumulated amortisation
+  - accum dep
+  - acc dep
+  - provision for depreciation
+  prior_captions: []
+  key: accumulated_depreciation
+  default_code: BS-PPE
+  codes:
+  - BS-PPE
+  status: Changed
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Right-of-use assets
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - right-of-use
+  - right of use
+  - rou asset
+  prior_captions:
+  - Right-of-use assets
+  key: right_of_use_assets
+  default_code: BS-ROU
+  codes:
+  - BS-ROU
+  status: Unchanged
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Investment property
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - investment property
+  prior_captions:
+  - Investment property
+  key: investment_property
+  default_code: BS-INVPROP
+  codes:
+  - BS-INVPROP
+  status: Unchanged
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Intangible assets
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - intangible
+  - goodwill
+  - trademark
+  - licence
+  prior_captions:
+  - Intangible assets
+  key: intangible_assets
+  default_code: BS-INTAN
+  codes:
+  - BS-INTAN
+  status: Unchanged
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Investment in subsidiaries
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - investment in subsidiar
+  - shares in subsidiar
+  - investment
+  prior_captions:
+  - Investment in subsidiaries
+  - Investments
+  key: investments
+  default_code: BS-SUBS
+  codes:
+  - BS-SUBS
+  status: Changed
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Investments in associates and joint ventures
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - investment in associate
+  - investment in joint venture
+  - shares in associate
+  prior_captions:
+  - Investment in associates
+  - Investments in associates and joint ventures
+  key: investments_associates
+  default_code: BS-ASSOC
+  codes:
+  - BS-ASSOC
+  status: New
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Other financial assets
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB); preparer enters the split
+  account_class: bs_asset
+  keywords:
+  - quoted share
+  - quoted investment
+  - unquoted share
+  - marketable securit
+  - unit trust
+  - bond
+  - equity securit
+  - financial asset
+  prior_captions:
+  - Other financial assets
+  - Financial assets at fair value through profit or loss
+  - Other investments
+  key: other_financial_assets
+  default_code: BS-FINASSET
+  codes:
+  - BS-FINASSET
+  status: New
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Other receivables (non-current)
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Preparer enters the portion due after 12 months
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Other receivables (non-current)
+  - 'Non-current asset: Other receivables'
+  key: other_receivables_noncurrent
+  default_code: BS-OR-NC
+  codes:
+  - BS-OR-NC
+  status: New
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Deferred tax assets
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - deferred tax asset
+  prior_captions:
+  - Deferred tax assets
+  key: deferred_tax_assets
+  default_code: BS-DTA
+  codes:
+  - BS-DTA
+  status: New
+- statement: balance_sheet
+  section: Non-current assets
+  caption: Total non-current assets
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total non-current assets
+  key: total_non_current_assets
+  default_code: BS-NCA
+  codes:
+  - BS-NCA
+  status: Unchanged
+- statement: balance_sheet
+  section: Current assets
+  caption: Inventories
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - inventor
+  - stock in trade
+  - stock
+  prior_captions:
+  - Inventories
+  key: inventories
+  default_code: BS-INV
+  codes:
+  - BS-INV
+  - BS-INVALLOW
+  status: Unchanged
+- statement: balance_sheet
+  section: Current assets
+  caption: Contract assets
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - contract asset
+  - unbilled
+  prior_captions:
+  - Contract assets
+  key: contract_assets
+  default_code: BS-CONTASSET
+  codes:
+  - BS-CONTASSET
+  - BS-CONTCOST
+  status: Unchanged
+- statement: balance_sheet
+  section: Current assets
+  caption: Trade and other receivables
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Trade and other receivables
+  - Trade receivables
+  - Other receivables
+  - Trade and other receivables and prepayments
+  key: trade_and_other_receivables
+  default_code: BS-TOR
+  codes:
+  - BS-TOR
+  status: New
+- statement: balance_sheet
+  section: Current assets
+  caption: Trade receivables
+  level: Detail line
+  rolls_into: Trade and other receivables
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - accounts receivable
+  - trade receivable
+  - trade debtor
+  - debtor
+  - allowance for doubtful
+  - allowance for impairment
+  - allowance for expected credit
+  - provision for doubtful
+  prior_captions: []
+  key: trade_receivables
+  default_code: BS-TR
+  codes:
+  - BS-TR
+  - BS-LOSSALLOW
+  - BS-RPR
+  status: Changed
+- statement: balance_sheet
+  section: Current assets
+  caption: Deposits & other receivables
+  level: Detail line
+  rolls_into: Trade and other receivables
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - deposit
+  - rental deposit
+  - utility deposit
+  - prepayment
+  - prepaid
+  - other receivable
+  - loan to
+  - loan given to
+  - staff loan
+  - employee loan
+  - due from
+  - amount due from
+  - advance to
+  prior_captions: []
+  key: prepayments
+  default_code: BS-DEP
+  codes:
+  - BS-DEP
+  - BS-STAFFLN
+  - BS-PREPAY
+  - BS-RPR
+  - BS-LEASEREC
+  - BS-OR
+  status: Changed
+- statement: balance_sheet
+  section: Current assets
+  caption: Assets held for sale
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - assets held for sale
+  prior_captions:
+  - Assets held for sale
+  key: assets_held_for_sale
+  default_code: BS-HFS
+  codes:
+  - BS-HFS
+  status: Unchanged
+- statement: balance_sheet
+  section: Current assets
+  caption: Income tax recoverable
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - tax recoverable
+  - income tax receivable
+  - tax refund
+  - tax receivable
+  prior_captions:
+  - Income tax recoverable
+  - Tax recoverable
+  - Current tax assets
+  key: tax_recoverable
+  default_code: BS-TAXREC
+  codes:
+  - BS-TAXREC
+  status: New
+- statement: balance_sheet
+  section: Current assets
+  caption: Cash and cash equivalents
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_asset
+  keywords:
+  - bank
+  - cash
+  - cash at bank
+  - cash in hand
+  - petty cash
+  - fixed deposit
+  - business account
+  - uob
+  - dbs
+  - ocbc
+  - posb
+  - maybank
+  - hsbc
+  - citibank
+  - standard chartered
+  prior_captions:
+  - Cash and cash equivalents
+  - Cash and bank balances
+  - Cash at bank
+  key: cash_and_equivalents
+  default_code: BS-CASH
+  codes:
+  - BS-CASH
+  - BS-FD
+  - BS-CASHREST
+  status: Unchanged
+- statement: balance_sheet
+  section: Current assets
+  caption: Total current assets
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total current assets
+  key: total_current_assets
+  default_code: BS-CA
+  codes:
+  - BS-CA
+  status: Unchanged
+- statement: balance_sheet
+  section: Total assets
+  caption: Total assets
+  level: Total
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total assets
+  key: total_assets
+  default_code: BS-TA
+  codes:
+  - BS-TA
+  status: Unchanged
+- statement: balance_sheet
+  section: Equity
+  caption: Share capital
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_equity
+  keywords:
+  - share capital
+  - ordinary shares
+  - paid-up capital
+  prior_captions:
+  - Share capital
+  key: share_capital
+  default_code: BS-SC
+  codes:
+  - BS-SC
+  status: Unchanged
+- statement: balance_sheet
+  section: Equity
+  caption: Share application money
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_equity
+  keywords:
+  - share application
+  prior_captions:
+  - Share application money
+  key: share_application_money
+  default_code: BS-SAM
+  codes:
+  - BS-SAM
+  status: New
+- statement: balance_sheet
+  section: Equity
+  caption: Other reserves
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_equity
+  keywords:
+  - reserve
+  - amalgamation reserve
+  - capital reserve
+  - revaluation reserve
+  - fair value reserve
+  prior_captions:
+  - Other reserves
+  - Amalgamation reserve
+  - Capital reserve
+  key: other_reserves
+  default_code: BS-RES
+  codes:
+  - BS-RES
+  status: New
+- statement: balance_sheet
+  section: Equity
+  caption: Working Capital
+  level: Detail line
+  rolls_into: Other reserves
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_equity
+  keywords:
+  - working capital
+  prior_captions: []
+  key: working_capital
+  default_code: BS-RES
+  codes:
+  - BS-RES
+  status: Changed
+- statement: balance_sheet
+  section: Equity
+  caption: Retained earnings
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from your accounts (TB)
+  account_class: bs_equity
+  keywords:
+  - retained earnings
+  - accumulated profit
+  - accumulated loss
+  - current year earnings
+  - dividend
+  prior_captions:
+  - Retained earnings
+  - Retained earning
+  - Retained profits
+  - Accumulated profit
+  - Accumulated profits
+  - Accumulated losses
+  - (Accumulated losses)/Retained profits
+  key: retained_earnings
+  default_code: BS-RE
+  codes:
+  - BS-RE
+  status: Changed
+- statement: balance_sheet
+  section: Equity
+  caption: Total equity
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total equity
+  - Total capital and reserves
+  - Capital and reserves
+  key: total_equity
+  default_code: BS-TE
+  codes:
+  - BS-TE
+  status: Changed
+- statement: balance_sheet
+  section: Non-current liabilities
+  caption: Borrowings
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB); preparer enters the split
+  account_class: bs_liability
+  keywords:
+  - bank loan
+  - term loan
+  - loan from bank
+  - loan from a bank
+  - hire purchase
+  - temporary bridging loan
+  prior_captions:
+  - Borrowings
+  - Bank loan
+  - Loan from a bank
+  - Long-term borrowings
+  key: long_term_borrowings
+  default_code: BS-BORR-NC
+  codes:
+  - BS-BORR-NC
+  status: Changed
+- statement: balance_sheet
+  section: Non-current liabilities
+  caption: Lease liabilities
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB); preparer enters the split
+  account_class: bs_liability
+  keywords:
+  - lease liabilit
+  prior_captions:
+  - Lease liabilities
+  key: lease_liabilities
+  default_code: BS-LEASE-NC
+  codes:
+  - BS-LEASE-NC
+  status: Changed
+- statement: balance_sheet
+  section: Non-current liabilities
+  caption: Provisions
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB); preparer enters the split
+  account_class: bs_liability
+  keywords:
+  - provision for reinstatement
+  - provision for restructuring
+  - provision for warranty
+  - provision
+  prior_captions:
+  - Provisions
+  - Provision for reinstatement cost
+  key: provisions
+  default_code: BS-PROV-NC
+  codes:
+  - BS-PROV-NC
+  status: Changed
+- statement: balance_sheet
+  section: Non-current liabilities
+  caption: Deferred tax liabilities
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_liability
+  keywords:
+  - deferred tax
+  - deferred tax liabilit
+  prior_captions:
+  - Deferred tax liabilities
+  key: deferred_tax
+  default_code: BS-DTL
+  codes:
+  - BS-DTL
+  status: Changed
+- statement: balance_sheet
+  section: Non-current liabilities
+  caption: Total non-current liabilities
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total non-current liabilities
+  key: total_non_current_liabilities
+  default_code: BS-NCL
+  codes:
+  - BS-NCL
+  status: Unchanged
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Trade and other payables
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Trade and other payables
+  - Other payables
+  - Trade payables
+  - Other payables and accruals
+  key: trade_and_other_payables
+  default_code: BS-TOP
+  codes:
+  - BS-TOP
+  status: New
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Trade payables
+  level: Detail line
+  rolls_into: Trade and other payables
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_liability
+  keywords:
+  - accounts payable
+  - trade payable
+  - trade creditor
+  - creditor
+  prior_captions: []
+  key: trade_payables
+  default_code: BS-TP
+  codes:
+  - BS-TP
+  - BS-TP-RP
+  status: New
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Other payables
+  level: Detail line
+  rolls_into: Trade and other payables
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_liability
+  keywords:
+  - other payable
+  - sundry creditor
+  - gst
+  - gst payable
+  - gst control
+  - loan from director
+  - amount due to director
+  - due to director
+  - director current account
+  - due to shareholder
+  - due to related
+  prior_captions: []
+  key: other_payables
+  default_code: BS-OP
+  codes:
+  - BS-OP
+  - BS-RPP
+  - BS-GST
+  status: Changed
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Accruals
+  level: Detail line
+  rolls_into: Trade and other payables
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_liability
+  keywords:
+  - accrual
+  - accrued
+  - wages payable
+  - salaries payable
+  - salaries and wages payable
+  - cpf payable
+  - sdl payable
+  - cpf
+  - sdl
+  prior_captions: []
+  key: accruals
+  default_code: BS-ACCR
+  codes:
+  - BS-ACCR
+  status: Changed
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Contract liabilities
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_liability
+  keywords:
+  - contract liabilit
+  - deferred revenue
+  - unearned revenue
+  - advance from customer
+  prior_captions:
+  - Contract liabilities
+  key: contract_liabilities
+  default_code: BS-CONTLIAB
+  codes:
+  - BS-CONTLIAB
+  status: Unchanged
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Borrowings
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB); preparer enters the split
+  account_class: bs_liability
+  keywords:
+  - bank overdraft
+  - overdraft
+  - trust receipt
+  - revolving credit
+  prior_captions:
+  - Borrowings
+  - Bank overdraft
+  - Current portion of bank loan
+  key: short_term_borrowings
+  default_code: BS-BORR-C
+  codes:
+  - BS-BORR-C
+  status: Changed
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Lease liabilities
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB); preparer enters the split
+  account_class: bs_liability
+  keywords: []
+  prior_captions:
+  - Lease liabilities
+  key: lease_liabilities_current
+  default_code: BS-LEASE-C
+  codes:
+  - BS-LEASE-C
+  status: New
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Provisions
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB); preparer enters the split
+  account_class: bs_liability
+  keywords: []
+  prior_captions:
+  - Provisions
+  key: provisions_current
+  default_code: BS-PROV-C
+  codes:
+  - BS-PROV-C
+  status: New
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Income tax payable
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: bs_liability
+  keywords:
+  - income tax payable
+  - provision for income tax
+  - provision for tax
+  - tax payable
+  prior_captions:
+  - Income tax payable
+  - Provision for taxation
+  - Income tax liabilities
+  key: tax_payable
+  default_code: BS-TAXPAY
+  codes:
+  - BS-TAXPAY
+  status: Changed
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Total current liabilities
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total current liabilities
+  key: total_current_liabilities
+  default_code: BS-CL
+  codes:
+  - BS-CL
+  status: Unchanged
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Net current assets
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Net current assets
+  key: net_current_assets
+  default_code: BS-NETCA
+  codes:
+  - BS-NETCA
+  status: New
+- statement: balance_sheet
+  section: Current liabilities
+  caption: Total liabilities
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total liabilities
+  key: total_liabilities
+  default_code: BS-TL
+  codes:
+  - BS-TL
+  status: New
+- statement: balance_sheet
+  section: Total equity and liabilities
+  caption: Total equity and liabilities
+  level: Total
+  rolls_into: null
+  nature_group: null
+  source: Grouped from the lines under it
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total equity and liabilities
+  - Total liabilities and equity
+  key: total_equity_and_liabilities
+  default_code: BS-TEL
+  codes:
+  - BS-TEL
+  status: Unchanged
+- statement: changes_in_equity
+  section: Opening position
+  caption: Balance at {PRIOR_PERIOD_START}
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From prior-year signed FS
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Balance at [date]
+  - Balance as at [date]
+  - At [date]
+  - Balance at beginning of financial year
+  - Balance at beginning of financial period
+  key: soce_open_py
+  default_code: EQ-OPEN-PY
+  codes:
+  - EQ-OPEN-PY
+  status: New
+- statement: changes_in_equity
+  section: Opening position
+  caption: Effect of correction of a prior period error or change in accounting policy
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (MEMO)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Effect of prior year adjustment
+  - Prior year adjustment
+  - Effect of adoption of
+  key: soce_restatement
+  default_code: EQ-RESTATE
+  codes:
+  - EQ-RESTATE
+  status: New
+- statement: changes_in_equity
+  section: Opening position
+  caption: Balance at {PRIOR_PERIOD_START}, as restated
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (MEMO)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Balance at [date], as restated
+  - As restated
+  key: soce_open_restated
+  default_code: EQ-OPEN-RS
+  codes:
+  - EQ-OPEN-RS
+  status: New
+- statement: changes_in_equity
+  section: Opening position
+  caption: Balance at {PRIOR_PERIOD_END}
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From prior-year signed FS
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Balance at [date]
+  - Balance as at [date]
+  - At [date]
+  - Balance at end of financial year
+  - Balance at beginning of financial year
+  - Balance at end of financial period
+  key: soce_open_[column]
+  default_code: EQ-OPEN
+  codes:
+  - EQ-OPEN
+  status: Changed
+- statement: changes_in_equity
+  section: Movement during the year
+  caption: Total comprehensive income for the year
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Taken from the P&L as printed (DOC:PL-TCI)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total comprehensive income for the year
+  - Total comprehensive income for the period
+  - Total comprehensive profit
+  - Total comprehensive profit for the year
+  - Total comprehensive loss for the year
+  - Profit for the year, representing total comprehensive income for the year
+  - Profit for the year
+  key: soce_income_accum
+  default_code: EQ-TCI
+  codes:
+  - EQ-TCI
+  status: Unchanged
+- statement: changes_in_equity
+  section: Movement during the year
+  caption: Other comprehensive income for the year
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Taken from the P&L as printed (DOC:PL-OCI)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: soce_oci_[column]
+  default_code: EQ-OCI
+  codes:
+  - EQ-OCI
+  status: New
+- statement: changes_in_equity
+  section: Movement during the year
+  caption: Shares issued during the year
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your ledger (GL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Shares issued during the year
+  - Issuance of share capital
+  - Issue of shares
+  - Issue of ordinary shares
+  key: soce_issue_share
+  default_code: EQ-ISSUE
+  codes:
+  - EQ-ISSUE
+  status: Changed
+- statement: changes_in_equity
+  section: Movement during the year
+  caption: Share application money received or applied
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your ledger (GL)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: soce_sam_movement
+  default_code: EQ-SAM
+  codes:
+  - EQ-SAM
+  status: New
+- statement: changes_in_equity
+  section: Movement during the year
+  caption: Dividends paid
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your ledger (GL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Dividend paid
+  - Dividends
+  key: soce_dividends
+  default_code: EQ-DIV
+  codes:
+  - EQ-DIV
+  status: New
+- statement: changes_in_equity
+  section: Movement during the year
+  caption: Other movements in reserves
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your ledger (GL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Net effect from amalgamation
+  - Transfer to reserve
+  key: soce_other_movements
+  default_code: EQ-OTHER
+  codes:
+  - EQ-OTHER
+  status: New
+- statement: changes_in_equity
+  section: Closing position
+  caption: Balance at {PERIOD_END}
+  level: Total
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Balance at [date]
+  - Balance as at [date]
+  - At [date]
+  - Balance at end of financial year
+  - Balance at end of financial period
+  - Balance at the end of the year
+  key: soce_close_[column]
+  default_code: EQ-CLOSE
+  codes:
+  - EQ-CLOSE
+  status: Changed
+- statement: cash_flow
+  section: Operating activities
+  caption: Profit before tax
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Profit before tax
+  - Profit before taxation
+  key: cf_profit_before_tax
+  default_code: CF-PBT
+  codes:
+  - CF-PBT
+  status: Changed
+- statement: cash_flow
+  section: Operating activities
+  caption: Depreciation of plant and equipment
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Depreciation
+  - Depreciation of plant and equipment
+  - Depreciation of property, plant and equipment
+  key: cf_depreciation
+  default_code: CF-DEP
+  codes:
+  - CF-DEP
+  status: Changed
+- statement: cash_flow
+  section: Operating activities
+  caption: Depreciation of right-of-use assets
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Depreciation of right-of-use assets
+  key: cf_depreciation_rou
+  default_code: CF-DEPROU
+  codes:
+  - CF-DEPROU
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: Interest expense
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Interest expense
+  - Finance cost
+  key: cf_adj_interest_expense
+  default_code: CF-FIN
+  codes:
+  - CF-FIN
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: Interest income
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Interest income
+  key: cf_adj_interest_income
+  default_code: CF-INTINC
+  codes:
+  - CF-INTINC
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: (Gain)/loss on disposal of plant and equipment
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: cf_adj_disposal
+  default_code: CF-GAINDISP
+  codes:
+  - CF-GAINDISP
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: Unrealised exchange (gain)/loss
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Unrealised exchange loss/(gain)
+  key: cf_adj_fx
+  default_code: CF-FXADJ
+  codes:
+  - CF-FXADJ
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: Operating cash flows before working capital changes
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Operating profit before working capital changes
+  - Operating cash flows before working capital changes
+  key: cf_before_wc
+  default_code: CF-OPBWC
+  codes:
+  - CF-OPBWC
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: Inventories
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - (Increase)/decrease in inventories
+  key: cf_inventories
+  default_code: CF-WC-INV
+  codes:
+  - CF-WC-INV
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: Trade and other receivables
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Trade and other receivables
+  - Accounts receivable
+  - Adjustments for decrease (increase) in trade and other receivables
+  key: cf_receivables
+  default_code: CF-WC-REC
+  codes:
+  - CF-WC-REC
+  status: Changed
+- statement: cash_flow
+  section: Operating activities
+  caption: Contract assets and liabilities
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: cf_contract_balances
+  default_code: CF-WC-CONT
+  codes:
+  - CF-WC-CONT
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: Trade and other payables
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Other payables
+  - Trade and other payables
+  - Adjustments for (decrease) increase in trade and other payables
+  key: cf_payables
+  default_code: CF-WC-PAY
+  codes:
+  - CF-WC-PAY
+  status: Changed
+- statement: cash_flow
+  section: Operating activities
+  caption: Total changes in working capital
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Total changes in working capital
+  key: cf_wc_total
+  default_code: CF-WC
+  codes:
+  - CF-WC
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: Cash generated from/(used in) operations
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Cash generated from operations
+  - Cash flows from operations
+  key: cf_operations
+  default_code: CF-CASHOPS
+  codes:
+  - CF-CASHOPS
+  status: Unchanged
+- statement: cash_flow
+  section: Operating activities
+  caption: Interest received
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Interest received
+  key: cf_interest_received
+  default_code: CF-INTREC
+  codes:
+  - CF-INTREC
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: Interest paid
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Interest paid
+  key: cf_interest_paid
+  default_code: CF-INTPAID
+  codes:
+  - CF-INTPAID
+  status: New
+- statement: cash_flow
+  section: Operating activities
+  caption: Income tax paid
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Income tax paid
+  - Income taxes paid
+  - Tax paid
+  - Income tax payment
+  key: cf_tax_paid
+  default_code: CF-TAXPAID
+  codes:
+  - CF-TAXPAID
+  status: Changed
+- statement: cash_flow
+  section: Operating activities
+  caption: Net cash from/(used in) operating activities
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Net cash flows from (used in) operating activities
+  key: cf_operating_total
+  default_code: CF-OP
+  codes:
+  - CF-OP
+  status: Unchanged
+- statement: cash_flow
+  section: Investing activities
+  caption: Purchase of plant and equipment
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Purchase of plant and equipment
+  - Purchase of property, plant and equipment
+  key: cf_purchase_ppe
+  default_code: CF-PPE
+  codes:
+  - CF-PPE
+  status: Changed
+- statement: cash_flow
+  section: Investing activities
+  caption: Proceeds from disposal of plant and equipment
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: cf_disposal_proceeds
+  default_code: CF-PPEDISP
+  codes:
+  - CF-PPEDISP
+  status: New
+- statement: cash_flow
+  section: Investing activities
+  caption: Investments acquired
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Investment in subsidiaries
+  key: cf_investments
+  default_code: CF-INVEST
+  codes:
+  - CF-INVEST
+  status: New
+- statement: cash_flow
+  section: Investing activities
+  caption: Loans to related parties and third parties
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Loan to a related company
+  - Repayment of loan to a related company
+  key: cf_loans_given
+  default_code: CF-LOANS
+  codes:
+  - CF-LOANS
+  status: New
+- statement: cash_flow
+  section: Investing activities
+  caption: Other investing activities
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: cf_investing_other
+  default_code: CF-INVOTH
+  codes:
+  - CF-INVOTH
+  status: Changed
+- statement: cash_flow
+  section: Investing activities
+  caption: Net cash from/(used in) investing activities
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Net cash flows from (used in) investing activities
+  key: cf_investing_total
+  default_code: CF-INV
+  codes:
+  - CF-INV
+  status: Unchanged
+- statement: cash_flow
+  section: Financing activities
+  caption: Proceeds from issue of shares
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Issuance of share capital
+  - Issue of shares
+  key: cf_share_capital
+  default_code: CF-SHARES
+  codes:
+  - CF-SHARES
+  status: Changed
+- statement: cash_flow
+  section: Financing activities
+  caption: Proceeds from borrowings
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Proceeds from long-term loans
+  - Proceeds from borrowings
+  key: cf_borrowings_proceeds
+  default_code: CF-BORR-PROC
+  codes:
+  - CF-BORR-PROC
+  status: New
+- statement: cash_flow
+  section: Financing activities
+  caption: Repayment of borrowings
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Repayment of long-term loans
+  - Repayment of borrowings
+  key: cf_borrowings_repay
+  default_code: CF-BORR-REPAY
+  codes:
+  - CF-BORR-REPAY
+  status: New
+- statement: cash_flow
+  section: Financing activities
+  caption: Payment of lease liabilities
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Payment of lease liabilities
+  key: cf_lease_payments
+  default_code: CF-LEASE
+  codes:
+  - CF-LEASE
+  status: New
+- statement: cash_flow
+  section: Financing activities
+  caption: Amount due to/from directors
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Amount owing to directors
+  - Amount due to a director
+  key: cf_directors
+  default_code: CF-DIR
+  codes:
+  - CF-DIR
+  status: New
+- statement: cash_flow
+  section: Financing activities
+  caption: Amount due to/from shareholders and related parties
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Amount due from a shareholder
+  - Amount due to/from Shareholders
+  - Amount due to related party
+  key: cf_related_parties
+  default_code: CF-RP
+  codes:
+  - CF-RP
+  status: New
+- statement: cash_flow
+  section: Financing activities
+  caption: Dividends paid
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Dividend paid
+  - Dividends paid
+  key: cf_dividends
+  default_code: CF-DIVPAID
+  codes:
+  - CF-DIVPAID
+  status: Changed
+- statement: cash_flow
+  section: Financing activities
+  caption: Net cash from/(used in) financing activities
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Net cash flows from (used in) financing activities
+  key: cf_financing_total
+  default_code: CF-FINACT
+  codes:
+  - CF-FINACT
+  status: Unchanged
+- statement: cash_flow
+  section: Cash summary
+  caption: Net increase/(decrease) in cash and cash equivalents
+  level: Subtotal
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Net increase in cash and cash equivalents
+  - Net increase (decrease) in cash and bank balances
+  key: cf_net_change
+  default_code: CF-NET
+  codes:
+  - CF-NET
+  status: Unchanged
+- statement: cash_flow
+  section: Cash summary
+  caption: Effect of exchange rate changes on cash
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: Entered by the preparer (CF-MANUAL)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Effect of exchange rate changes on cash and cash equivalents
+  key: cf_fx_effect
+  default_code: CF-FXCASH
+  codes:
+  - CF-FXCASH
+  status: New
+- statement: cash_flow
+  section: Cash summary
+  caption: Cash and cash equivalents at beginning of year
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From prior-year signed FS
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Cash and cash equivalents at beginning of year
+  key: cf_opening_cash
+  default_code: CF-OPENCASH
+  codes:
+  - CF-OPENCASH
+  status: Changed
+- statement: cash_flow
+  section: Cash summary
+  caption: Cash and cash equivalents at end of year
+  level: Total
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: null
+  keywords: []
+  prior_captions:
+  - Cash and cash equivalents at end of year
+  - Cash and bank balances at end of year
+  key: cf_closing_cash
+  default_code: CF-CLOSECASH
+  codes:
+  - CF-CLOSECASH
+  status: Changed
+- statement: ageing
+  section: Accounts receivable
+  caption: Current (not yet due)
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ar_current
+  default_code: 'AGED:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts receivable
+  caption: 1 - 30 days overdue
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ar_1_30
+  default_code: 'AGED:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts receivable
+  caption: 31 - 60 days overdue
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ar_31_60
+  default_code: 'AGED:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts receivable
+  caption: 61 - 90 days overdue
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ar_61_90
+  default_code: 'AGED:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts receivable
+  caption: Over 90 days overdue
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ar_over_90
+  default_code: 'AGED:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts receivable
+  caption: 'Less: allowance for doubtful debts'
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From your accounts (TB)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ar_provision
+  default_code: 'AGED:'
+  codes: []
+  status: Changed
+- statement: ageing
+  section: Accounts receivable
+  caption: Total trade receivables
+  level: Total
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ar_total
+  default_code: 'AGED:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts payable
+  caption: Current (not yet due)
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ap_current
+  default_code: 'AGEDP:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts payable
+  caption: 1 - 30 days overdue
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ap_1_30
+  default_code: 'AGEDP:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts payable
+  caption: 31 - 60 days overdue
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ap_31_60
+  default_code: 'AGEDP:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts payable
+  caption: 61 - 90 days overdue
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ap_61_90
+  default_code: 'AGEDP:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts payable
+  caption: Over 90 days overdue
+  level: Face caption
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ap_over_90
+  default_code: 'AGEDP:'
+  codes: []
+  status: Unchanged
+- statement: ageing
+  section: Accounts payable
+  caption: Total trade payables
+  level: Total
+  rolls_into: null
+  nature_group: null
+  source: From the aged listing (Xero)
+  account_class: null
+  keywords: []
+  prior_captions: []
+  key: ap_total
+  default_code: 'AGEDP:'
+  codes: []
+  status: Changed
+never_auto:
+- contra
+- suspense
+- clearing
+- rounding
+- repayment of loan
+- opening balance
+- historical adjustment
+- unallocated

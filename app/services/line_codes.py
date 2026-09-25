@@ -47,7 +47,13 @@ def load_categories():
     if not path.exists():
         return {}
     with open(path, "r", encoding="utf-8") as handle:
-        return (yaml.safe_load(handle) or {}).get("lines") or {}
+        categories = (yaml.safe_load(handle) or {}).get("lines") or {}
+    try:
+        from . import standard_lines
+        standard_lines.overlay_categories(categories)
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not merge the standard statement lines' codes")
+    return categories
 
 
 def known_codes(financial_year=None):

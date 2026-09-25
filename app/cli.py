@@ -27,6 +27,8 @@ def register_cli(app):
     app.cli.add_command(seed_beta)
     app.cli.add_command(seed_note_library)
     app.cli.add_command(import_note_library)
+    app.cli.add_command(library_coverage_cmd)
+    app.cli.add_command(import_standard_lines)
     app.cli.add_command(note_library)
     app.cli.add_command(load_test_engagement)
     app.cli.add_command(assign_line_codes)
@@ -1217,6 +1219,9 @@ def import_note_library(path, do_apply, activate, force, version_label,
         for problem in report["integrity_warnings"]:
             click.echo(f"    ! {problem}")
 
+    from .services import library_coverage
+    library_coverage.render(library_coverage.for_data(data), click.echo)
+
     if report["supersedes"]:
         click.echo("")
         click.echo(f"  Covers the same year ends as active version(s) "
@@ -1278,6 +1283,107 @@ def import_note_library(path, do_apply, activate, force, version_label,
     else:
         click.echo("Status is draft, so no engagement will pin to it yet. "
                    "Re-run with --activate when you are ready.")
+
+
+@click.command("import-standard-lines")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--apply", "do_apply", is_flag=True,
+              help="Write config/standard_lines.yaml. Without this, only report.")
+@with_appcontext
+def import_standard_lines(path, do_apply):
+    """Read the client's Standard Statement Lines workbook.
+
+    Writes the lines, their account classes and keywords, and their library line
+    codes to config/standard_lines.yaml, which the account placing rules read.
+    Reports first and writes only when asked. Run again with the next version.
+    """
+    from pathlib import Path as _Path
+
+    from flask import current_app
+
+    from .services import standard_lines as sl
+    from .services.classify import _index
+
+    data = sl.build_from_workbook(path)
+    lines = data["lines"]
+    click.echo("")
+    click.echo(f"{data['version'] or 'Standard statement lines'}")
+    click.echo(f"  {len(lines)} lines read")
+    landing = [l for l in lines if l["keywords"]]
+    click.echo(f"  {len(landing)} lines take accounts (they carry keywords), "
+               f"{sum(len(l['keywords']) for l in landing)} keywords")
+    no_key = [l for l in lines if not l["key"]]
+    click.echo(f"  {len(no_key)} lines with no internal key in the Technical reference")
+    no_code = [l for l in landing if not l["default_code"]]
+    click.echo(f"  {len(no_code)} accepting lines with no default library code")
+
+    known = set(_index())
+    missing = [l for l in landing if l["key"] not in known]
+    if missing:
+        click.echo("")
+        click.echo(f"  {len(missing)} lines that take accounts are not yet lines of "
+                   f"the app's statements (they are reported, not dropped):")
+        for l in missing:
+            click.echo(f"    ! {l['statement']:<16} {l['key']:<34} {l['caption']}")
+
+    # two lines in one class with the same keyword can never be told apart
+    seen, clashes = {}, []
+    for l in landing:
+        for k in l["keywords"]:
+            other = seen.get((l["account_class"], k))
+            if other and other != l["key"]:
+                clashes.append((k, l["account_class"], other, l["key"]))
+            seen[(l["account_class"], k)] = l["key"]
+    if clashes:
+        click.echo("")
+        click.echo(f"  {len(clashes)} keyword(s) given to two lines of one class - an "
+                   f"account with that word goes to the accountant:")
+        for k, c, a, b in clashes[:25]:
+            click.echo(f"    ! '{k}' ({c}): {a} and {b}")
+
+    target = _Path(current_app.config["CONFIG_DIR"]) / "standard_lines.yaml"
+    if not do_apply:
+        click.echo("")
+        click.echo(f"Nothing written. Re-run with --apply to write {target}.")
+        return
+    sl.dump(data, target)
+    sl._load.cache_clear()
+    sl._compiled.cache_clear()
+    click.echo("")
+    click.echo(f"Wrote {target}.")
+
+
+@click.command("library-coverage")
+@click.argument("source")
+@click.option("--full", is_flag=True, help="Also list every sheet the engine reads.")
+@with_appcontext
+def library_coverage_cmd(source, full):
+    """What the app reads of a notes library, and what it would show as missing.
+
+    SOURCE is a workbook path (checked before import) or a version label already
+    in the database (for example 3.11). Read only.
+    """
+    from pathlib import Path as _Path
+
+    from .models import NoteLibraryVersion
+    from .services import library_coverage
+    from .services import note_library as lib
+
+    if _Path(source).exists():
+        try:
+            report, data = lib.plan(source, {"version_label": "check"})
+        except ValueError as exc:
+            raise click.ClickException(str(exc))
+        result = library_coverage.for_data(data)
+        click.echo(f"Workbook {source}")
+    else:
+        version = NoteLibraryVersion.query.filter_by(version_label=source).first()
+        if version is None:
+            raise click.ClickException(
+                f"No workbook at '{source}' and no library version with that label.")
+        result = library_coverage.for_version(version)
+        click.echo(f"Library {version.version_label} ({version.status}) in the database")
+    library_coverage.render(result, click.echo, full=full)
 
 
 @click.command("note-library")
