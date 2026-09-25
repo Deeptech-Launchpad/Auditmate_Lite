@@ -46,9 +46,22 @@ def gemini_usage():
         data, problem = None, ("The usage table is not there yet. Run "
                                "`flask init-db` on the server, then reload.")
 
-    # The last twelve months, newest first, for the month picker.
-    months, cursor = [], datetime.utcnow().replace(day=1)
-    for _ in range(12):
+    # The month picker lists this month and every month back to the first one
+    # that has a recorded call - nothing was counted before that, so an earlier
+    # month would only be an empty page. Newest first.
+    from sqlalchemy import func
+
+    from ..models import AiUsage
+
+    now = datetime.utcnow().replace(day=1)
+    try:
+        first = db.session.query(func.min(AiUsage.created_at)).scalar()
+    except Exception:                                      # noqa: BLE001
+        db.session.rollback()
+        first = None
+    earliest = first.replace(day=1) if first else now
+    months, cursor = [], now
+    while cursor >= earliest and len(months) < 36:
         months.append({"year": cursor.year, "month": cursor.month,
                        "label": cursor.strftime("%B %Y")})
         cursor = (cursor.replace(year=cursor.year - 1, month=12)
