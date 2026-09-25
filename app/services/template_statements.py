@@ -660,7 +660,7 @@ def equity_matrix(statement, financial_year, template_rows=None):
 
 # ------------------------------------------------- cash flow, in the template's layout
 
-def cash_flow_layout(financial_year, wording=None):
+def cash_flow_layout(financial_year, wording=None, entry=False):
     """The cash flow as the template lays it out, from the figures already
     computed for the standard cash flow, so no figure can differ from it.
 
@@ -685,7 +685,7 @@ def cash_flow_layout(financial_year, wording=None):
         from . import template_note_tables
         try:
             drawn = template_note_tables.cash_flow_from_template(
-                financial_year, template_rows)
+                financial_year, template_rows, entry=entry)
         except Exception:                                  # noqa: BLE001
             log.exception("Could not draw the cash flow from the accounts")
             drawn = None

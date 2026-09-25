@@ -23,6 +23,8 @@
     <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id) }}"
        class="btn supply">Questions
       {%- if waiting.questions %}<span class="supply-n">{{ waiting.questions }}</span>{% endif %}</a>
+    <a href="{{ url_for('reports.cash_flow_entry', fy_id=fy.id) }}"
+       class="btn supply">Cash flow</a>
     <a href="{{ url_for('documents.figures', fy_id=fy.id) }}"
        class="btn supply">Figures
       {%- if waiting.figures %}<span class="supply-n">{{ waiting.figures }}</span>{% endif %}</a>

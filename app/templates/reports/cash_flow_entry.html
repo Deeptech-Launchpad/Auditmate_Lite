@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Cash flow · {{ fy.year_label }} · Auditmate Lite{% endblock %}
+{% block breadcrumb %}
+  <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('customers.workspace', customer_id=customer.id, fy_id=fy.id) }}">{{ fy.year_label }}</a>
+  <span class="sep">/</span>
+  <a href="{{ url_for('reports.builder', fy_id=fy.id) }}">Financial Statements</a>
+  <span class="sep">/</span>
+  <span class="current">Cash flow</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Statement of cash flows</h1>
+    <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
+  </div>
+</div>
+
+{% if rows is none %}
+  <div class="card"><div class="card-body">
+    This engagement's cash flow is not drawn from a customer template, so there is nothing to enter
+    here; it is worked out from the trial balances.
+  </div></div>
+{% else %}
+  <div class="card" style="margin-bottom:16px"><div class="card-body">
+    <p style="margin:0 0 6px">
+      Enter each line from your working. There is no balancing line: the statement is held
+      incomplete until it is saved and closing cash agrees to the balance sheet
+      (<strong>{{ '{:,.2f}'.format(closing) }}</strong>). The grey figure beside a box is what the
+      two trial balances imply &mdash; a suggestion only. Money out is negative, or in brackets.
+      Totals fill in as you type; overtype one to state it as it is.
+    </p>
+    {% if entered and not reasons %}
+      <p class="muted" style="margin:0">Saved. Closing cash agrees to the balance sheet.</p>
+    {% endif %}
+    {% for reason in reasons %}<p style="color:#b42318;margin:6px 0 0">{{ reason }}</p>{% endfor %}
+  </div></div>
+
+  <form method="post" id="cfForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="card"><div class="card-body">
+      <table class="cf-entry" style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="text-align:left">Line</th>
+          <th style="text-align:right;width:130px">Suggested</th>
+          <th style="text-align:right;width:170px">This year</th>
+          <th style="text-align:right;width:130px">Last year</th>
+        </tr></thead>
+        <tbody>
+        {% for row in rows %}
+          {% if row.kind == 'head' %}
+            <tr><td colspan="4" style="padding:12px 0 4px;font-weight:700">{{ row.label }}</td></tr>
+          {% else %}
+            {% set cur = row.cells[0] %}
+            {% set have = entries.get(row.key) if entered else none %}
+            <tr data-section="{{ row.section or '' }}" data-kind="{{ row.kind }}" data-label="{{ row.label|lower }}">
+              <td style="padding:3px 0 3px {{ (row.indent or 0) * 18 }}px;{% if row.kind != 'item' %}font-weight:700{% endif %}">{{ row.label }}</td>
+              <td style="text-align:right;color:#8a8577">
+                {% if cur is not none %}{{ '{:,.2f}'.format(cur) if cur >= 0 else '(' ~ '{:,.2f}'.format(-cur) ~ ')' }}{% endif %}
+              </td>
+              <td style="text-align:right">
+                <input type="text" inputmode="decimal" name="cf_{{ row.key }}" class="cf-in"
+                       value="{% if have is not none %}{{ '{:.2f}'.format(have) }}{% elif cur is not none %}{{ '{:.2f}'.format(cur) }}{% endif %}"
+                       style="width:150px;text-align:right;{% if row.kind != 'item' %}font-weight:700{% endif %}">
+              </td>
+              <td style="text-align:right;color:#8a8577">
+                {% if row.cells[1] is not none %}{{ '{:,.2f}'.format(row.cells[1]) }}{% endif %}
+              </td>
+            </tr>
+          {% endif %}
+        {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+    <div style="margin:16px 0;display:flex;gap:10px">
+      <button class="btn btn-primary" type="submit">Save cash flow</button>
+      {% if entered %}
+        <button class="btn" type="submit" name="action" value="clear"
+                onclick="return confirm('Clear the entered cash flow and go back to the suggestions?')">Clear</button>
+      {% endif %}
+    </div>
+  </form>
+
+  <script>
+  (function () {
+    var rows = Array.from(document.querySelectorAll('#cfForm tbody tr[data-kind]'));
+    function num(v) { v = (v || '').replace(/[,\s]/g, ''); var neg = /^\(.*\)$/.test(v);
+      v = parseFloat(v.replace(/[()]/g, '')); return isNaN(v) ? 0 : (neg ? -v : v); }
+    function input(r) { return r.querySelector('.cf-in'); }
+    function total(section) {
+      return rows.filter(function (r) { return r.dataset.kind === 'item' && r.dataset.section === section; })
+                 .reduce(function (s, r) { return s + num(input(r).value); }, 0);
+    }
+    function put(r, v) { input(r).value = (Math.round(v * 100) / 100).toFixed(2); }
+    function recalc() {
+      var t = {operating: total('operating'), investing: total('investing'), financing: total('financing')};
+      var net = t.operating + t.investing + t.financing, open = 0;
+      rows.forEach(function (r) {
+        if (r.dataset.kind === 'item' && /^cash and cash equivalents at beginning/.test(r.dataset.label)) open = num(input(r).value);
+      });
+      rows.forEach(function (r) {
+        var l = r.dataset.label, k = r.dataset.kind;
+        if (k === 'sub' && /operating/.test(l)) put(r, t.operating);
+        else if (k === 'sub' && /investing/.test(l)) put(r, t.investing);
+        else if (k === 'sub' && /financing/.test(l)) put(r, t.financing);
+        else if (k === 'sub' && /^net (cash flows|increase|decrease|change)/.test(l)) put(r, net);
+        else if (k === 'item' && /^net change in cash/.test(l)) put(r, net);
+        else if (k === 'total') put(r, open + net);
+      });
+    }
+    document.getElementById('cfForm').addEventListener('input', function (e) {
+      var r = e.target.closest('tr'); if (r && r.dataset.kind === 'item') recalc();
+    });
+  })();
+  </script>
+{% endif %}
+{% endblock %}

@@ -396,15 +396,20 @@ def _footer_has_page_field(section):
                for node in section.footer._element.iter(qn("w:instrText")))
 
 
+def _bm(name):
+    """A Word bookmark name: letters, digits and underscores only."""
+    return re.sub(r"\W", "_", name)
+
+
 def _bookmark(paragraph, name, number):
     """Mark this paragraph so a page reference can point at it."""
-    start = _element("w:bookmarkStart", id=str(number), name=name)
+    start = _element("w:bookmarkStart", id=str(number), name=_bm(name))
     end = _element("w:bookmarkEnd", id=str(number))
     paragraph._p.insert(0, start)
     paragraph._p.append(end)
 
 
-def _page_ref(paragraph, bookmark):
+def _page_ref(paragraph, bookmark, shown="1"):
     """PAGEREF: the page a bookmark lands on, as a field Word keeps right.
 
     The contents page gets its numbers from WeasyPrint's target-counter,
@@ -416,10 +421,10 @@ def _page_ref(paragraph, bookmark):
     begin = _element("w:fldChar", fldCharType="begin")
     instr = OxmlElement("w:instrText")
     instr.set(qn("xml:space"), "preserve")
-    instr.text = " PAGEREF %s \\h " % bookmark
+    instr.text = " PAGEREF %s \\h " % _bm(bookmark)
     separate = _element("w:fldChar", fldCharType="separate")
     placeholder = OxmlElement("w:t")
-    placeholder.text = "1"
+    placeholder.text = str(shown or "1")
     end = _element("w:fldChar", fldCharType="end")
     run = paragraph.add_run()
     for node in (begin, instr, separate, placeholder, end):
@@ -620,7 +625,7 @@ def _column_widths(columns, usable_mm, matrix=False):
 
 
 def build(html: str, title: str = None, draft: bool = False, template_path: str = None,
-          page_header: tuple = None) -> bytes:
+          page_header: tuple = None, toc_pages: dict = None) -> bytes:
     """The report's HTML as a .docx file, returned as bytes.
 
     `draft` stamps DRAFT - INCOMPLETE in the header of every page: accounts
@@ -835,7 +840,8 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
                             for position_ref, target in enumerate(refs):
                                 if position_ref:
                                     paragraph.add_run(" – ")
-                                _page_ref(paragraph, target)
+                                _page_ref(paragraph, target,
+                                          (toc_pages or {}).get(target))
                         else:
                             run = paragraph.add_run(text)
                             run.bold = (is_header or kind_of_row in ("total", "subtotal")
@@ -904,6 +910,10 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
             paragraph = document.add_paragraph()
             _apply_format(paragraph)
             _write_runs(paragraph, payload)
+            if pending_bookmark:
+                bookmark_number += 1
+                _bookmark(paragraph, pending_bookmark, bookmark_number)
+                pending_bookmark = None
 
     _update_fields_on_open(document)
 

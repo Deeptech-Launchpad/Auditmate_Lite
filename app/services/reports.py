@@ -2348,6 +2348,20 @@ def statement_blockers(financial_year):
     if statement is None:
         return blockers
 
+    # A cash flow drawn from the customer's template is the preparer's entry
+    # (standard lines v8). It is held until entered and agreed to the balance
+    # sheet, and never carries an engine plug.
+    from . import cash_flow_entry
+    try:
+        reasons = cash_flow_entry.check(financial_year)
+    except Exception:                                   # noqa: BLE001
+        log.exception("Could not check the entered cash flow")
+        reasons = None
+    if reasons is not None:
+        if reasons:
+            blockers.append((statement.type_label, reasons))
+        return blockers
+
     for line in statement.lines:
         if line.line_key != "cf_unexplained" or not line.effective_amount:
             continue
@@ -2476,6 +2490,31 @@ def weasyprint_available() -> bool:
         return True
     except Exception:          # noqa: BLE001  (import can fail on missing GTK)
         return False
+
+
+def section_pages(html: str, base_url: str = None) -> dict:
+    """{"sec-<key>": page number} - where each section really lands.
+
+    The contents page cites these. In the PDF the CSS does it itself
+    (target-counter); the preview and the Word file have no pagination of
+    their own, so the layout is worked out once here and the numbers are
+    written in. {} when WeasyPrint is absent or the layout fails - the
+    contents page then falls back to the CSS / a Word field.
+    """
+    if not weasyprint_available():
+        return {}
+    try:
+        import weasyprint
+        document = weasyprint.HTML(string=html, base_url=base_url).render()
+        found = {}
+        for number, page in enumerate(document.pages, start=1):
+            for name in (getattr(page, "anchors", None) or {}):
+                if str(name).startswith("sec-"):
+                    found.setdefault(str(name), number)
+        return found
+    except Exception:                                   # noqa: BLE001
+        log.warning("Could not work out the contents page numbers", exc_info=True)
+        return {}
 
 
 def render_pdf(html: str, base_url: str = None) -> bytes:

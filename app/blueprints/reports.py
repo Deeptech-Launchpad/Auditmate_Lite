@@ -133,6 +133,37 @@ def builder(fy_id):
                            pdf_available=report_service.weasyprint_available())
 
 
+@bp.route("/fy/<int:fy_id>/cash-flow", methods=["GET", "POST"])
+@login_required
+def cash_flow_entry(fy_id):
+    """The statement of cash flows, entered by the preparer (standard lines v8)."""
+    from ..services import cash_flow_entry as service
+
+    financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+    if request.method == "POST":
+        if request.form.get("action") == "clear":
+            service.clear(financial_year)
+            flash("Entered cash flow cleared.", "info")
+        else:
+            try:
+                count = service.save(financial_year, request.form, current_user.id)
+                flash(f"Cash flow saved ({count} lines).", "success")
+            except ValueError as exc:
+                db.session.rollback()
+                flash(f"\u201c{exc}\u201d is not a number.", "error")
+        return redirect(url_for("reports.cash_flow_entry", fy_id=fy_id))
+
+    rows = service.form_rows(financial_year)
+    entries = service.saved(financial_year) if rows else {}
+    return render_template("reports/cash_flow_entry.html",
+                           fy=financial_year, customer=financial_year.customer,
+                           rows=rows, entries=entries,
+                           entered=service.is_entered(financial_year),
+                           reasons=(service.check(financial_year) or [])
+                           if rows else [],
+                           closing=service.closing_cash(financial_year) if rows else None)
+
+
 @bp.route("/fy/<int:fy_id>/inputs", methods=["GET", "POST"])
 @login_required
 def preparer_inputs(fy_id):
@@ -1301,6 +1332,24 @@ def _template_look(customer):
     return output_spec.look()
 
 
+def _toc_pages(report, payloads, incomplete):
+    """Where each section lands, for the contents page (see section_pages)."""
+    if not report_service.weasyprint_available():
+        return {}
+    financial_year = report.financial_year
+    html = render_template("reports/preview.html",
+                           report=report, fy=financial_year,
+                           customer=financial_year.customer,
+                           payloads=payloads,
+                           draft_incomplete=bool(incomplete),
+                           note_numbers=report_service.note_number_map(report),
+                           checks=None,
+                           look=_template_look(financial_year.customer),
+                           toc_pages=None, for_pdf=True)
+    return report_service.section_pages(report_service.clean_for_client(html),
+                                        base_url=request.url_root)
+
+
 @bp.route("/<int:report_id>/preview")
 @login_required
 def preview(report_id):
@@ -1318,6 +1367,7 @@ def preview(report_id):
                            checks=checks_service.build(
                                report, report.financial_year, payloads),
                            look=_template_look(report.financial_year.customer),
+                           toc_pages=_toc_pages(report, payloads, incomplete),
                            for_pdf=False)
 
 
@@ -1339,6 +1389,7 @@ def export_word(report_id):
     financial_year = report.financial_year
     payloads = _assemble(report)
     incomplete = report_service.record_completeness(report, payloads)
+    toc_pages = _toc_pages(report, payloads, incomplete)
 
     html = render_template("reports/preview.html",
                            report=report,
@@ -1350,6 +1401,7 @@ def export_word(report_id):
                            checks=checks_service.build(
                                report, financial_year, payloads),
                            look=_template_look(report.financial_year.customer),
+                           toc_pages=toc_pages,
                            for_pdf=True, word_export=True)
     html = report_service.clean_for_client(html)
 
@@ -1359,7 +1411,8 @@ def export_word(report_id):
         customer = financial_year.customer
         data = docx_export.build(
             html, draft=bool(incomplete), template_path=template_path,
-            page_header=(customer.legal_name or customer.name, customer.uen))
+            page_header=(customer.legal_name or customer.name, customer.uen),
+            toc_pages=toc_pages)
     except Exception as exc:                        # noqa: BLE001
         flash(f"Word export failed: {exc}", "error")
         return redirect(url_for("reports.preview", report_id=report.id))

@@ -2535,3 +2535,32 @@ class DisclosureSetting(db.Model):
     def __repr__(self):
         scope = f"customer {self.customer_id}" if self.customer_id else "firm"
         return f"<DisclosureSetting {self.key} ({scope})>"
+
+class CashFlowEntry(db.Model):
+    """One line of the statement of cash flows, as the preparer entered it.
+
+    The client's standard lines (v8) make the cash flow the preparer's entry,
+    not a derivation: no plug line, held incomplete until it is entered and
+    closing cash agrees to the balance sheet. The line is identified by its
+    caption (normalised, "#2" for a repeated one) because the captions are the
+    template's own and that is all a template row has to hold on to.
+    """
+
+    __tablename__ = "cash_flow_entries"
+    __table_args__ = (
+        db.UniqueConstraint("financial_year_id", "row_key",
+                            name="uq_cash_flow_entry"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    financial_year_id = db.Column(db.Integer, db.ForeignKey("financial_years.id"),
+                                  nullable=False, index=True)
+    row_key = db.Column(db.String(200), nullable=False)
+    label = db.Column(db.String(255))
+    amount = db.Column(Numeric(18, 2), nullable=False, default=0)
+    entered_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<CashFlowEntry fy={self.financial_year_id} {self.row_key}={self.amount}>"

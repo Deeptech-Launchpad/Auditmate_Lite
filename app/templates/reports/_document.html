@@ -323,7 +323,7 @@
               <tr>
                 <td class="c-title">{{ other.section.title }}</td>
                 <td class="c-dots"><span class="leader"></span></td>
-                <td class="c-page"><a href="#sec-{{ key }}"></a></td>
+                <td class="c-page"><a href="#sec-{{ key }}">{{ (toc_pages or {}).get('sec-' ~ key, '') }}</a></td>
               </tr>
             {% elif not ns_toc.notes_done %}
               {% set ns_toc.notes_done = true %}
@@ -331,8 +331,8 @@
                 <td class="c-title">{{ cover_labels.get('notes_title') or 'Notes to the Financial Statements' }}</td>
                 <td class="c-dots"><span class="leader"></span></td>
                 <td class="c-page">
-                  <a href="#sec-{{ note_keys|first }}"></a>{% if note_keys|length > 1 %}
-                  &ndash; <a href="#sec-{{ note_keys|last }}"></a>{% endif %}
+                  <a href="#sec-{{ note_keys|first }}">{{ (toc_pages or {}).get('sec-' ~ note_keys|first, '') }}</a>{% if note_keys|length > 1 %}
+                  &ndash; <a href="#sec-{{ note_keys|last }}">{{ (toc_pages or {}).get('sec-' ~ note_keys|last, '') }}</a>{% endif %}
                 </td>
               </tr>
             {% endif %}

@@ -61,7 +61,7 @@
    target-counter(); a browser's own print has no equivalent and simply
    will not render this rule at all, leaving the dotted leader with no
    number after it rather than a wrong one. */
-{{ S }} .contents .c-page a::after { content: target-counter(attr(href), page); }
+{{ S }} .contents .c-page a:empty::after { content: target-counter(attr(href), page); }
 {{ S }} .contents .c-page a { text-decoration: none; color: inherit; }
 {{ S }} .page-break { break-before: page; }
 {{ S }} .rpt-page { break-inside: auto; }

@@ -617,7 +617,7 @@ def _similar(a, b):
     return len(wa & wb) / max(len(wa), len(wb))
 
 
-def cash_flow_from_template(financial_year, template_rows):
+def cash_flow_from_template(financial_year, template_rows, entry=False):
     """The cash flow in the customer's own layout, this year built from the
     movement of each account between the two trial balances.
 
@@ -845,6 +845,20 @@ def cash_flow_from_template(financial_year, template_rows):
                 final.append({"label": "Adjustment to opening balance", "kind": "item",
                               "cells": (gap, None), "indent": 0, "group": "",
                               "section": "operating"})
+
+    # The preparer's own entry is the statement (standard lines v8: no plug).
+    # The entry form is shown every row, with the engine's figure as the
+    # suggestion; what is printed is what was entered.
+    from . import cash_flow_entry
+
+    manual = cash_flow_entry.is_entered(financial_year)
+    if entry or manual:
+        final = [r for r in final if r["label"] != "Adjustment to opening balance"]
+        cash_flow_entry.assign_keys(final)
+    if entry:
+        return {"rows": final}
+    if manual:
+        cash_flow_entry.overlay(financial_year, final)
 
     # nothing is printed that is nil in both years; a heading with nothing
     # under it goes with it
