@@ -169,6 +169,89 @@
   </div>
 </div>
 {% endif %}
+
+{# Move a comparative from one line to another without touching last
+   year's trial balance (library feedback A13) - for the case where the
+   firm now knows last year's set classified something wrong and does not
+   want to repeat it. #}
+<div class="card" style="margin-top:16px">
+  <div class="card-head">
+    <div>
+      <h2>Reclassify a comparative figure</h2>
+      <span class="hint">Last year's presentation, corrected for this year's set only</span>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="muted small" style="margin-top:0;max-width:70ch">
+      Moves an amount from one comparative line to another. Last year's own
+      trial balance and signed accounts are untouched - only how the figure
+      prints in the comparative column here changes, and the library's
+      reclassification note is added automatically.
+    </p>
+
+    {% if reclassifications %}
+    <table class="data" style="margin-bottom:16px">
+      <thead><tr><th>From</th><th>To</th><th class="num">Amount</th>
+                 <th>Reason</th><th></th></tr></thead>
+      <tbody>
+        {% for row in reclassifications %}
+        <tr>
+          <td>{{ row.from_key }}</td>
+          <td>{{ row.to_key }}</td>
+          <td class="num">{{ row.amount|money }}</td>
+          <td class="muted small">{{ row.reason }}</td>
+          <td>
+            <form method="post" action="{{ url_for('statements.remove_reclassification', statement_id=statement.id, reclass_id=row.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit"
+                      style="font:inherit;font-size:12px;padding:2px 8px;cursor:pointer;
+                             border:1px solid var(--border-strong);background:#fff;
+                             border-radius:4px">Withdraw</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('statements.add_reclassification', statement_id=statement.id) }}"
+          style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label>From line</label>
+        <select name="from_key" required style="padding:6px 9px;border:1px solid var(--border-strong);border-radius:6px">
+          {% for line in statement.lines %}
+            {% if not line.is_total and not line.is_subtotal %}
+              <option value="{{ line.line_key }}">{{ line.label }}</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>To line</label>
+        <select name="to_key" required style="padding:6px 9px;border:1px solid var(--border-strong);border-radius:6px">
+          {% for line in statement.lines %}
+            {% if not line.is_total and not line.is_subtotal %}
+              <option value="{{ line.line_key }}">{{ line.label }}</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Amount</label>
+        <input type="text" name="amount" inputmode="decimal" required
+               class="input" style="width:140px" placeholder="e.g. 29577">
+      </div>
+      <div class="field" style="flex:1;min-width:220px">
+        <label>Reason</label>
+        <input type="text" name="reason" required class="input"
+               placeholder="e.g. director/Orwell credit balance shown as a negative receivable last year">
+      </div>
+      <button type="submit" class="btn btn-primary">Reclassify</button>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

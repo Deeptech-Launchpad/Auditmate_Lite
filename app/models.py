@@ -1877,6 +1877,17 @@ class PreparerInput(db.Model):
     # and one box for a five-part question is replaced by five.
     parts = db.Column(db.JSON)
 
+    # A third answer, not two (library feedback B1). "Fill in" and "go to
+    # the note" were the only choices, so an item that genuinely does not
+    # apply to this company - going concern with no material uncertainty,
+    # a critical judgement nobody made - had no honest way to be closed:
+    # it either stayed open forever or was cleared by typing something
+    # just to make the checklist move. Not applicable is itself an answer
+    # (decided stays true, so it counts as resolved), and the reason is
+    # optional the same way a figure's override reason is compulsory and a
+    # revert is not - there is nothing to revert here, only to record.
+    not_applicable = db.Column(db.Boolean, default=False, nullable=False)
+
     carried_from_id = db.Column(db.Integer,
                                 db.ForeignKey("preparer_inputs.id"))
 
@@ -1891,7 +1902,7 @@ class PreparerInput(db.Model):
 
     @property
     def is_answered(self):
-        """Answered at all - including answered "no"."""
+        """Answered at all - including answered "no" or marked not applicable."""
         return bool(self.decided)
 
     @property
@@ -1967,6 +1978,53 @@ class AiMappingSuggestion(db.Model):
 
     def __repr__(self):
         return f"<AiMappingSuggestion {self.account_id} -> {self.code!r}>"
+
+
+class ComparativeReclassification(db.Model):
+    """A comparative figure moved from one statement line to another,
+    without touching last year's trial balance or any journal (library
+    feedback A13).
+
+    Last year's signed accounts sometimes classified something the firm
+    would now put elsewhere - a director's credit balance netted inside
+    receivables instead of shown as a related-party payable. Reprinting
+    that figure exactly as filed repeats a misclassification the preparer
+    already knows is wrong; reclassifying it by hand, with no record, is
+    an unexplained figure with no audit trail behind it. This is the third
+    option library 3.5 assumes exists for a comparative and the app never
+    built: move an amount, on this statement only, between the two lines
+    it should read as - and keep why.
+
+    Applied when the comparative column is built (see statements.py), not
+    stored on the figure itself: the figure this year's engine reads for
+    last year is still last year's actual filed number, so a reclassified
+    comparative survives a rebuild the same way any other comparative
+    does, and the reclassification is what is layered on top, every time.
+    """
+
+    __tablename__ = "comparative_reclassifications"
+
+    id = db.Column(db.Integer, primary_key=True)
+    financial_year_id = db.Column(db.Integer,
+                                  db.ForeignKey("financial_years.id"),
+                                  nullable=False, index=True)
+    statement_type = db.Column(db.String(30), nullable=False)
+
+    # Standard line keys - the same vocabulary account.standard_key uses.
+    from_key = db.Column(db.String(80), nullable=False)
+    to_key = db.Column(db.String(80), nullable=False)
+    amount = db.Column(Numeric(18, 2), nullable=False)
+
+    reason = db.Column(db.Text, nullable=False)
+
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    financial_year = db.relationship("FinancialYear")
+
+    def __repr__(self):
+        return (f"<ComparativeReclassification {self.from_key} -> "
+               f"{self.to_key} {self.amount}>")
 
 
 # table_index for a paragraph override: no table has index -1.

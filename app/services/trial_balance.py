@@ -536,6 +536,16 @@ def set_mapping(account_id, standard_key, user_id=None, learn=True):
     if account is None:
         return {"ok": False, "error": "account not found"}
 
+    # Refused once the trial balance is approved, the same as a line_code
+    # change (see update_account). A statement built and locked against
+    # this account's old statement line must not silently start
+    # disagreeing with the trial balance behind it - the whole point of
+    # locking the statements down was that nothing feeding them moves.
+    if account.financial_year.tb_is_approved:
+        return {"ok": False, "error": "The trial balance is approved. "
+                "Reopen it to change how an account maps to the "
+                "statements."}
+
     statement_type = None
     for name in load_templates():
         if standard_key in line_keys_for(name):
@@ -622,7 +632,8 @@ def delete_account(account_id, user_id=None):
 # --------------------------------------------------------------------------
 
 def approve(financial_year_id, approved_by=None, user_id=None,
-            force_unbalanced=False) -> dict:
+            force_unbalanced=False, force_opening_gap=False,
+            force_signed_gap=False) -> dict:
     """Approve the trial balance, then build the statements from it.
 
     This is the gate in the new flow: statements and the audit report are
@@ -648,6 +659,39 @@ def approve(financial_year_id, approved_by=None, user_id=None,
                 "error": f"Debits and credits differ by "
                          f"{totals['difference']:,.2f}. Fix the trial balance, "
                          f"or confirm you want to approve it anyway."}
+
+    # Balancing to itself proves nothing about whether someone posted into a
+    # year that was already signed off - only comparing this year's opening
+    # figures against last year's signed closing figures catches that (see
+    # services/prior_year.py::opening_check). Found by accident before, mid
+    # engagement, once the cash flow failed to reconcile; caught here first.
+    if not force_opening_gap:
+        from . import prior_year
+        opening = prior_year.opening_check(financial_year)
+        if opening.get("comparable") and opening.get("differs"):
+            return {"ok": False, "opening_gap": True,
+                    "error": f"{opening['differs']} opening balance(s) do "
+                             f"not agree with {opening.get('reference')}. "
+                             f"Explain the difference, or confirm you want "
+                             f"to approve it anyway."}
+
+    # A signed set that did not balance when it was filed should not
+    # become this year's comparative column unquestioned (library feedback
+    # A17) - the same reasoning as the opening-balance check above, one
+    # step earlier: this checks the source itself, not just this year
+    # against it.
+    if not force_signed_gap:
+        from . import prior_year
+        signed = prior_year.signed_accounts_consistency(financial_year)
+        if signed.get("comparable") and not signed.get("balances"):
+            return {"ok": False, "signed_gap": True,
+                    "error": f"Last year's signed accounts do not balance "
+                             f"as read: assets {signed['assets']:,.2f} "
+                             f"against equity and liabilities "
+                             f"{(signed['equity'] + signed['liabilities']):,.2f}"
+                             f". Check the reading before it becomes this "
+                             f"year's comparative, or confirm you want to "
+                             f"approve anyway."}
 
     financial_year.tb_status = "approved"
     financial_year.tb_approved_at = datetime.utcnow()

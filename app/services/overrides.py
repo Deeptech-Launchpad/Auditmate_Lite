@@ -32,14 +32,15 @@ Three rules that are easy to get wrong and are kept here:
 Nothing here calls the AI.
 """
 import logging
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from flask_login import current_user
 
 from ..extensions import db
-from ..models import (PARAGRAPH_TABLE_INDEX, ReportFigureOverride,
-                      ReportOverrideEvent)
+from ..models import (PARAGRAPH_TABLE_INDEX, AuditReportSection,
+                      ReportFigureOverride, ReportOverrideEvent)
 
 log = logging.getLogger(__name__)
 
@@ -174,6 +175,7 @@ def clear(override, reason=None):
     if override is None or not override.is_live:
         return override
     reason = _clean(reason or override.reason)
+    had_wording = override.text_override is not None
     for field, value, source in (
             ("amount", override.amount_override, override.source_amount),
             ("label", override.label_override, override.source_label),
@@ -185,8 +187,96 @@ def clear(override, reason=None):
     override.text_override = None
     override.cleared_at = datetime.utcnow()
     override.updated_by = _user_id()
+    if had_wording:
+        # A note figure comes back on its own - the table is recomputed
+        # from the trial balance on every render, and a cleared override is
+        # skipped rather than applied. Wording does not: it was written
+        # into the section's stored text (see set_paragraph), so clearing
+        # the record alone would leave the overridden sentence printing
+        # forever. Put the library's own wording back where it sat.
+        _restore_paragraph_in_place(override)
     db.session.commit()
     return override
+
+
+def _find_marked_tag(html, attr, value):
+    """The (open-tag match, tag name, its attributes exactly as written) for
+    the element carrying `attr="value"`, or None.
+
+    Shared by every server-side "find this paragraph and do something to
+    it" operation, so there is exactly one place that knows how to locate
+    a tag by its marker attribute in a content_html blob. Leaves the
+    attributes untouched - a caller that wants the marker gone (Undo) or
+    changed (a fresh override) says so itself, since the two cases want
+    opposite things and guessing here has already gone wrong once.
+    """
+    marker_id = re.escape(str(value))
+    open_tag_re = re.compile(r'<(\w+)([^>]*\b%s="%s"[^>]*)>' % (attr, marker_id))
+    match = open_tag_re.search(html)
+    if not match:
+        return None
+    return match, match.group(1), match.group(2)
+
+
+def _replace_marked_paragraph(section, attr, value, new_html, *, attrs):
+    """Replace the element `attr="value"` marks in `section.content_html`
+    with `new_html`, keeping its tag and setting its attributes to `attrs`.
+
+    The one server-side "find this paragraph and rewrite it" operation,
+    used both to restore the library's wording on Undo and to write a
+    fresh override's wording in place (library feedback A10): the stored
+    text is what every future render, export and carry-forward reads, so
+    it must be correct on its own rather than depend on a second save the
+    browser happens to send after this one.
+
+    Silently does nothing if the marker cannot be found - the note may
+    have been rebuilt since, in which case the edit is stale rather than
+    applied to the wrong sentence (the same rule OV-05 figure overrides
+    already follow).
+    """
+    html = section.content_html or ""
+    found = _find_marked_tag(html, attr, value)
+    if found is None:
+        return False
+    match, tag, _original_attrs = found
+    open_tag = "<%s%s>" % (tag, attrs)
+
+    close_match = re.search(r"</%s>" % re.escape(tag), html[match.end():])
+    if not close_match:
+        return False
+    close_start = match.end() + close_match.start()
+
+    section.content_html = (html[:match.start()] + open_tag + (new_html or "")
+                            + html[close_start:])
+    return True
+
+
+def _strip_attr(attrs, attr, value):
+    return re.sub(r'\s*%s="%s"' % (attr, re.escape(str(value))), "", attrs)
+
+
+def _restore_paragraph_in_place(override):
+    """Replace an overridden paragraph in its section's stored HTML with
+    the library's own wording, wherever `data-override="<id>"` marks it -
+    and drop that marker, since the override it named is no longer live.
+
+    Done here, server-side, rather than left to the browser that clicked
+    Undo: the section this override sits on may not even be the one open
+    in that tab, and the stored text is what every future render, export
+    and carry-forward reads - it must be correct on its own, not only in
+    whichever page happened to send the last save.
+    """
+    section = AuditReportSection.query.filter_by(
+        report_id=override.report_id, section_key=override.section_key).first()
+    if section is None or not section.content_html:
+        return
+    found = _find_marked_tag(section.content_html, "data-override", override.id)
+    if found is None:
+        return
+    _, _tag, attrs = found
+    attrs = _strip_attr(attrs, "data-override", override.id)
+    _replace_marked_paragraph(section, "data-override", override.id,
+                              override.source_text, attrs=attrs)
 
 
 # --------------------------------------------------------------------------
@@ -242,6 +332,7 @@ def set_paragraph(section, *, wording, source_text, reason, para_id=None,
             para_id=para_id, source_name="the notes library",
             source_text=source_text, created_by=_user_id())
         db.session.add(override)
+        db.session.flush()          # assigns override.id, needed below
     elif override.source_text is None:
         override.source_text = source_text
 
@@ -251,6 +342,28 @@ def set_paragraph(section, *, wording, source_text, reason, para_id=None,
     override.reason = reason
     override.updated_by = _user_id()
     override.cleared_at = None
+
+    # Write the new wording into the section's own stored text here,
+    # server-side, rather than leave it to a second save the browser sends
+    # after this one (library feedback A10): an already-marked paragraph is
+    # found by its override id, a first-time edit by the paragraph id the
+    # library gave it - and is marked with the override id from here on,
+    # so the next edit and any Undo find it the same way.
+    override_marker = 'data-override="%s"' % override.id
+    found = _find_marked_tag(section.content_html or "", "data-override",
+                             override.id)
+    if found is not None:
+        _, _tag, attrs = found
+        _replace_marked_paragraph(section, "data-override", override.id,
+                                  wording, attrs=attrs)
+    elif para_id:
+        found = _find_marked_tag(section.content_html or "", "data-para",
+                                 para_id)
+        if found is not None:
+            _, _tag, attrs = found
+            _replace_marked_paragraph(section, "data-para", para_id, wording,
+                                      attrs=attrs.rstrip() + " " + override_marker)
+
     db.session.commit()
     return override
 

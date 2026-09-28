@@ -13,7 +13,8 @@ from flask_login import current_user, login_required
 
 from ..extensions import db
 from ..models import FinancialYear, TrialBalanceAccount
-from ..services import depreciation_check, mapping_review, outward, prior_year, reconcile
+from ..services import (depreciation_check, mapping_review, outward,
+                        prior_year, reconcile, tb_sanity)
 from ..services import trial_balance as tb_service
 from ..services.audit import record
 from ..services.statements import line_keys_for, load_templates
@@ -67,6 +68,9 @@ def index(fy_id):
                            checks=reconcile.check(financial_year),
                            outward=outward.check(financial_year),
                            opening=prior_year.opening_check(financial_year),
+                           signed_consistency=prior_year.signed_accounts_consistency(
+                               financial_year),
+                           sanity=tb_sanity.check(financial_year),
                            # Prior-year documents on the engagement that
                            # are supplying nothing. The comparative fills
                            # from the next source down either way, so
@@ -270,7 +274,9 @@ def approve(fy_id):
         fy_id,
         approved_by=(request.form.get("approved_by") or "").strip() or None,
         user_id=current_user.id,
-        force_unbalanced=bool(request.form.get("confirm_unbalanced")))
+        force_unbalanced=bool(request.form.get("confirm_unbalanced")),
+        force_opening_gap=bool(request.form.get("confirm_opening_gap")),
+        force_signed_gap=bool(request.form.get("confirm_signed_gap")))
 
     if not result.get("ok"):
         flash(result.get("error", "Could not approve the trial balance."),

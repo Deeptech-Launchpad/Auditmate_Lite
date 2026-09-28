@@ -93,12 +93,35 @@
 
     <label class="checkline ans-done">
       <input type="checkbox" name="decided__{{ row.item }}"
-             {% if row.answered %}checked{% endif %}>
+             {% if row.answered and not (row.answer and row.answer.not_applicable) %}checked{% endif %}>
       <span><strong>I have answered this</strong>
         <span class="muted">&mdash; tick it even if the answer is
           &ldquo;none&rdquo;. Leaving it unticked means nobody has looked
           yet, which is not the same thing.</span></span>
     </label>
+
+    {# A third answer, not a reason to leave the box unticked forever
+       (library feedback B1): going concern with no material uncertainty,
+       a critical judgement nobody made - the checklist needs a way to say
+       so honestly rather than being cleared by typing something just to
+       move on. #}
+    <label class="checkline ans-na">
+      <input type="checkbox" name="not_applicable__{{ row.item }}"
+             class="js-not-applicable" data-for="{{ row.item }}"
+             {% if row.answer and row.answer.not_applicable %}checked{% endif %}>
+      <span><strong>Not applicable to this company</strong>
+        <span class="muted">&mdash; drops off this list and prints
+          nothing; the reason below is optional.</span></span>
+    </label>
+    <div class="ans-na-reason" data-for="{{ row.item }}"
+         {% if not (row.answer and row.answer.not_applicable) %}style="display:none"{% endif %}>
+      <label class="ans-label" for="na-{{ row.item }}">
+        Why it does not apply <span class="muted">(optional)</span>
+      </label>
+      <input id="na-{{ row.item }}" type="text" class="input"
+             name="na_reason__{{ row.item }}"
+             value="{{ row.answer.answer if row.answer and row.answer.not_applicable and row.answer.answer else '' }}">
+    </div>
 
     {% if row.answered %}
       <label class="checkline muted small">
@@ -224,7 +247,7 @@
 {% endif %}
 
 {% if blanks %}
-  <div class="card" style="margin-bottom:16px">
+  <div class="card" style="margin-bottom:16px" id="blanks-section">
     <div class="card-head">
       <h2>Wording the notes are missing</h2>
       <span class="hint">{{ blanks|length }}</span>
@@ -236,7 +259,7 @@
         is. Until it is filled the note says so where the words should be.
       </p>
       {% for row in blanks %}
-        <div class="q">
+        <div class="q" id="q-{{ row.item }}">
           <div class="q-head">
             <span class="q-note">{{ row.label }}</span>
             {{ consequence(row) }}
@@ -318,5 +341,26 @@
                   padding:2px 6px 4px 0; color:var(--muted, #666); }
   .ans-parts td { padding:2px 6px 2px 0; }
   .checkline { display:flex; gap:8px; align-items:center; }
+  .ans-na { margin-top:4px; }
+  .ans-na-reason { margin:2px 0 6px; }
 </style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Not applicable (library feedback B1): ticking it shows the optional
+  // reason box and unticks "I have answered this" - the two describe
+  // different things and a row should not claim both at once.
+  document.addEventListener("change", function (event) {
+    var box = event.target.closest(".js-not-applicable");
+    if (!box) return;
+    var item = box.dataset.for;
+    var reason = document.querySelector('.ans-na-reason[data-for="' + item + '"]');
+    if (reason) reason.style.display = box.checked ? "" : "none";
+    if (box.checked) {
+      var decided = document.querySelector('input[name="decided__' + item + '"]');
+      if (decided) decided.checked = false;
+    }
+  });
+</script>
 {% endblock %}

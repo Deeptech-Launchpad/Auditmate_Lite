@@ -51,11 +51,13 @@
 </div>
 {% endif %}
 
-{% if draft_incomplete %}
+{% if draft_label %}
   {# On every printed page - a fixed element repeats per page in both
-     WeasyPrint and a browser's print. Something in these accounts is
-     incomplete, so this copy is for review only. #}
-  <div class="draft-stamp">DRAFT &mdash; INCOMPLETE</div>
+     WeasyPrint and a browser's print. Wording follows the set's own state
+     (see report_service.draft_label): INCOMPLETE while something is still
+     open, FOR DISCUSSION once everything is answered but nobody has
+     approved it, and nothing at all once it is approved. #}
+  <div class="draft-stamp">{{ draft_label }}</div>
 {% endif %}
 
 <div class="rpt-doc">
@@ -71,8 +73,10 @@
      incident. The preparer reads it here, where it is addressed to them. #}
   {# A DRAFT copy says what is still open, on a last page of its own. It is
      printed only where the stamp already says this is not the finished set, and
-     never in a set with nothing open - a finished set has no such page. #}
-  {% if for_pdf and draft_incomplete and incomplete_list %}
+     never in a set with nothing open - a finished set has no such page. Tied
+     to draft_label rather than draft_incomplete: once approved there is no
+     stamp and no "items to complete" page either, whatever is still listed. #}
+  {% if for_pdf and draft_label and incomplete_list %}
   <div class="rpt-page page-break" id="draft-review">
     <div class="rpt-head"><div class="rpt-sect">Draft review: items to complete before issue</div></div>
     <p>This page is on draft copies only and is not part of the financial statements.

@@ -210,6 +210,7 @@ def preparer_inputs(fy_id):
                 answer=values["answer"], amount=values["amount"],
                 source=values["source"], proposed=values["proposed"],
                 accepted_proposal=values["accepted"], parts=values["parts"],
+                not_applicable=values["not_applicable"],
                 user_id=current_user.id, commit=False)
             saved += 1
         db.session.commit()
@@ -273,15 +274,18 @@ def _posted_inputs(form):
     """Answers off the form, one entry per question.
 
     A question is only recorded as answered when its own "decided" box is
-    set. Nothing is inferred from an empty text box: a preparer who typed
-    nothing has not said "none", and a note that reads either way must
-    not be told otherwise.
+    set, or it is marked not applicable - which is its own answer, not a
+    reason to skip the row (library feedback B1). Iterated off `mode__`,
+    not `decided__`: an unticked checkbox is not sent by the browser at
+    all, so a row where only "Not applicable" was ticked would never be
+    seen if the scan looked for the decided box. `mode__` is a hidden
+    field every rendered question always sends.
     """
     out = {}
     for key in form:
-        if not key.startswith("decided__"):
+        if not key.startswith("mode__"):
             continue
-        item = key[len("decided__"):]
+        item = key[len("mode__"):]
         raw = (form.get(f"amount__{item}") or "").strip()
         amount = None
         if raw:
@@ -305,12 +309,18 @@ def _posted_inputs(form):
                 parts.append({"label": label, "amount": amount})
             index += 1
 
+        not_applicable = form.get(f"not_applicable__{item}") in ("on", "1")
         out[item] = {
             "parts": parts or None,
             "mode": form.get(f"mode__{item}") or "Ask",
-            "decided": form.get(key) == "on" or form.get(key) == "1",
+            "decided": (form.get(f"decided__{item}") in ("on", "1"))
+                      or not_applicable,
             "clear": form.get(f"clear__{item}") in ("on", "1"),
-            "answer": form.get(f"answer__{item}"),
+            "not_applicable": not_applicable,
+            # The not-applicable reason travels in the same box the answer
+            # otherwise would - the two are never both meaningful at once.
+            "answer": form.get(f"na_reason__{item}") if not_applicable
+                     else form.get(f"answer__{item}"),
             "amount": amount,
             "source": form.get(f"source__{item}"),
             "proposed": form.get(f"proposed__{item}"),
@@ -861,8 +871,13 @@ def confirm_paragraph():
             binding[kind] = kept
 
     if decision == "yes" and wording.strip() and "[table" not in wording:
-        section.content_html = ((section.content_html or "")
-                                + f'<p data-para="{para_id}">{wording}</p>')
+        current = section.content_html or ""
+        # Idempotent: a double-click, a retry after a slow save, or
+        # re-answering an already-confirmed paragraph must not print the
+        # same sentence twice under the same heading.
+        marker = f'data-para="{para_id}"'
+        if marker not in current:
+            section.content_html = current + f'<p {marker}>{wording}</p>'
     section.data_binding = binding
     document_fields.save(year, "CONFIRM", para_id, text=decision,
                          found_at="confirmed in the report")
@@ -1372,6 +1387,8 @@ def _toc_pages(report, payloads, incomplete):
                            customer=financial_year.customer,
                            payloads=payloads,
                            draft_incomplete=bool(incomplete),
+                           draft_label=report_service.draft_label(
+                               financial_year, incomplete),
                            note_numbers=report_service.note_number_map(report),
                            checks=None,
                            look=_template_look(financial_year.customer),
@@ -1393,6 +1410,8 @@ def preview(report_id):
                            customer=report.financial_year.customer,
                            payloads=payloads,
                            draft_incomplete=bool(incomplete),
+                           draft_label=report_service.draft_label(
+                               report.financial_year, incomplete),
                            note_numbers=report_service.note_number_map(report),
                            checks=checks_service.build(
                                report, report.financial_year, payloads),
@@ -1427,6 +1446,8 @@ def export_word(report_id):
                            customer=financial_year.customer,
                            payloads=payloads,
                            draft_incomplete=bool(incomplete),
+                           draft_label=report_service.draft_label(
+                               financial_year, incomplete),
                            note_numbers=report_service.note_number_map(report),
                            checks=checks_service.build(
                                report, financial_year, payloads),
@@ -1441,7 +1462,8 @@ def export_word(report_id):
         template_path = financial_year.customer.report_template_path
         customer = financial_year.customer
         data = docx_export.build(
-            html, draft=bool(incomplete), template_path=template_path,
+            html, draft_label=report_service.draft_label(financial_year, incomplete),
+            template_path=template_path,
             page_header=(customer.legal_name or customer.name, customer.uen),
             toc_pages=toc_pages)
     except Exception as exc:                        # noqa: BLE001
@@ -1486,6 +1508,8 @@ def export(report_id):
                            customer=report.financial_year.customer,
                            payloads=payloads,
                            draft_incomplete=bool(incomplete),
+                           draft_label=report_service.draft_label(
+                               report.financial_year, incomplete),
                            note_numbers=report_service.note_number_map(report),
                            checks=checks_service.build(
                                report, report.financial_year, payloads),

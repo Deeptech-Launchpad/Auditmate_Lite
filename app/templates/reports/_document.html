@@ -40,12 +40,15 @@
 {#
   Whether this rendering is a working copy.
 
-  The builder and the on-screen preview always are. A stamped draft export
-  is. The clean copy the client receives is not, and shows no working marks
-  - not the Incomplete reasons, not the override marks, not the sources.
+  The builder and the on-screen preview always are. No exported file is a
+  working copy - not a draft PDF/Word sent for discussion, not the clean
+  copy the client signs - so none of them show working marks: not the
+  Incomplete reasons, not the override marks (e.g. "TYPED"), not the
+  sources. A file leaving the system for anyone outside the firm must never
+  look hand-typed; overridden figures are listed for the preparer instead
+  on the preparer checks page.
 #}
 {% set show_working_marks = editable|default(false)
-                            or draft_incomplete|default(false)
                             or not for_pdf|default(false) %}
 
 {% macro amount_cell(value, edit=none, origin=none) %}
@@ -245,8 +248,12 @@
       {# The customer's own title page: company, registration, the title
          their template gives the document, and how it introduces the year
          end. The company and the dates are this customer's and this year's;
-         only the wording is the template's. Nothing else is on it: the
-         template's cover has no corporate information and no contents. #}
+         only the wording is the template's. The corporate information block
+         below is ours, not the template's, and is not one of the things a
+         template is followed for - it always prints regardless, same as
+         when there is no template, so a required disclosure (the company
+         secretary, say) can never be silently dropped just because the
+         client's own document happened to leave it off its cover. #}
       {% set doc_title = cover_label(section, 'title', '') %}
       {% set period_line = (cover_label(section, 'date_prefix', '') ~ ' '
                             ~ (_d|upper if cover_labels.get('upper_date') else _d)) %}
@@ -267,9 +274,11 @@
         <p class="cover-uen">(Registration No: {{ cover_field(section, 'uen', customer.uen) }})</p>
         <p class="cover-date">{{ period_line }}</p>
       </div>
+      {% endif %}
 
-      {# Without a template of their own, the company's particulars sit on the
-         cover as they always have. #}
+      {# The company's particulars sit on the cover regardless of whether a
+         template is followed: only the title-page wording above is the
+         template's, never this. #}
       <h3 class="ruled">{{ cover_label(section, 'corp_info',
                             'CORPORATE INFORMATION') }}</h3>
 
@@ -300,7 +309,6 @@
           {{ cover_field(section, 'office', office|join('\n'), true) }}
         </div>
       </div>
-      {% endif %}
     </div>{# the cover page ends here: the contents are the next page #}
 
     {# ------------------------------------------------------- contents -- #}

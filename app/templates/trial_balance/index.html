@@ -208,6 +208,105 @@
   </div>
 {% endif %}
 
+{# An account whose own name says which way the money goes, mapped the
+   other way. See services/tb_sanity.py. #}
+{% if sanity and sanity.direction %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>Named one way, mapped the other</h2>
+      <p class="muted small" style="margin:2px 0 0">
+        The trial balance still foots with these mapped as they are, so
+        nothing else notices &mdash; while the client's own balance sheet
+        goes on reporting them the other way round.
+      </p>
+    </div>
+    <div><span class="pill pill-amber">{{ sanity.direction|length }}</span></div>
+  </div>
+  <div class="table-wrap">
+    <table class="data check-table">
+      <thead><tr><th>Account</th><th>Its name says</th>
+                 <th>Mapped to</th></tr></thead>
+      <tbody>
+        {% for row in sanity.direction %}
+        <tr class="row-warn">
+          <td class="strong">{{ row.name }}</td>
+          <td class="muted">{{ row.says }}</td>
+          <td class="muted">{{ row.mapped_as }} ({{ row.mapped_side }})</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# Trial balance sanity checks that need nothing but the trial balance
+   itself - see services/tb_sanity.py. #}
+{% if sanity and sanity.loan_named %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>Accounts named for a loan, mapped as cash</h2>
+      <p class="muted small" style="margin:2px 0 0">
+        The trial balance still balances with a loan sitting in the wrong
+        place - nothing else in the app notices this.
+      </p>
+    </div>
+    <div><span class="pill pill-amber">{{ sanity.loan_named|length }}</span></div>
+  </div>
+  <div class="table-wrap">
+    <table class="data check-table">
+      <thead><tr><th>Account</th><th>Currently mapped as</th></tr></thead>
+      <tbody>
+        {% for row in sanity.loan_named %}
+        <tr class="row-warn">
+          <td class="strong">{{ row.name }}</td>
+          <td class="muted">{{ row.mapped_as }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# Did last year's signed set balance on its own terms, before it becomes
+   this year's comparative column? A parser reading a PDF can miscast a
+   figure the same way a preparer can. #}
+{% if signed_consistency and signed_consistency.comparable %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>Last year's signed accounts, cast against themselves</h2>
+      <p class="muted small" style="margin:2px 0 0">
+        Assets against equity and liabilities, as read from the signed set -
+        before those figures become this year's comparative column.
+      </p>
+    </div>
+    <div>
+      {% if signed_consistency.balances %}
+        <span class="pill pill-green">Balances</span>
+      {% else %}
+        <span class="pill pill-red">Out by
+          {{ signed_consistency.difference|money }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% if not signed_consistency.balances %}
+  <div class="card-body">
+    <p class="muted small" style="margin-top:0">
+      Assets {{ signed_consistency.assets|money }} against equity
+      {{ signed_consistency.equity|money }} plus liabilities
+      {{ signed_consistency.liabilities|money }}. The signed set itself did
+      not balance, or a figure was misread from it - check it before
+      relying on it for the comparative column.
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 {# Does what the books hold still agree with what was signed?
    The strongest check there is, and invisible from inside this year: a tax
    payable balance that had not moved in twelve months sat in accounts that
@@ -476,8 +575,9 @@
       <h2>Checked against the client's own figures</h2>
       <p class="muted small">
         These documents were not used to build the accounts — they describe
-        the same year, so adding them would count it twice. Their figures are
-        compared with ours instead.
+        the same year, so adding them would count it twice. What each one
+        prints is set beside the same figure worked out from the trial
+        balance instead.
       </p>
       {# Five lines of definitions sat here, above every engagement, read
          once and then in the way forever. Folded away: still one click
@@ -486,13 +586,18 @@
       <details class="legend">
         <summary class="muted small">What the columns mean</summary>
         <p class="muted small">
-          <strong>Client's figure</strong> is what the client printed.
-          <strong>Our trial balance</strong> is what Auditmate computed.
-          <strong>Missing from ours</strong> means the client shows that line
-          and our trial balance has no account for it at all — either the
-          source document never had it, or it was not read.
-          <strong>We have it, not mapped</strong> means the account is in our
-          trial balance but has no statement line yet, so map it below.
+          <strong>This document says</strong> is the figure printed on the
+          document named above the table.
+          <strong>Trial balance, same category</strong> is every trial
+          balance account mapped to that same statement line, added
+          together — so more than one account can sit behind it, and a
+          difference is often one account mapped to the wrong category
+          rather than a figure being wrong.
+          <strong>Missing from the trial balance</strong> means the document
+          shows that line and the trial balance has no account for it at
+          all — either the source document never had it, or it was not read.
+          <strong>In the trial balance, not mapped</strong> means the account
+          is there but has no statement line yet, so map it below.
         </p>
       </details>
     </div>
@@ -579,10 +684,17 @@
     <div class="table-wrap">
       <table class="data check-table">
         <thead>
+          {# Both columns are the client's own money. One is what their
+             document prints; the other is the same figure arrived at from
+             their trial balance, added up by the category the accounts are
+             mapped to. Calling the second one "ours" read as though
+             Auditmate had invented a number of its own, and hid the thing
+             that actually explains most differences: it is a CATEGORY
+             total, so several accounts can sit behind it. #}
           <tr>
-            <th>Line on the client's document</th>
-            <th class="num">Client's figure</th>
-            <th class="num">Our trial balance</th>
+            <th>Line on this document</th>
+            <th class="num">This document says</th>
+            <th class="num">Trial balance, same category</th>
             <th class="num">Difference</th>
             <th></th>
           </tr>
@@ -602,9 +714,9 @@
               {% if f.status == 'agrees' %}
                 <span class="pill pill-green">✓ agrees</span>
               {% elif f.status == 'unmapped_account' %}
-                <span class="pill pill-amber">we have it, not mapped</span>
+                <span class="pill pill-amber">in the trial balance, not mapped</span>
               {% elif f.status == 'missing' %}
-                <span class="pill pill-red">missing from ours</span>
+                <span class="pill pill-red">missing from the trial balance</span>
               {% else %}
                 <span class="pill pill-amber">differs</span>
               {% endif %}
@@ -931,6 +1043,35 @@
             <label class="checkbox-row" style="margin:10px 0 0">
               <input type="checkbox" name="confirm_unbalanced" value="1">
               <span>Approve anyway — I accept this difference</span>
+            </label>
+          </div>
+        </div>
+        {% elif opening.comparable and opening.differs %}
+        <div class="notice danger" style="margin:12px 0 0">
+          <span>✕</span>
+          <div>
+            {{ opening.differs }} opening balance(s) do not agree with
+            {{ opening.reference }}. See "Last year, checked against what
+            was signed" above before approving — this is how the firm's own
+            tested engagement first surfaced a difference nothing else had
+            caught.
+            <label class="checkbox-row" style="margin:10px 0 0">
+              <input type="checkbox" name="confirm_opening_gap" value="1">
+              <span>Approve anyway — I have explained this difference</span>
+            </label>
+          </div>
+        </div>
+        {% elif signed_consistency.comparable and not signed_consistency.balances %}
+        <div class="notice danger" style="margin:12px 0 0">
+          <span>✕</span>
+          <div>
+            Last year's signed accounts do not balance as read — out by
+            {{ signed_consistency.difference|money }}. See "Last year's
+            signed accounts, cast against themselves" above before this
+            becomes the comparative column.
+            <label class="checkbox-row" style="margin:10px 0 0">
+              <input type="checkbox" name="confirm_signed_gap" value="1">
+              <span>Approve anyway — I have checked this</span>
             </label>
           </div>
         </div>

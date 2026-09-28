@@ -515,6 +515,54 @@
     }
   });
 
+  /* Undo an override (Overrides panel): the source figure or the
+     library's own wording comes back. The record stays, struck through,
+     because a change someone made and then took back is often the first
+     thing worth asking about. */
+  document.addEventListener('click', async event => {
+    const button = event.target.closest('.ov-undo');
+    if (!button) return;
+    button.disabled = true;
+    try {
+      /* Two kinds of row share this one list and this one button (see
+         services/overrides.py: for_report + _statement_line_overrides).
+         A note figure or wording is a ReportFigureOverride, id a plain
+         number, undone through the override-clear endpoint below. A
+         figure on the face of a statement is the StatementLine itself
+         (id "line-<id>", library feedback A10/B5) and has no override
+         row to clear - it is undone the same way any edit to it is,
+         through the statements API, with an empty amount. */
+      const lineMatch = /^line-(\d+)$/.exec(button.dataset.overrideId);
+      const response = lineMatch
+        ? await fetch('/reports/api/line/' + lineMatch[1],
+            { method: 'PATCH', headers: csrfHeaders(),
+              body: JSON.stringify({ amount: '' }) })
+        : await fetch(
+            '/reports/api/override/' + button.dataset.overrideId + '/clear',
+            { method: 'POST', headers: csrfHeaders(), body: JSON.stringify({}) });
+      const data = await response.json();
+      if (data.ok) {
+        window.location.reload();
+        return;
+      }
+      if (data.needs_reason) {
+        const reason = await window.__auditmateAskReason(
+          'Why is this override being withdrawn?');
+        if (!reason) { button.disabled = false; return; }
+        const retry = await fetch(
+          '/reports/api/override/' + button.dataset.overrideId + '/clear',
+          { method: 'POST', headers: csrfHeaders(),
+            body: JSON.stringify({ reason: reason }) });
+        const retryData = await retry.json();
+        if (retryData.ok) { window.location.reload(); return; }
+      }
+      throw new Error(data.error || 'failed');
+    } catch (err) {
+      button.disabled = false;
+      say('Could not undo this change', 'failed');
+    }
+  });
+
   /* After moving a note, come back to the same place. */
   try {
     const at = sessionStorage.getItem('am-list-scroll');

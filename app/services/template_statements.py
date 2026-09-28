@@ -629,12 +629,36 @@ def equity_matrix(statement, financial_year, template_rows=None):
                 and closing_total is not None
                 and abs(Decimal(last["cells"][2]) - closing_total) < 1)
 
+    def opening_row(rows, at_label):
+        """Index of the row reading "At <at_label>", or None.
+
+        A signed template that has been carried forward year after year
+        accumulates one more year of history each time (library feedback
+        A11) - by the third year it shows four. Two years is what a
+        statement of changes in equity presents, so what is carried is
+        trimmed to start at the comparative year's own opening row.
+        """
+        target = f"at {at_label}".strip().lower()
+        for index, row in enumerate(rows):
+            if (row.get("label") or "").strip().lower() == target:
+                return index
+        return None
+
     zero = Decimal("0")
     have_previous = value("soce_close_total", False) is not None
     open_p, close_p = triple("open", False), triple("close", False)
     open_c, close_c = triple("open", True), triple("close", True)
 
     carried = continues(template_rows, close_p[2])
+    if carried and previous_start is not None:
+        start_at = opening_row(template_rows, day(previous_start))
+        if start_at is not None:
+            template_rows = template_rows[start_at:]
+        else:
+            # Cannot find where the comparative year opens in the
+            # template's own rows - built from the figures instead (the
+            # branch below), rather than risk carrying extra history.
+            carried = False
     if carried:
         for row in template_rows:
             add(row["label"], *[Decimal(c) for c in row["cells"]],
@@ -725,9 +749,6 @@ def cash_flow_layout(financial_year, wording=None, entry=False):
     def pair(book, key):
         return (get(book, key, True), get(book, key, False))
 
-    def neg(values):
-        return tuple(None if v is None else -v for v in values)
-
     def plus(*pairs):
         out = []
         for i in (0, 1):
@@ -750,9 +771,18 @@ def cash_flow_layout(financial_year, wording=None, entry=False):
         rows.append({"label": label, "kind": "total" if final else "sub",
                      "cells": values})
 
-    profit = pair(pl, "profit_for_year")
-    interest = pair(pl, "interest_expense")
-    tax = pair(pl, "tax_expense")
+    # Profit BEFORE taxation, not after with interest added back and then
+    # taken out again to cancel (library feedback A14): the two versions
+    # total the same - interest expense added, then interest paid
+    # subtracted, cancels exactly against tax expense added, then tax paid
+    # subtracted, leaving profit before tax either way - but the version
+    # that adds a figure back only to remove it two lines later is not how
+    # FRS 7 presents an indirect-method cash flow, and reads as the engine
+    # not knowing its own arithmetic. This matches the formula the
+    # standard (non-template) cash flow statement already uses
+    # (compute.cf_operating_total): the same figures, presented the way
+    # the standard sets them out.
+    profit_before_tax = pair(pl, "profit_before_tax")
     depreciation = pair(cf, "cf_depreciation")
     receivables, payables = pair(cf, "cf_receivables"), pair(cf, "cf_payables")
     tax_paid, expenses = pair(cf, "cf_tax_paid"), pair(cf, "cf_expenses_paid")
@@ -761,22 +791,19 @@ def cash_flow_layout(financial_year, wording=None, entry=False):
     found = (wording or {}).get("found")
     if found is None or "operating" in found:
         head(words.get("operating", "Operating activities"))
-    item("Profit after taxation", profit, 0)
-    head("Adjustments for non-cash items")
-    item("Interest expense", interest)
-    item("Tax expense", tax)
+    item("Profit before taxation", profit_before_tax, 0)
     if any(v for v in depreciation if v):
+        head("Adjustments for non-cash items")
         item("Depreciation", depreciation)
     head("Changes in operating assets and liabilities")
     item("Trade and other receivables", receivables)
     item("Trade and other payables", payables)
     head("Operating cash flows")
-    item("Interest expense", neg(interest))
     item("Tax paid", tax_paid)
     if any(v for v in expenses if v):
         item("Expenses paid", expenses)
-    operating = plus(profit, interest, tax, depreciation, receivables, payables,
-                     neg(interest), tax_paid, expenses)
+    operating = plus(profit_before_tax, depreciation, receivables, payables,
+                     tax_paid, expenses)
     total("Net cash provided by operating activities", operating)
 
     head(words.get("investing", "Investing activities"))
@@ -813,6 +840,26 @@ def cash_flow_layout(financial_year, wording=None, entry=False):
     item("Net change in cash for period", change, 0)
     total("Cash and cash equivalents at end of period",
           pair(cf, "cf_closing_cash"), final=True)
+
+    # The preparer's own entry is the statement here too (library feedback
+    # A2/standard lines v8), the same rule cash_flow_from_template() follows
+    # above. This branch is only reached when that function could not
+    # reconstruct movements from two trial balances (no prior-year TB
+    # loaded) - a reason to fall back to the standard statement's own
+    # figures, not a reason to stop honouring what the preparer already
+    # entered on the cash flow form. Without this, a set with no prior-year
+    # TB silently dropped every saved cash flow figure and printed the
+    # engine's own plug instead.
+    from . import cash_flow_entry
+
+    if entry or cash_flow_entry.is_entered(financial_year):
+        rows = [r for r in rows if r["label"] != "Adjustment to opening balance"]
+        cash_flow_entry.assign_keys(rows)
+    if entry:
+        return {"rows": rows}
+    if cash_flow_entry.is_entered(financial_year):
+        cash_flow_entry.overlay(financial_year, rows)
+
     return {"rows": rows}
 
 

@@ -92,14 +92,79 @@ def detail(statement_id):
 
     unmapped = _unmapped_for(financial_year, statement.statement_type)
 
+    from ..services import comparative_reclass
+    reclassifications = comparative_reclass.for_statement(
+        financial_year.id, statement.statement_type)
+
     return render_template("statements/detail.html",
                            locked=statement_service.is_locked(
                                financial_year, statement.statement_type),
                            statement=statement, fy=financial_year,
                            customer=financial_year.customer,
                            groups=groups, check=check, unmapped=unmapped,
+                           reclassifications=reclassifications,
                            valid_keys=statement_service.line_keys_for(
                                statement.statement_type))
+
+
+@bp.route("/<int:statement_id>/reclassify", methods=["POST"])
+@login_required
+def add_reclassification(statement_id):
+    """Move a comparative figure from one line to another (library
+    feedback A13), without touching last year's trial balance."""
+    from ..services import comparative_reclass
+
+    statement = db.session.get(FinancialStatement, statement_id) or abort(404)
+    financial_year = statement.financial_year
+
+    from_key = (request.form.get("from_key") or "").strip()
+    to_key = (request.form.get("to_key") or "").strip()
+    reason = request.form.get("reason") or ""
+    raw_amount = (request.form.get("amount") or "").strip()
+
+    valid = set(statement_service.line_keys_for(statement.statement_type))
+    if not from_key or not to_key or from_key == to_key:
+        flash("Choose two different lines.", "error")
+        return redirect(url_for("statements.detail", statement_id=statement_id))
+    if from_key not in valid or to_key not in valid:
+        flash("Both lines must belong to this statement.", "error")
+        return redirect(url_for("statements.detail", statement_id=statement_id))
+    try:
+        amount = Decimal(raw_amount.replace(",", "").replace("$", ""))
+    except (InvalidOperation, ValueError):
+        flash("Enter a valid amount.", "error")
+        return redirect(url_for("statements.detail", statement_id=statement_id))
+
+    try:
+        comparative_reclass.add(
+            financial_year.id, statement.statement_type, from_key, to_key,
+            amount, reason, user_id=current_user.id)
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("statements.detail", statement_id=statement_id))
+
+    # The comparative column changed; rebuild it from the same figures so
+    # the statement on screen agrees with what was just recorded.
+    statement_service.build_statement(financial_year.id, statement.statement_type)
+    flash("Comparative reclassified. Regenerate the report to pick it up "
+          "in the notes.", "success")
+    return redirect(url_for("statements.detail", statement_id=statement_id))
+
+
+@bp.route("/<int:statement_id>/reclassify/<int:reclass_id>/remove", methods=["POST"])
+@login_required
+def remove_reclassification(statement_id, reclass_id):
+    from ..services import comparative_reclass
+
+    statement = db.session.get(FinancialStatement, statement_id) or abort(404)
+    financial_year = statement.financial_year
+
+    if comparative_reclass.remove(reclass_id, financial_year.id):
+        statement_service.build_statement(financial_year.id, statement.statement_type)
+        flash("Reclassification withdrawn.", "success")
+    else:
+        flash("Could not find that reclassification.", "error")
+    return redirect(url_for("statements.detail", statement_id=statement_id))
 
 
 def _unmapped_for(financial_year, statement_type):
@@ -154,17 +219,26 @@ def update_line(line_id):
     payload = request.get_json(silent=True) or {}
 
     raw = payload.get("amount")
+    reason = (payload.get("reason") or "").strip()
     before = str(line.effective_amount)
 
     if raw is None or str(raw).strip() == "":
         line.manual_override_amount = None          # revert to calculated
         line.source = "computed" if line.formula else "auto"
+        # OV-07: the reason, who and when stay - the row then lists as
+        # withdrawn (struck through) rather than disappearing, the same as
+        # an undone note override.
     else:
+        if not reason:
+            return jsonify({"ok": False, "error": "A reason is required"}), 400
         try:
             line.manual_override_amount = Decimal(str(raw).replace(",", "").strip())
             line.source = "manual"
         except (InvalidOperation, ValueError):
             return jsonify({"ok": False, "error": "Not a valid number"}), 400
+        line.override_reason = reason
+        line.override_by = current_user.id
+        line.override_at = datetime.utcnow()
 
     record("statement_line", line.id, "override",
            before={"amount": before},

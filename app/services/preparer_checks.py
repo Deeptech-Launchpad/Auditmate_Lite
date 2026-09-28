@@ -220,7 +220,7 @@ def build(report, financial_year, payloads):
                 check["note"] = ("Nothing in this draft prints these figures, "
                                  "so there is nothing to compare.")
         elif ref == "PC-01":
-            check["pairs"] = _note_totals(payloads, financial_year, figures)
+            check["pairs"] = note_totals(payloads, financial_year, figures)
         elif ref == "PC-02":
             check["tables"] = _row_sums(sums_sheet, payloads)
         elif ref == "PC-10":
@@ -237,7 +237,42 @@ def build(report, financial_year, payloads):
     }
 
 
-def _note_totals(payloads, financial_year, figures):
+def _spec_table_ids(spec):
+    """Every id the table this spec describes might render under.
+
+    A library-sourced spec (`source: "bindings"`) names its table directly:
+    `table_id` at the top level. A template-sourced spec (`source:
+    "template"`) does not - `services/template_note_tables.build()` gives
+    the table it draws the synthetic id `template_{note}_{index}`, except
+    for the four-column share capital table, which is drawn from the
+    library table named in the spec's own `library` list and keeps that
+    table's id. Both are listed, since which one a given note actually
+    renders under depends on that table's shape, not its spec.
+    """
+    ids = set()
+    if spec.get("table_id"):
+        ids.add(spec["table_id"])
+    if spec.get("source") == "template" and spec.get("note") is not None:
+        ids.add(f"template_{spec['note']}_{spec.get('index', 0)}")
+    for lib in spec.get("library") or []:
+        if isinstance(lib, dict) and lib.get("table_id"):
+            ids.add(lib["table_id"])
+    return ids
+
+
+def _spec_library_ref(spec):
+    """(version_id, table_id) of the library table that names what this
+    spec's total must agree with - its own, or, for a template-sourced
+    spec, the first of the library tables it was drawn from."""
+    if spec.get("source") != "template":
+        return spec.get("version_id"), spec.get("table_id")
+    for lib in spec.get("library") or []:
+        if isinstance(lib, dict) and lib.get("table_id"):
+            return lib.get("version_id"), lib.get("table_id")
+    return None, None
+
+
+def note_totals(payloads, financial_year, figures):
     """PC-01: each note total beside the line the library says it must equal.
 
     The pair is two quotations - the total as the note prints it, and the
@@ -261,13 +296,16 @@ def _note_totals(payloads, financial_year, figures):
         section = payload.get("section")
         specs = (getattr(section, "data_binding", None) or {}).get(
             "note_table_specs") or []
-        by_id = {spec.get("table_id"): spec for spec in specs}
+        by_id = {}
+        for spec in specs:
+            for table_id in _spec_table_ids(spec):
+                by_id[table_id] = spec
         for table in payload.get("tables") or []:
             spec = by_id.get(table.get("table_id"))
             if not spec:
                 continue
-            library = library_table(spec.get("version_id"),
-                                    spec.get("table_id")) or {}
+            version_id, lib_table_id = _spec_library_ref(spec)
+            library = library_table(version_id, lib_table_id) or {}
             named = str(library.get("totals_agree_with") or "").strip()
             if not named or named.lower() in ("no total", "-"):
                 continue

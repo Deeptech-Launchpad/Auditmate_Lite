@@ -606,11 +606,23 @@ def regenerate_report(financial_year):
     said so. The statements are not touched: they come from the approved
     trial balance, and are rebuilt there.
     """
-    from ..models import ReportFigureOverride
+    from ..models import ReportFigureOverride, ReportOverrideEvent
 
     report = AuditReport.query.filter_by(
         financial_year_id=financial_year.id).first()
     if report is not None:
+        # OV-07 keeps a withdrawn override's history (report_override_events)
+        # even after it is cleared, so a bare delete of the overrides fails
+        # with a foreign-key violation the moment any override on this
+        # report - live or long since undone - has ever had an event
+        # recorded against it. The whole report is being thrown away here,
+        # its history included, so the events go first.
+        override_ids = [row[0] for row in db.session.query(
+            ReportFigureOverride.id).filter_by(report_id=report.id).all()]
+        if override_ids:
+            ReportOverrideEvent.query.filter(
+                ReportOverrideEvent.override_id.in_(override_ids)
+            ).delete(synchronize_session=False)
         ReportFigureOverride.query.filter_by(report_id=report.id).delete()
         db.session.delete(report)
         db.session.flush()
@@ -844,6 +856,10 @@ def _assemble_v2_note(note, financial_year, first_year=False, period=None,
     figures = bindings.figures_for(financial_year)
     html_parts, table_specs, awaiting, offered = [], [], [], []
     placed = set()
+    # {table_id: para_id of the paragraph that introduces it}, kept even for
+    # a table that has rows right now - see the note in run() about why a
+    # later step needs this.
+    table_lead_ins = {}
     # What the preparer already decided about the paragraphs no balance can
     # settle ("Preparer confirms the Company renders services"): kept per
     # engagement so a rebuilt note does not ask the same question again.
@@ -855,13 +871,102 @@ def _assemble_v2_note(note, financial_year, first_year=False, period=None,
     tables = {p["table_id"] for p in _all_pieces(note)
               if p.get("table_id") and p.get("rows")}
 
+    statements_by_type = {s.statement_type: s for s in
+                          FinancialStatement.query.filter_by(
+                              financial_year_id=financial_year.id).all()}
+    _table_rows_cache = {}
+
+    def table_has_rows(table_id):
+        """Whether this library table will actually print anything, decided
+        the same way build_tables() decides it at render time - so a lead-in
+        sentence bound to it agrees with what the reader sees below it."""
+        if table_id not in _table_rows_cache:
+            try:
+                built = bindings.build_table(
+                    {"source": "bindings",
+                     "version_id": note.get("library_version_id"),
+                     "table_id": table_id}, financial_year, statements_by_type)
+            except Exception:                              # noqa: BLE001
+                log.exception("Could not resolve table %s while assembling "
+                              "note %s", table_id, note.get("library_code"))
+                # Unsure: keep the lead-in rather than wrongly hide it.
+                _table_rows_cache[table_id] = True
+                return True
+            # A held table still prints, as a placeholder for the preparer -
+            # the same test build_tables() uses to decide whether to show it
+            # at all (see services/notes.py).
+            _table_rows_cache[table_id] = bool(
+                built and (built.get("rows") or built.get("held_table")))
+        return _table_rows_cache[table_id]
+
     def run(owner, heading=None):
         parts = []
-        for piece in owner.get("pieces") or []:
+        pieces_list = owner.get("pieces") or []
+        # A "table binding" paragraph exists to introduce a table, so it
+        # only belongs on the page while that table has something in it -
+        # otherwise it is a sentence pointing at nothing, printed as "set
+        # out below" with nothing below (library feedback A4). Resolved
+        # once per owner (the note, or one of its sub-sections) before any
+        # piece in it is decided, so an earlier lead-in cannot promise what
+        # a later, empty table is about to fail to deliver.
+        bound_here = set()
+        for piece in pieces_list:
+            match = TABLE_PLACEHOLDER.match(piece.get("wording") or "")
+            if match and match.group(1).strip() in tables:
+                bound_here.add(match.group(1).strip())
+        tables_empty_here = bool(bound_here) and not any(
+            table_has_rows(tid) for tid in bound_here)
+
+        # The library's own lead-in for a table ("...are set out below.")
+        # is very often tagged Unconditional, not Table binding - only the
+        # [table X] placeholder piece after it carries that tag. Read alone,
+        # condition_source can't tell the two apart, so this looks at
+        # position instead: a piece immediately followed by nothing but one
+        # or more table placeholders, all of them empty, is that table's
+        # introduction whatever its own tag says, and is dropped with it.
+        dangling_leadins = set()
+        for i, piece in enumerate(pieces_list):
+            if piece.get("table_id"):
+                continue
+            following = []
+            j = i + 1
+            while j < len(pieces_list):
+                nxt = pieces_list[j]
+                if nxt.get("table_id"):
+                    j += 1
+                    continue
+                match = TABLE_PLACEHOLDER.match(nxt.get("wording") or "")
+                if not (match and match.group(1).strip() in tables):
+                    break
+                following.append(match.group(1).strip())
+                j += 1
+            if not following:
+                continue
+            # Recorded regardless of whether it is empty right now: a table
+            # bound to the library can still be replaced wholesale by the
+            # customer's own template later (template_note_tables.apply()),
+            # after this note's wording is already written. That later step
+            # has no way to know which sentence promised the table it just
+            # emptied out unless told - this is how it is told.
+            for table_id in following:
+                table_lead_ins[table_id] = piece.get("para_id")
+            if not any(table_has_rows(tid) for tid in following):
+                dangling_leadins.add(id(piece))
+
+        for piece in pieces_list:
             if piece.get("table_id"):
                 continue                   # placed by its [table id] paragraph
             action, reason = conditions.paragraph(
-                piece, owner.get("library_code"), figures)
+                piece, owner.get("library_code"), figures,
+                financial_year=financial_year)
+            if action == conditions.PRINT and id(piece) in dangling_leadins:
+                action, reason = conditions.SKIP, (
+                    "The table it introduces has nothing to show")
+            elif (action == conditions.PRINT and tables_empty_here
+                    and (piece.get("condition_source") or "")
+                        .strip().lower() == "table binding"):
+                action, reason = conditions.SKIP, (
+                    "The table it introduces has nothing to show")
             if action == conditions.SKIP:
                 continue
             if action in (conditions.HOLD, conditions.OMIT):
@@ -880,7 +985,8 @@ def _assemble_v2_note(note, financial_year, first_year=False, period=None,
                     "tag": piece.get("tag"),
                 })
                 continue
-            wording = piece.get("wording") or ""
+            wording = conditions.strip_gst_wording(
+                piece.get("wording") or "", financial_year)
             match = TABLE_PLACEHOLDER.match(wording)
             if match:
                 table_id = match.group(1).strip()
@@ -908,6 +1014,15 @@ def _assemble_v2_note(note, financial_year, first_year=False, period=None,
             html_parts.append(f"<p>{_first_period_wording(period)}</p>")
             continue
         on, _reason = conditions.note_applies(sub, figures, financial_year)
+        if (not on and sub.get("key") == "comparative_information"
+                and financial_year is not None):
+            # The library leaves this sub-section to the preparer to turn
+            # on manually - correct for a plain re-statement, but a
+            # reclassification recorded through the app (library feedback
+            # A13) already IS the preparer's own decision, made once on
+            # the Comparatives screen rather than repeated here.
+            from . import comparative_reclass
+            on = comparative_reclass.any_for_year(financial_year.id)
         if not on:
             continue
         parts = run(sub, heading=sub.get("heading"))
@@ -922,7 +1037,8 @@ def _assemble_v2_note(note, financial_year, first_year=False, period=None,
             html_parts.extend(parts)
 
     return "\n".join(html_parts), table_specs, {"awaiting": awaiting,
-                                                "offered": offered}
+                                                "offered": offered,
+                                                "table_lead_ins": table_lead_ins}
 
 
 def _operating_expense_keys():
@@ -1184,6 +1300,13 @@ def _build_note_section(note, present, sort_order, report_id,
         binding["offered_to_preparer"] = asked["offered"]
     if table_specs:
         binding["note_table_specs"] = table_specs
+    if asked and asked.get("table_lead_ins"):
+        # A later step (template_note_tables.apply()) can replace this
+        # note's tables wholesale with the customer's own template's - see
+        # its docstring - and has no way to tell which sentence in the
+        # wording above promised the table it just emptied out, unless
+        # told. This is how it is told (library feedback A4).
+        binding["table_lead_ins"] = asked["table_lead_ins"]
     if drafts:
         # Kept on the section rather than recomputed on each builder load, so
         # the preparer still sees what the library drafted even after writing
@@ -1500,27 +1623,27 @@ def prior_text_to_html(text, drop_labels=True):
 
 
 def carry_forward_prior_wording(report, financial_year) -> int:
-    """Offer last year's sentences as the starting text of this year's notes.
+    """Reformat a note carried forward under an earlier version of this
+    function into paragraphs and headings. Does not carry anything new.
 
     Runs on every builder load and is idempotent. Returns how many sections
-    were filled this time.
+    were changed this time.
 
-    The rule that matters: it only ever writes into a note still holding the
-    library's untouched default. The moment a preparer types anything, that
-    note is theirs and this leaves it alone forever - carrying last year's
-    wording over an auditor's own words would be destroying work, and doing
-    it silently on a page load would be worse.
-
-    Nor does it enable anything. Whether a note appears is decided by whether
-    the figure it explains is present, which is a question about THIS year;
-    last year's disclosure has no vote. See `prior_year_disclosed`.
+    Library feedback A1: this used to also offer last year's sentences as
+    the starting text of any library-covered note the auditor had not yet
+    typed into - which meant a note the library answers completely still
+    printed last year's wording, because "untouched" was read as an
+    invitation rather than a reason to leave it alone. It no longer does
+    that: a library-covered note's wording comes from the library or it is
+    visibly unwritten (see content_gaps()), never quietly filled from last
+    year. What remains here is maintenance of sections a PRIOR run of this
+    function already carried, tidying flat prior-year text into proper
+    HTML - not introducing a new note to last year's words.
     """
     wording = prior_year_wording(financial_year)
     if not wording:
         return 0
 
-    present = _present_keys(financial_year)
-    catalogue = {n["key"]: n for n in load_notes_catalogue(financial_year)}
     filled = 0
 
     for section in report.sections:
@@ -1554,35 +1677,19 @@ def carry_forward_prior_wording(report, financial_year) -> int:
                             filled += 1
             continue
 
-        note = catalogue.get(key)
-        prior = wording.get(key)
-        if not note or prior is None:
-            continue
-
-        # Untouched means identical to what the library would generate right
-        # now. Recomputed rather than remembered, so a section is correctly
-        # treated as edited even if it was changed before this existed.
-        default_html, _specs, _drafts = _assemble_note_content(
-            note, present, first_year=bool(financial_year.is_first_year),
-            period=(financial_year.start_date, financial_year.end_date),
-            previous_period=_previous_period_of(financial_year),
-            financial_year=financial_year)
-        current = (section.content_html or "").strip()
-        if current and current != (default_html or "").strip():
-            continue
-
-        carried_html = _carried_html(prior, financial_year)
-        if not _has_narrative(carried_html):
-            # The template's note was a table and nothing else (revenue, finance
-            # cost). That is not the library missing: it holds the note's own
-            # wording, and a note with a table and no sentence about it reads
-            # as unfinished. The reviewed wording the library ticks "always"
-            # (or ticks for the accounts present) leads the table; what it
-            # leaves to the preparer stays out.
-            carried_html = _library_lead_in(note, present) + carried_html
-        section.content_html = carried_html
-        section.prior_note_id = prior.id
-        filled += 1
+        # A library-covered note never takes its wording from last year,
+        # complete answer, thin answer or none (library feedback A1, and
+        # the retest checklist's own words: "every note sentence can be
+        # found in the notes library Paragraphs sheet"). This used to
+        # offer last year's text as a "starting point" whenever the
+        # section still held the library's untouched default - which
+        # meant a note the library answers FULLY still got overwritten,
+        # because nobody had manually retyped the library's own words yet.
+        # A note the library has nothing for stays visibly unwritten (see
+        # content_gaps()'s "unwritten" report) rather than being padded
+        # with last year's sentences, which is exactly the silent
+        # patch-over this function used to be.
+        continue
 
     if filled:
         db.session.commit()
@@ -1612,33 +1719,6 @@ def _template_pdf_path(financial_year):
                 and Path(str(document.storage_path)).exists()):
             return str(document.storage_path)
     return chosen
-
-
-def _has_narrative(html):
-    """Whether carried note wording has a real sentence in it."""
-    from html import unescape
-    for paragraph in re.findall(r"<p[^>]*>(.*?)</p>", html or "", re.S):
-        text = unescape(re.sub(r"<[^>]+>", "", paragraph)).strip()
-        if len(text) >= 60 and " " in text:
-            return True
-    return False
-
-
-def _library_lead_in(note, present):
-    """The library's own sentences for a note, as paragraphs: reviewed, no table
-    placeholder, no blank for a person to fill, ticked always or by the accounts."""
-    from html import escape
-
-    out = []
-    for piece in _all_pieces(note):
-        text = (piece.get("wording") or "").strip()
-        if (not text or TABLE_PLACEHOLDER.match(text) or _OPEN_BLANK.search(text)
-                or piece.get("review_status") == "unreviewed"):
-            continue
-        if not _piece_triggered(piece.get("tick_state"), piece.get("tb_keys"), present):
-            continue
-        out.append("<p>%s</p>" % escape(text))
-    return "".join(out)
 
 
 def prior_year_disclosed(financial_year) -> set:
@@ -2491,6 +2571,73 @@ def statement_note_gaps(payloads):
     return found
 
 
+def note_total_mismatches(payloads, financial_year):
+    """Note totals that disagree with the face line(s) the library says
+    they must equal (the Tables sheet's "Totals agree with" column).
+
+    The engine still computes nothing of its own here (library 3.5): both
+    sides are figures a source already gave - the note's own total row, and
+    the statement line(s) it is supposed to add up to. Comparing two
+    figures that claim to be the same number is not the arithmetic the
+    library withdrew from the engine; it is the one check a reader cannot
+    be expected to run themselves before a set goes out with two different
+    answers to "what is trade receivables".
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from . import bindings, preparer_checks
+
+    try:
+        figures = bindings.figures_for(financial_year)
+        pairs = preparer_checks.note_totals(payloads, financial_year, figures)
+    except Exception:                                       # noqa: BLE001
+        log.exception("Could not check note totals against the face")
+        return []
+
+    def _num(value):
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    found = []
+    for pair in pairs:
+        if not pair["has_total"] or pair["unknown"]:
+            continue
+        note_total = _num(pair["note_total"])
+        if note_total is None:
+            continue
+        face_total = sum((_num(line["amount"]) or Decimal(0))
+                         for line in pair["lines"])
+        if abs(note_total - face_total) < Decimal("1"):
+            continue
+        where = ", ".join(sorted({line["where"] for line in pair["lines"]})) \
+            or "the statements"
+        found.append((pair["note"], [
+            "%s totals %s in this note but %s on %s." % (
+                pair.get("table") or pair["note"],
+                _plain_amount(note_total), _plain_amount(face_total), where)
+        ]))
+    return found
+
+
+def draft_label(financial_year, incomplete):
+    """The stamp text for a working copy, or None once none applies.
+
+    Three states (library feedback A5), not the two the stamp used to
+    know: something is still missing (INCOMPLETE - the loudest wording,
+    because it means a checklist item is unresolved); everything is
+    answered but nobody has approved the set yet (FOR DISCUSSION - a
+    plain working label, for what goes out for comment); and approved
+    (nothing - a signed set is not a draft, whatever else is true of it).
+    """
+    if financial_year.is_approved:
+        return None
+    if incomplete:
+        return "DRAFT — INCOMPLETE"
+    return "DRAFT — FOR DISCUSSION"
+
+
 def record_completeness(report, payloads):
     """Remember how many sections are incomplete, for screens that list many
     engagements and cannot afford to render every report. Returns the list
@@ -2503,6 +2650,7 @@ def record_completeness(report, payloads):
     # reconcile is not a finished set, however complete its notes are.
     incomplete += statement_blockers(report.financial_year)
     incomplete += statement_note_gaps(payloads)
+    incomplete += note_total_mismatches(payloads, report.financial_year)
     if report.incomplete_notes != len(incomplete):
         report.incomplete_notes = len(incomplete)
         report.completeness_checked_at = datetime.utcnow()
@@ -2632,28 +2780,48 @@ def render_pdf(html: str, base_url: str = None) -> bytes:
 
 
 # --------------------------------------------------------------------------
-# Working marks stay out of the delivered document
+# Working marks stay out of the delivered document. An unresolved
+# placeholder is a different case from a working mark, though: it is not
+# commentary about the draft, it is a hole in the accounts, and a hole that
+# prints as a blank or a string of underscores reads as a genuine answer -
+# nil, or "the firm forgot the box was there" - either of which is worse
+# than the gap. So it stays visibly flagged (never silently erased or
+# turned into blanks) in anything exported, draft or final; nothing marked
+# "final" can carry one anyway, because it is one of the reasons
+# incomplete_reasons() holds a report incomplete.
 # --------------------------------------------------------------------------
 _CLEAN_RULES = [
     # a figure nobody could source: an empty cell, never the word
     (re.compile(r">\s*Incomplete\s*<"), "><"),
     (re.compile(r'<p class="held-table">.*?</p>', re.S), ""),
-    (re.compile(r'<span class="missing-binding"[^>]*>.*?</span>', re.S), ""),
     (re.compile(r'<tr class="working-note">.*?</tr>', re.S), ""),
-    # last year's wording awaiting this year's figure, and stray placeholders
-    (re.compile(r"\s?\[update:[^\]]*\]"), lambda m: " S$______" if "S$" in m.group(0) else ""),
-    (re.compile(r"\s?\[[^\]]*\bnot (?:provided|set)\]"), ""),
+]
+
+# Unresolved placeholders: kept visible, never blanked. See note above.
+# A missing-binding span already renders its own "[... not set]" /
+# "[... not provided]" text (see render_bindings); the second rule below
+# catches that bracketed text wherever it appears, span or not, and marks
+# it plainly rather than deleting or blanking it.
+_MISSING_MARK_RULES = [
+    (re.compile(r"\[update:\s*([^\]]*)\]"), r"[MISSING: \1]"),
+    (re.compile(r"\[([^\]]*)\bnot (?:provided|set)\]"), r"[MISSING: \1]"),
 ]
 
 
 def clean_for_client(html):
     """The document without the app's own commentary.
 
-    Everything the app says about the work - "Incomplete", "[update: ...]",
-    "[... not provided]", "this draft cannot explain ..." - belongs to the
-    preparer's review, where the same items are listed against their note. None
-    of it is part of the accounts, so none of it is written into an export.
+    "Incomplete" and "this draft cannot explain ..." are the app talking
+    about the draft - review-page language that belongs to the preparer,
+    not the accounts, so it is stripped from every export.
+
+    An unresolved placeholder ("[update: ...]", a missing-binding span) is
+    not that: it is a gap in the accounts themselves. It stays in, visibly
+    marked, rather than being smoothed into a blank - see the note above
+    _CLEAN_RULES.
     """
     for pattern, replacement in _CLEAN_RULES:
+        html = pattern.sub(replacement, html)
+    for pattern, replacement in _MISSING_MARK_RULES:
         html = pattern.sub(replacement, html)
     return html

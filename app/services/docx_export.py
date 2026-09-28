@@ -653,12 +653,15 @@ def _column_widths(columns, usable_mm, matrix=False):
     return [max(usable_mm - amounts * each, 40)] + [each] * amounts
 
 
-def build(html: str, title: str = None, draft: bool = False, template_path: str = None,
+def build(html: str, title: str = None, draft_label: str = None,
+          template_path: str = None,
           page_header: tuple = None, toc_pages: dict = None) -> bytes:
     """The report's HTML as a .docx file, returned as bytes.
 
-    `draft` stamps DRAFT - INCOMPLETE in the header of every page: accounts
-    with anything incomplete can be reviewed, never issued as a clean copy.
+    `draft_label`, when given, is stamped in the header of every page - the
+    same wording report_service.draft_label chose (INCOMPLETE while
+    something is open, FOR DISCUSSION once it is answered but not yet
+    approved). None means an approved set: no stamp at all.
 
     `template_path` is an optional path to a customer's custom template file.
     When provided:
@@ -713,12 +716,12 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
             first_line.add_run((company or "").upper()).bold = True
             second = header.add_paragraph()
             second.add_run(f"Company Registration No.: {registration or '—'}").italic = True
-        if draft:
+        if draft_label:
             for target in (header, section.first_page_header):
                 paragraph = (target.paragraphs[0].insert_paragraph_before()
                              if target.paragraphs[0].text else target.paragraphs[0])
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                stamp = paragraph.add_run("DRAFT — INCOMPLETE")
+                stamp = paragraph.add_run(draft_label)
                 stamp.bold = True
                 stamp.font.size = Pt(12)
 
@@ -761,14 +764,14 @@ def build(html: str, title: str = None, draft: bool = False, template_path: str 
         # the body, where it prints once - and a set of accounts has page
         # numbers, which a template's footer may not carry.
         section = document.sections[0]
-        if draft:
+        if draft_label:
             header = section.header
             paragraph = (header.paragraphs[0].insert_paragraph_before()
                          if header.paragraphs and header.paragraphs[0].text
                          else (header.paragraphs[0] if header.paragraphs
                                else header.add_paragraph()))
             paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            stamp = paragraph.add_run("DRAFT — INCOMPLETE")
+            stamp = paragraph.add_run(draft_label)
             stamp.bold = True
             stamp.font.size = Pt(12)
         if not _footer_has_page_field(section):

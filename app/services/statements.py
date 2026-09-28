@@ -107,9 +107,19 @@ def build_statement(financial_year_id: int, statement_type: str,
         db.session.flush()
 
     # Preserve auditor overrides across a rebuild — that's the whole point of
-    # storing them separately from the calculated figure.
+    # storing them separately from the calculated figure. The reason, who
+    # and when travel with the amount: a rebuild (re-approving the trial
+    # balance, adding or withdrawing a comparative reclassification) is
+    # routine and must not cost the override its record (OV-05).
     overrides = {l.line_key: l.manual_override_amount
                  for l in statement.lines if l.manual_override_amount is not None}
+    override_meta = {l.line_key: {
+                        "override_reason": l.override_reason,
+                        "override_by": l.override_by,
+                        "override_at": l.override_at,
+                        "override_source_amount": l.override_source_amount,
+                        "label_override": l.label_override,
+                     } for l in statement.lines if l.manual_override_amount is not None}
 
     StatementLine.query.filter_by(statement_id=statement.id).delete()
     db.session.flush()
@@ -234,6 +244,12 @@ def build_statement(financial_year_id: int, statement_type: str,
                                     "non_current_liabilities")):
                             prior[key] = ZERO
 
+    # A preparer's own correction to how last year's set classified a
+    # figure, applied to the comparative column only (library feedback
+    # A13) - see services/comparative_reclass.py.
+    from . import comparative_reclass
+    prior = comparative_reclass.apply(prior, financial_year_id, statement_type)
+
     lines = []
     for order, spec in enumerate(template.get("lines", [])):
         key = spec["key"]
@@ -260,6 +276,7 @@ def build_statement(financial_year_id: int, statement_type: str,
             # Provenance: which trial balance accounts make up this figure.
             source_line_item_ids=[a.id for a in contributors],
             manual_override_amount=overrides.get(key),
+            **override_meta.get(key, {}),
         )
         db.session.add(line)
         lines.append(line)

@@ -386,7 +386,12 @@ Anything typed into the report - note wording, edited figures, answers, section 
               </div>
             {% endif %}
             {% if gap.wording and 'not provided' in gap.wording %}
-              {{ fix_it(url_for('reports.preparer_inputs', fy_id=fy.id),
+              {# Library feedback B2: this used to have no anchor at all and
+                 opened the Questions page at the top. The blanks that leave
+                 "not provided" in a note's wording are always listed in
+                 that page's "Wording the notes are missing" card, so this
+                 jumps there rather than to the page in general. #}
+              {{ fix_it(url_for('reports.preparer_inputs', fy_id=fy.id) ~ '#blanks-section',
                         'Fill in the wording') }}
             {% elif gap.section_id %}
               {{ fix_it('#confirm-' ~ gap.section_id ~ '-' ~ gap.para_id if gap.para_id else '#sec-' ~ gap.section_id, 'Go to the note') }}
@@ -924,6 +929,10 @@ Anything typed into the report - note wording, edited figures, answers, section 
                   {{ item.when|datefmt('%d %b %Y') }}{% endif %}
                 {%- if item.history|length > 1 %} &middot;
                   changed {{ item.history|length }} times{% endif %}
+                {% if not item.cleared %}
+                  &middot; <button type="button" class="ov-undo"
+                                  data-override-id="{{ item.id }}">Undo</button>
+                {% endif %}
               </div>
             </li>
           {% endfor %}

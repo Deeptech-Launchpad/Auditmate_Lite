@@ -214,6 +214,52 @@ def _in_words(used_in, headings):
     return names
 
 
+# Standard accounting shorthand the Fields sheet's names are built from -
+# not a client's own vocabulary, so expanding it here is not a guess the
+# way placing a figure on a note row would be (see the module docstring's
+# "WHAT THIS DOES NOT DO"). Library feedback B2: "Sbp vesting", "Fv
+# technique" read as internal codes because plain title-casing still
+# leaves the abbreviation untouched; these are the ones that recur.
+_FIELD_WORDS = {
+    "sbp": "share-based payment", "fv": "fair value",
+    "fta": "first-time adoption", "py": "prior year",
+    "cy": "current year", "kmp": "key management personnel",
+}
+
+
+def _field_label(field):
+    """A field name off the Fields sheet, in words - "SBP_VESTING" as
+    "Share-Based Payment Vesting" rather than "Sbp vesting"."""
+    parts = []
+    for word in field.split("_"):
+        if not word:
+            continue
+        expanded = _FIELD_WORDS.get(word.lower())
+        parts.append(expanded.title() if expanded else word.title())
+    return " ".join(parts) if parts else field
+
+
+def _used_in_applies(financial_year, used_in):
+    """Whether at least one note this blank is used in actually applies to
+    this engagement (library feedback B2: about 25 of 63 questions did not
+    apply here but showed as needed regardless - blanks() was the other
+    half of that count, since it filtered nothing at all).
+
+    A blank with no note reference to test is kept rather than guessed
+    away, the same rule _applies() follows for a first-time-adoption
+    question nothing held can settle either way.
+    """
+    stems = set()
+    for part in str(used_in or "").replace(";", ",").split(","):
+        part = part.strip()
+        if part:
+            stems.add(part.rsplit("_P", 1)[0] if "_P" in part else part)
+    if not stems:
+        return True
+    return any(document_fields._note_applies(financial_year, stem)
+              for stem in stems)
+
+
 def blanks(financial_year):
     """The Fields sheet's blanks that a preparer, and only a preparer, fills.
 
@@ -235,11 +281,13 @@ def blanks(financial_year):
             continue
         blocking = str(row.get("Blocking if unresolved") or "")
         used_in = str(row.get("Used in") or "").strip()
+        if not _used_in_applies(financial_year, used_in):
+            continue
         out.append({
             "item": "field." + field,
             "field": field,
             "mode": ASK,
-            "label": field.replace("_", " ").capitalize(),
+            "label": _field_label(field),
             "holds": blocking.strip().lower().startswith("hold"),
             "omits": False,
             "holds_text": blocking.strip(),
@@ -262,13 +310,21 @@ def stored(financial_year):
 
 def save(financial_year, item, *, mode=ASK, answer=None, amount=None,
          source=None, proposed=None, accepted_proposal=False, parts=None,
-         clear=False, user_id=None, commit=True):
+         not_applicable=False, clear=False, user_id=None, commit=True):
     """Record an answer. Returns the row, or None when cleared.
 
     Clearing is not the same as answering no. It puts the question back to
     unanswered, which puts a holding note back to Incomplete - a company
     that has told us nothing and a company that has told us "none" must
     not read the same way in a set of accounts.
+
+    `not_applicable` is a third answer, not a variant of the other two
+    (library feedback B1): the question is resolved (decided stays true,
+    so it drops off the outstanding list the same as any other answer),
+    but there is no figure or wording to carry forward - `answer` is used
+    only for the optional reason, and `amount`/`parts` are cleared so a
+    stale figure from an earlier answer cannot linger under a row now
+    marked as not applying.
     """
     row = PreparerInput.query.filter_by(
         financial_year_id=financial_year.id, item=item).first()
@@ -285,12 +341,18 @@ def save(financial_year, item, *, mode=ASK, answer=None, amount=None,
         db.session.add(row)
 
     row.mode = mode
-    row.answer = (answer or "").strip() or None
-    row.amount = amount
+    row.not_applicable = bool(not_applicable)
+    if row.not_applicable:
+        row.answer = (answer or "").strip() or None    # the reason, if given
+        row.amount = None
+        row.parts = None
+    else:
+        row.answer = (answer or "").strip() or None
+        row.amount = amount
+        row.parts = parts or None
     row.source = (source or "").strip() or None
     row.proposed = (proposed or "").strip() or None
     row.accepted_proposal = bool(accepted_proposal)
-    row.parts = parts or None
     row.decided = True
     row.decided_by = user_id
     if commit:
@@ -370,6 +432,11 @@ def values_for_bindings(financial_year):
     for row in PreparerInput.query.filter_by(
             financial_year_id=financial_year.id).all():
         if not row.is_paragraph_blank or not row.is_answered:
+            continue
+        if row.not_applicable:
+            # Nothing to substitute - `answer` holds the not-applicable
+            # reason here, not a value for the sentence, so it is left out
+            # rather than printed where a real figure or fact belongs.
             continue
         text = (row.answer or "").strip()
         if not text and row.amount is not None:

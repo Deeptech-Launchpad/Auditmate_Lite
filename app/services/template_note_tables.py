@@ -265,27 +265,26 @@ _CODES = [
 
 
 def _tax_row(kind, context, figures):
-    """The two tax lines the template works out for itself.
+    """The two tax lines the template used to work out for itself - now held
+    for the preparer instead (library 3.5: the engine performs no
+    arithmetic).
 
     Brown Rock's 2023 note reads: profit 27,800, tax at 17% 4,726, statutory
-    stepped income exemption (2,788). 17% of 27,800 is 4,726; the exemption is
-    17% of 75% of the first 10,000 and 50% of the next 190,000 (7,500 + 8,900).
-    Both follow the profit before tax, as the template's own figures do - a loss
-    gives nil - and are for the preparer to confirm against the tax computation.
+    stepped income exemption (2,788). That figure came from a plain 17%,
+    stepped-exemption formula that ignored anything the actual tax
+    computation knows and the books don't state - brought-forward tax
+    losses, the CIT rebate - so it printed a number belonging to neither.
+    Held here instead: the preparer confirms the real figure from the tax
+    computation (the standard override on this table cell), or it stays
+    Incomplete rather than guess.
     """
-    from decimal import Decimal as D
+    from .bindings import Held
 
     profit = figures.resolve("PL-PBT", 0)
-    if not isinstance(profit, D):
-        return profit
-    found = re.search(r"(\d+(?:\.\d+)?)\s*%", context)
-    rate = D(found.group(1)) / D(100) if found else D("0.17")
-    chargeable = max(profit, ZERO)
-    if kind == "tax_rate":
-        return (chargeable * rate).quantize(D("0.01"))
-    exempt = (D("0.75") * min(chargeable, D(10000))
-              + D("0.5") * min(max(chargeable - D(10000), ZERO), D(190000)))
-    return -(exempt * rate).quantize(D("0.01"))
+    what = "the tax charge" if kind == "tax_rate" else "the tax exemption"
+    return Held(f"Needs the tax computation for {what}; the trial balance "
+               f"alone cannot state it" if isinstance(profit, Decimal)
+               else "Needs profit before tax first")
 
 
 def _clean(label):
@@ -535,20 +534,27 @@ def build(spec, financial_year, statements=None):
             "table_id": table_key, "flags": flags}
 
 
-_STAFF_ACCOUNT = re.compile(
-    r"(?i)salar|wage|\bcpf\b|allowance|director.{0,3}s?\W*fee|\blevy\b")
+# The notes-category line codes a staff cost account is filed under
+# (config/line_code_categories.yaml). Checked by code, not by matching
+# words in the account's name (library feedback B3): a name-pattern list
+# is always one wording behind the client's own chart of accounts - it
+# flagged a real client's correct staff costs as wrong because "Part
+# timers" matched none of its words, while the account was correctly
+# mapped to PL-STAFF the whole time.
+_STAFF_LINE_CODES = {"PL-STAFF", "PL-DIRFEE", "PL-CPF", "PL-LEVY"}
 
 
 def _staff_accounts(financial_year):
-    """The trial balance's own staff accounts, by their names: (names, total).
-    An independent reading of the books, to set beside what the note drew."""
+    """The trial balance's own staff accounts, by how they are actually
+    mapped: (names, total). An independent reading of the books, to set
+    beside what the note drew."""
     from ..models import TrialBalanceAccount
 
     names, total = [], ZERO
     for account in TrialBalanceAccount.query.filter_by(
             financial_year_id=financial_year.id,
             statement_type="profit_and_loss").all():
-        if not _STAFF_ACCOUNT.search(account.account_name or ""):
+        if account.line_code not in _STAFF_LINE_CODES:
             continue
         net = Decimal(str(account.debit or 0)) - Decimal(str(account.credit or 0))
         if net:
@@ -638,13 +644,54 @@ def apply(report, template_path):
         library = [{"version_id": s.get("version_id"), "table_id": s.get("table_id")}
                    for s in old if s.get("source") == "bindings"]
         code = next((s.get("note_code") for s in old if s.get("note_code")), None)
-        binding["note_table_specs"] = [
+        new_specs = [
             {"source": "template", "note": number, "index": i,
              "note_code": code, "path": str(template_path), "library": library}
             for i in range(len(tables.get(number, [])))]
+        binding["note_table_specs"] = new_specs
+
+        if not new_specs:
+            # The customer's own template has nothing at all here, where
+            # the library had a table - so any sentence written earlier to
+            # introduce that table ("...are set out below") is now a
+            # promise with nothing behind it (library feedback A4). The
+            # note's wording was written before this function ever ran, so
+            # it has no way to know which sentence that was unless told -
+            # see the "table_lead_ins" note where it is recorded.
+            lead_ins = binding.get("table_lead_ins") or {}
+            if _strip_paragraphs(section, lead_ins.values()):
+                binding["table_lead_ins"] = {}
+                # The same rule the note followed when it was first built:
+                # no table, no wording, nothing waiting on the preparer -
+                # no heading either. Otherwise stripping the one sentence
+                # this note had just traded a dangling promise for a
+                # heading with nothing under it at all.
+                if (not (section.content_html or "").strip()
+                        and not binding.get("awaiting_preparer")):
+                    section.is_enabled = False
+
         section.data_binding = binding
         changed += 1
     return changed
+
+
+def _strip_paragraphs(section, para_ids):
+    """Remove each `<tag data-para="id">...</tag>` element naming one of
+    `para_ids` from section.content_html. Returns how many were removed."""
+    para_ids = {p for p in para_ids if p}
+    if not para_ids or not section.content_html:
+        return 0
+    html = section.content_html
+    removed = 0
+    for para_id in para_ids:
+        pattern = re.compile(
+            r'<(\w+)[^>]*\bdata-para="%s"[^>]*>.*?</\1>\s*'
+            % re.escape(str(para_id)), re.S)
+        html, count = pattern.subn("", html)
+        removed += count
+    if removed:
+        section.content_html = html
+    return removed
 
 
 # ------------------------------------------------------------------ the cash flow
@@ -752,6 +799,7 @@ def cash_flow_from_template(financial_year, template_rows, entry=False):
 
     profit, interest = stated(pl, "profit_for_year"), stated(pl, "interest_expense")
     tax = stated(pl, "tax_expense")
+    profit_before_tax = stated(pl, "profit_before_tax")
 
     # --- lay the template's rows out with this year's figures ---------------
     out, group, sections = [], "", {}
@@ -858,16 +906,23 @@ def cash_flow_from_template(financial_year, template_rows, entry=False):
                     else "sub", label, None, prior_of(r), 0, section)
             continue
         # an item
-        if re.match(r"(?i)^profit after tax", label):
-            new_row("item", label, profit, prior_of(r), 0, section,
-                    sources=[("Profit for the financial year (income statement)",
-                              profit, None)])
+        if re.match(r"(?i)^profit (after|before) tax", label):
+            # FRS 7 starts an indirect-method cash flow from profit BEFORE
+            # tax (library feedback A14). The template's own row said
+            # "after tax" because that is how the client's own report
+            # (usually a Xero export) presented it - relabelled here, with
+            # the add-back-tax row a few lines below retired below rather
+            # than followed, since starting before tax already means there
+            # is nothing left to add back.
+            label = "Profit before taxation"
+            new_row("item", label, profit_before_tax, prior_of(r), 0, section,
+                    sources=[("Profit before tax (income statement)",
+                              profit_before_tax, None)])
         elif re.match(r"(?i)^interest expense$", label) and group.lower().startswith("adjust"):
             new_row("item", label, interest, prior_of(r), 1, section,
                     sources=[("Finance cost (income statement)", interest, None)])
         elif re.match(r"(?i)^tax expense$", label) and group.lower().startswith("adjust"):
-            new_row("item", label, tax, prior_of(r), 1, section,
-                    sources=[("Income tax expense (income statement)", tax, None)])
+            continue    # nothing to add back: the starting figure is already before tax
         elif re.match(r"(?i)^interest expense$", label):
             new_row("item", label, -interest, prior_of(r), 1, section,
                     sources=[("Finance cost (income statement), taken out again "

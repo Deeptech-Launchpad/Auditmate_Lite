@@ -127,7 +127,7 @@ def note_applies(note, figures, financial_year):
     return False, "No trial balance line decides this note; the preparer does"
 
 
-def paragraph(piece, note_code, figures):
+def paragraph(piece, note_code, figures, financial_year=None):
     """(action, reason) for one paragraph of a note that is on."""
     source = (piece.get("condition_source") or "").strip().lower()
     # The workbook's own wording for the sources it names. "Firm settings" and
@@ -152,6 +152,19 @@ def paragraph(piece, note_code, figures):
             # The client record has no field for this yet (a holding
             # company, say), so it cannot be tested and is not assumed.
             return OMIT, "The client record does not hold this yet"
+        # The one client-record fact this can actually test today (library
+        # feedback A15): GST wording printed for every client regardless of
+        # registration, because "client record" otherwise just prints
+        # unconditionally below. Matched on the condition's own sentence,
+        # not the note, so it only ever touches a paragraph the library
+        # itself says is about GST.
+        condition_text = (piece.get("condition_text") or "").lower()
+        if "gst" in condition_text and financial_year is not None:
+            customer = getattr(financial_year, "customer", None)
+            registered = bool((getattr(customer, "gst_reg_no", None) or "").strip())
+            if registered:
+                return PRINT, "The client record shows a GST registration"
+            return SKIP, "The client record shows no GST registration"
         return PRINT, ""
 
     if source == "preparer confirms":
@@ -171,3 +184,35 @@ def paragraph(piece, note_code, figures):
         return PRINT, ""
 
     return HOLD, f"Unknown condition source {piece.get('condition_source')!r}"
+
+
+# A GST clause riding inside an otherwise-unconditional sentence - "net of
+# returns, trade discounts and goods and services tax" - rather than a
+# paragraph of its own the library marks as GST-conditional (library
+# feedback A15). Checked in the live library version actually loaded for
+# an engagement (v3.11): the sentence is one piece of the Revenue note,
+# condition_source "Unconditional", with no per-piece hook for a client's
+# GST status at all - the note-level "client record" test above never
+# gets a chance to run on it. Fixed at the phrase, not the sentence: the
+# rest of the sentence (returns, trade discounts) is true regardless of
+# GST registration and must stay; only the GST clause is untrue for a
+# client with no registration.
+#
+# Matches only the one confirmed real phrasing - "...and goods and
+# services tax" - not a broader pattern for wording nobody has actually
+# seen: a guessed pattern that mismatched the grammar around it would
+# leave a dangling "of" or "and" behind, which is worse than leaving an
+# unrecognised phrasing untouched.
+_GST_CLAUSE = re.compile(r"\s*,?\s*and\s+goods and services tax\b", re.I)
+
+
+def strip_gst_wording(wording, financial_year):
+    """`wording`, with an "...and goods and services tax" clause removed
+    if the client has no GST registration on file. Unchanged otherwise,
+    and unchanged if the phrase is not present at all."""
+    if not wording or "goods and services tax" not in wording.lower():
+        return wording
+    customer = getattr(financial_year, "customer", None) if financial_year else None
+    if bool((getattr(customer, "gst_reg_no", None) or "").strip()):
+        return wording                                    # registered: true as printed
+    return _GST_CLAUSE.sub("", wording)

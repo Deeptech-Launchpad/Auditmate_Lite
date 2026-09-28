@@ -622,3 +622,68 @@ def opening_check(financial_year):
         "differs": sum(1 for r in rows if r["status"] == "differs"),
         "missing": sum(1 for r in rows if r["status"] == "missing"),
     }
+
+
+def signed_accounts_consistency(financial_year):
+    """Does last year's signed set balance on its own terms?
+
+    Library feedback A17: the signed accounts become this year's
+    comparative column and are trusted for opening_check() above, but
+    nothing had ever asked whether the set itself was internally sound -
+    assets equal to equity and liabilities. A parser reading a PDF can
+    miscast a figure the same way a preparer can; a set that did not
+    balance when it was filed should not be carried forward as if it had,
+    silently, as somebody else's comparative this year.
+
+    Only the cast check: the most fundamental thing a balance sheet must
+    do, and the one every figure needed for it (asset/liability/equity
+    groups) is already resolved by classify(). Notes-agree-with-face and
+    cash-flow-ties-to-cash need figures this module does not carry for a
+    document read as a flat {key: amount}, and are left for a future pass
+    rather than guessed at from too little data.
+    """
+    figures = sources(financial_year).get("signed_accounts")
+    if not figures:
+        return {"comparable": False}
+
+    zero = Decimal("0")
+    assets = liabilities = equity = zero
+    for key, amount in figures.items():
+        entry = classify(key)
+        if not entry or entry.get("fs") != "Balance Sheet":
+            continue
+        value = amount if isinstance(amount, Decimal) else Decimal(str(amount or 0))
+        group = entry.get("group") or ""
+        if group in ("non_current_assets", "current_assets", "assets_total"):
+            assets += value
+        elif group == "equity":
+            equity += value
+        elif group in ("non_current_liabilities", "current_liabilities",
+                       "liabilities_total"):
+            liabilities += value
+
+    if assets == zero and liabilities == zero and equity == zero:
+        # Nothing balance-sheet-shaped was read from this source at all -
+        # a coverage problem sources() would rather flag than this pretend
+        # to check.
+        return {"comparable": False}
+
+    # figures here are debit-positive, the same convention every other
+    # source in this module uses (see _figures_from_rows): an asset comes
+    # out positive, a liability or equity balance - normally a credit -
+    # comes out negative. A balanced set therefore sums to nil; it is not
+    # "assets equals equity plus liabilities" in their everyday positive
+    # sense, which would double-count the gap for a set that is actually
+    # fine (assets - (equity + liabilities) computes assets - (-assets)
+    # for a balanced set, not zero).
+    difference = assets + equity + liabilities
+    return {
+        "comparable": True,
+        "assets": assets,
+        # Shown the way a reader expects to see them - positive - even
+        # though the check itself runs on the debit-positive figures above.
+        "equity": -equity,
+        "liabilities": -liabilities,
+        "difference": difference,
+        "balances": abs(difference) < TOLERANCE,
+    }
