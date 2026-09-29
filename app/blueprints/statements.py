@@ -38,7 +38,8 @@ def index(fy_id):
                            customer=financial_year.customer,
                            statement_types=STATEMENT_TYPES,
                            existing=existing,
-                           verified_docs=verified_docs)
+                           verified_docs=verified_docs,
+                           sync_status=statement_service.sync_status(financial_year))
 
 
 @bp.route("/fy/<int:fy_id>/generate", methods=["POST"])

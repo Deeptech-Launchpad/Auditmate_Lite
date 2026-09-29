@@ -6,6 +6,7 @@ misread number can never reach a financial statement.
 """
 import functools
 import logging
+from datetime import datetime
 from decimal import Decimal
 
 import yaml
@@ -105,6 +106,12 @@ def build_statement(financial_year_id: int, statement_type: str,
             statement_type=statement_type)
         db.session.add(statement)
         db.session.flush()
+
+    # `default=` on the column only fires on INSERT. The row is reused on
+    # every rebuild, so without this the "Generated ..." timestamp shown to
+    # the auditor freezes at whenever the statement was first ever built,
+    # even though the lines below it are recomputed fresh every time (A7).
+    statement.generated_at = datetime.utcnow()
 
     # Preserve auditor overrides across a rebuild — that's the whole point of
     # storing them separately from the calculated figure. The reason, who
@@ -653,6 +660,28 @@ def recalculate(statement_id: int) -> None:
         statement.lines,
         _prior_context(statement.financial_year, statement.statement_type))
     db.session.commit()
+
+
+def sync_status(financial_year):
+    """Whether every statement was actually rebuilt at or after the trial
+    balance's last approval (feedback A7).
+
+    Nothing feeding a statement can move without a rebuild following it -
+    approve() rebuilds everything, and an account mapping change is refused
+    once the trial balance is approved (see trial_balance.set_mapping). This
+    checks the real timestamps rather than trusting every call site got it
+    right, the same way bound_answers_not_reflected checks the printed
+    report rather than trusting the wording matched the answer.
+    """
+    statements = financial_year.statements
+    if not statements or not financial_year.tb_approved_at:
+        return None
+    oldest_built = min(s.generated_at for s in statements if s.generated_at)
+    return {
+        "in_sync": oldest_built >= financial_year.tb_approved_at,
+        "oldest_built": oldest_built,
+        "tb_approved_at": financial_year.tb_approved_at,
+    }
 
 
 # The statements that ARE the approved trial balance. Once the trial balance is

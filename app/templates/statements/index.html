@@ -58,6 +58,25 @@
     Approving it also unlocks the audit report.
   </div>
 </div>
+{% elif sync_status and not sync_status.in_sync %}
+<div class="notice warn">
+  <span>⚠</span>
+  <div>
+    <strong>Out of date.</strong>
+    The trial balance was approved
+    {% if fy.tb_approved_by_name %}by {{ fy.tb_approved_by_name }} {% endif %}
+    on {{ fy.tb_approved_at|datefmt('%d %b %Y, %H:%M') }}, but the oldest
+    statement below was last built
+    {{ sync_status.oldest_built|datefmt('%d %b %Y, %H:%M') }} — before that
+    approval.
+    <form method="post" style="display:inline"
+          action="{{ url_for('statements.generate', fy_id=fy.id) }}"
+          onsubmit="return confirm('Rebuild every statement from the approved trial balance?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn">Rebuild now →</button>
+    </form>
+  </div>
+</div>
 {% else %}
 <div class="notice ok">
   <span>✓</span>
@@ -65,6 +84,12 @@
     Generated from the trial balance approved
     {% if fy.tb_approved_by_name %}by {{ fy.tb_approved_by_name }} {% endif %}
     on {{ fy.tb_approved_at|datefmt('%d %b %Y, %H:%M') }}.
+    {% if sync_status %}
+      Every statement below was last built
+      {{ sync_status.oldest_built|datefmt('%d %b %Y, %H:%M') }} or later —
+      at or after that approval, so none of them can be showing a figure
+      from before it.
+    {% endif %}
     Statements are built in dependency order — profit or loss, then the
     financial position (which picks up the year's profit), then changes in
     equity and cash flows.
