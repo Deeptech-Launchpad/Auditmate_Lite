@@ -236,8 +236,27 @@ def read(path, title=None):
 
 ZERO = Decimal("0")
 
+# A KMP compensation category (library feedback A2, template-following
+# path): checked ahead of "staff cost|employee benefit" below, which would
+# otherwise catch "Short-term employee benefits" itself and sum every
+# staff account in the books - a much bigger, wrong figure for a note
+# about key management alone. Field names are the ones
+# services/preparer_inputs.py._sync_bound_table() writes to; the scope is
+# the library's own table id for this table, fixed regardless of which
+# note number or row order the client's own template happens to use.
+_KMP_TABLE_ID = "N59_KEY_MANAGEMENT_PERSONNEL_T2"
+_KMP_FIELDS = [
+    (r"short.?term.*(benefit|remuneration|pay)", "short_term_employee_benefits"),
+    (r"post.?employment", "post_employment_benefits"),
+    (r"other long.?term|long.?term benefit", "other_long_term_benefits"),
+    (r"termination", "termination_benefits"),
+    (r"share.?based", "share_based_payment"),
+]
+
 # (pattern on the caption in its group, how to fill it). First match wins.
 _CODES = [
+    (pattern, ("kmp", field)) for pattern, field in _KMP_FIELDS
+] + [
     (r"staff cost|employee benefit|salar|wages|payroll",
      ("codes", ["PL-STAFF", "PL-DIRFEE", "PL-CPF", "PL-LEVY"])),
     (r"legal and professional|professional fee|legal fee",
@@ -330,6 +349,18 @@ def _fill_row(context, figures, financial_year):
     for pattern, how in _CODES:
         if not re.search(pattern, text):
             continue
+        if how[0] == "kmp":
+            from . import document_fields
+            field = how[1]
+            entered = document_fields.value(financial_year, "ENTERED", field,
+                                            _KMP_TABLE_ID)
+            if entered is not None:
+                return (entered.amount if entered.amount is not None
+                        else ZERO), []
+            return Held("Needs the preparer's split of key management "
+                        "personnel compensation (Questions page)",
+                        token="ENTERED", field=field,
+                        scope=_KMP_TABLE_ID), []
         if how[0] in ("tax_rate", "tax_exemption"):
             return _tax_row(how[0], context, figures), ["PL-PBT"]
         if how[0] == "codes":
