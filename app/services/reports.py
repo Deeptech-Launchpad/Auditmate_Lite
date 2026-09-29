@@ -2621,6 +2621,67 @@ def note_total_mismatches(payloads, financial_year):
     return found
 
 
+def bound_answers_not_reflected(payloads, financial_year):
+    """A preparer's answer to a question bound to a note table (library
+    feedback A2) that is nowhere in the printed report.
+
+    Wiring the answer into a specific client's own template wording, one
+    wording at a time, only ever covers the wordings someone has actually
+    seen - the next client's own phrasing repeats the exact bug this
+    started as. Checked generally instead: whatever wording a client's
+    document uses, if the total the preparer already gave was never
+    printed anywhere, that is worth a name on the checklist rather than a
+    number that quietly went nowhere. Not a proof (a coincidence could
+    hide a real gap, or a real one could be a false alarm), the same
+    honest limit the other Preparer Checks carry.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from . import preparer_inputs as prep
+
+    def _num(value):
+        try:
+            return Decimal(str(value).replace(",", "").strip())
+        except (InvalidOperation, TypeError, ValueError, AttributeError):
+            return None
+
+    found = []
+    stored = prep.stored(financial_year)
+    for item, note_heading in prep._BOUND_TABLE_ITEMS.items():
+        row = stored.get(item)
+        if row is None or row.not_applicable or not row.decided:
+            continue
+        amounts = [n for n in (_num((p or {}).get("amount"))
+                              for p in (row.parts or []) if isinstance(p, dict))
+                  if n is not None]
+        if not amounts:
+            continue
+        total = sum(amounts, Decimal("0"))
+        if total == 0:
+            continue
+        needle = "{:,.0f}".format(total)
+
+        haystack = []
+        for payload in payloads or []:
+            haystack.append(payload.get("html") or "")
+            for table in payload.get("tables") or []:
+                for trow in table.get("rows") or []:
+                    for column in ("current", "previous"):
+                        value = trow.get(column)
+                        if isinstance(value, Decimal):
+                            haystack.append("{:,.0f}".format(value))
+        if needle in " ".join(haystack):
+            continue
+
+        found.append((note_heading, [
+            "The preparer answered this (total %s) on the Questions page, "
+            "but it does not appear anywhere in the printed report - this "
+            "client's own template wording for the line isn't recognised "
+            "yet. Check %s manually." % (needle, note_heading)
+        ]))
+    return found
+
+
 def draft_label(financial_year, incomplete):
     """The stamp text for a working copy, or None once none applies.
 
@@ -2651,6 +2712,7 @@ def record_completeness(report, payloads):
     incomplete += statement_blockers(report.financial_year)
     incomplete += statement_note_gaps(payloads)
     incomplete += note_total_mismatches(payloads, report.financial_year)
+    incomplete += bound_answers_not_reflected(payloads, report.financial_year)
     if report.incomplete_notes != len(incomplete):
         report.incomplete_notes = len(incomplete)
         report.completeness_checked_at = datetime.utcnow()
