@@ -97,8 +97,11 @@ def builder(fy_id):
     payloads = _assemble(report, chips=editable)
     incomplete = report_service.record_completeness(report, payloads)
 
+    from ..services import statements as statements_service
+
     return render_template("reports/builder.html",
                            report=report, fy=financial_year,
+                           sync_status=statements_service.sync_status(financial_year),
                            look=_template_look(financial_year.customer),
                            editable=editable,
                            incomplete=incomplete,
@@ -1271,6 +1274,18 @@ def finalise(fy_id):
         flash("Generate the audit report before closing the engagement.",
               "error")
         return redirect(url_for("reports.builder", fy_id=fy_id))
+
+    # The statements must actually have been rebuilt at or after the last
+    # trial balance approval (feedback A7) - closing over a stale statement
+    # would issue a report that quietly disagrees with the books behind it.
+    from ..services import statements as statements_service
+
+    sync = statements_service.sync_status(financial_year)
+    if sync and not sync["in_sync"]:
+        flash("The statements were built before the trial balance's last "
+              "approval, so they may not match it. Rebuild the statements "
+              "before closing the engagement.", "error")
+        return redirect(url_for("statements.index", fy_id=fy_id))
 
     # The notes must be the template's, in its order, before anything is issued.
     mismatch = template_skeleton.check(report)

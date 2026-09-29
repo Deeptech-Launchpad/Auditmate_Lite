@@ -55,6 +55,11 @@ Anything typed into the report - note wording, edited figures, answers, section 
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn">Reopen engagement</button>
       </form>
+    {% elif fy.can_close and sync_status and not sync_status.in_sync %}
+      <button type="button" class="btn" disabled
+              title="The statements were built before the trial balance's last approval — rebuild them first">
+        ✓ Approve &amp; close engagement
+      </button>
     {% elif fy.can_close and incomplete %}
       <button type="button" class="btn" disabled
               title="{{ incomplete|length }} note(s) are incomplete">
