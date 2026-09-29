@@ -87,6 +87,14 @@ DOCUMENT_TOKENS = {
     "LOAN": "the loan and lease schedules",
     "GL": "the general ledger",
     "BANK": "the bank confirmation",
+    # Not a document at all - the preparer's own split of a figure the
+    # books hold only as one lump sum (key management personnel
+    # compensation). Registered here anyway (library feedback A2) so an
+    # unanswered KMP: row resolves to Held rather than None: a binding
+    # `resolve()` does not recognise falls silently to "not a line code
+    # in this library" otherwise, which is invisible rather than
+    # incomplete, and never becomes answerable in the note itself.
+    "KMP": "the preparer's split of the figure",
 }
 
 PERSON_TOKENS = {

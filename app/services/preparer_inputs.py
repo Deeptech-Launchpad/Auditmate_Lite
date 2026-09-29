@@ -67,6 +67,61 @@ _basis_only = ("DIVIDEND_PER_SHARE", "IR_SENSITIVITY", "CONTRACT_LIAB_REV",
 ALWAYS = "always"
 FIRST_TIME_ONLY = "on first-time adoption only"
 
+# Rows whose figure(s), once answered, feed a specific table row directly
+# (library feedback A2: "KMP entered ... but the Note 15 KMP table is
+# empty" - the figure was recorded, but nothing bound it to the table's own
+# rows, which read a fixed set of KMP: bindings rather than whatever the
+# preparer happened to type as a row label). Listed by item, the same way
+# `_basis_only` lists its own departure from the sheet, since this is one
+# too: the sheet gives free rows, and these are bound to fixed ones instead.
+_BOUND_TABLE_ITEMS = {"KMP_SPLIT": "Key management personnel compensation"}
+
+# What identifies "the" table under a bound item's note, since the binding
+# a version uses for its rows is not stable across versions - v3.5 holds
+# these five as MANUAL (already answerable in place, just not from this
+# page), v3.11 as KMP:short_term etc (not answerable at all until
+# DOCUMENT_TOKENS knows the prefix - see services/bindings.py). The row
+# labels are the one thing both agree on, so those are what is matched.
+_BOUND_LABELS = {"short-term employee benefits", "post-employment benefits",
+                 "other long-term benefits", "termination benefits",
+                 "share-based payment"}
+
+
+def _bound_table(financial_year, heading):
+    """(table_id, [row labels in order, excluding the total]) for the
+    library table under this note whose rows are the fixed slots an item
+    in `_BOUND_TABLE_ITEMS` fills - or None if this version has no such
+    table (an older library, or the note renamed).
+
+    Found by heading rather than a hard-coded table id, so a library
+    version that numbers or names its tables differently still resolves -
+    the fixed slots are the point, not which id happens to hold them.
+    """
+    from . import bindings
+
+    version = _version(financial_year)
+    if version is None:
+        return None
+    note = NoteLibraryNote.query.filter_by(
+        library_version_id=version.id).filter(
+        NoteLibraryNote.heading.ilike(heading)).first()
+    if note is None:
+        return None
+    for piece in note.pieces or []:
+        table_id = piece.get("table_id")
+        if not table_id:
+            continue
+        table = bindings.library_table(version.id, table_id)
+        if not table:
+            continue
+        rows = table.get("rows") or []
+        found = {str(r.get("label") or "").strip().lower() for r in rows}
+        if _BOUND_LABELS & found:
+            labels = [r["label"] for r in rows
+                     if str(r.get("binding") or "") != "DOC:total"]
+            return table_id, labels
+    return None
+
 
 def _version(financial_year):
     return document_fields._version(financial_year)
@@ -158,11 +213,17 @@ def catalogue(financial_year):
             continue
         mode = str(row.get("Mode") or ASK).strip()
         unanswered = str(row.get("If unanswered") or "").strip()
+        fixed_labels = None
+        if item in _BOUND_TABLE_ITEMS:
+            bound = _bound_table(financial_year, _BOUND_TABLE_ITEMS[item])
+            if bound:
+                fixed_labels = bound[1]
         out.append({
             "item": item,
             "mode": mode,
             "note": note,
             "note_code": note_code,
+            "fixed_labels": fixed_labels,
             "concludes": _plain(
                 str(row.get("What the engine concludes") or "").strip(), labels),
             "from_what": _plain(
@@ -175,7 +236,8 @@ def catalogue(financial_year):
             "holds": unanswered == INPUT_HOLD,
             "omits": unanswered == INPUT_OMIT,
             "rows": str(row.get("Rows") or "").strip(),
-            "parts_wanted": _rows_wanted(row.get("Rows")),
+            "parts_wanted": (len(fixed_labels) if fixed_labels
+                            else _rows_wanted(row.get("Rows"))),
             # A proposal is about a figure the books nearly answer, so it
             # gets an amount box. An "Ask" is almost always a sentence -
             # "was any invoice factored" - and showing an empty Amount
@@ -355,9 +417,44 @@ def save(financial_year, item, *, mode=ASK, answer=None, amount=None,
     row.accepted_proposal = bool(accepted_proposal)
     row.decided = True
     row.decided_by = user_id
+    if item in _BOUND_TABLE_ITEMS:
+        _sync_bound_table(financial_year, item,
+                          [] if row.not_applicable else (row.parts or []))
     if commit:
         db.session.commit()
     return row
+
+
+def _sync_bound_table(financial_year, item, parts):
+    """Write this item's figures into the table row they belong to
+    (library feedback A2), the same way typing straight into an Incomplete
+    cell already does (see bindings._make_answerable) - so a figure
+    answered here is a figure printed there, not two records of one fact.
+
+    `parts` is in the fixed order `catalogue()` presented it in (the
+    hidden label field keeps that order even though the label itself isn't
+    typed), so it lines up with `_bound_table`'s own row order position for
+    position. A blank amount clears that row's entry rather than leaving a
+    stale figure from an earlier answer.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from . import bindings, document_fields
+
+    bound = _bound_table(financial_year, _BOUND_TABLE_ITEMS[item])
+    if bound is None:
+        return
+    table_id, labels = bound
+    for label, part in zip(labels, parts):
+        field = bindings._slug(label)
+        raw = str((part or {}).get("amount") or "").strip()
+        try:
+            amount = Decimal(raw.replace(",", "")) if raw else None
+        except InvalidOperation:
+            amount = None
+        document_fields.save(financial_year, "ENTERED", field,
+                             scope=table_id, amount=amount,
+                             clear=amount is None)
 
 
 def state(financial_year):

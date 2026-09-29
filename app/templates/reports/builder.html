@@ -20,17 +20,13 @@
     <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
   </div>
   <div class="page-actions">
+    {% set questions_waiting = (waiting.questions or 0) + (waiting.parties or 0) %}
     <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id) }}"
        class="btn supply">Questions
-      {%- if waiting.questions %}<span class="supply-n">{{ waiting.questions }}</span>{% endif %}</a>
-    <a href="{{ url_for('reports.cash_flow_entry', fy_id=fy.id) }}"
-       class="btn supply">Cash flow</a>
+      {%- if questions_waiting %}<span class="supply-n">{{ questions_waiting }}</span>{% endif %}</a>
     <a href="{{ url_for('documents.figures', fy_id=fy.id) }}"
        class="btn supply">Figures
       {%- if waiting.figures %}<span class="supply-n">{{ waiting.figures }}</span>{% endif %}</a>
-    <a href="{{ url_for('reports.related_parties', fy_id=fy.id) }}"
-       class="btn supply">Related parties
-      {%- if waiting.parties %}<span class="supply-n">{{ waiting.parties }}</span>{% endif %}</a>
     <span class="supply-sep"></span>
     {% if not fy.is_closed and report.status != 'final' %}
     <form method="post" style="display:inline"

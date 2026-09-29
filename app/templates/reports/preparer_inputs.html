@@ -44,18 +44,36 @@
     {% if row.parts_wanted > 1 %}
       <p class="ans-lead">
         This fills <strong>{{ row.parts_wanted }} lines</strong> of the note.
-        Name each one and put its figure beside it.
+        {% if row.fixed_labels %}
+          Put a figure beside each one that applies; nil for the rest.
+        {% else %}
+          Name each one and put its figure beside it.
+        {% endif %}
       </p>
       <table class="ans-parts">
         <thead><tr><th>What the line is called</th><th>Amount</th></tr></thead>
         <tbody>
           {% for i in range(row.parts_wanted) %}
+            {% set fixed = (row.fixed_labels[i] if row.fixed_labels
+                           and row.fixed_labels|length > i else None) %}
             {% set part = (row.answer.parts[i] if row.answer and row.answer.parts
                            and row.answer.parts|length > i else None) %}
             <tr>
-              <td><input type="text" class="input"
+              <td>
+                {% if fixed %}
+                  {# Bound to a fixed row of the note's own table (library
+                     feedback A2) - the line this figure fills is the
+                     table's to name, not the preparer's, so it isn't typed
+                     here; it travels with the amount as a hidden field. #}
+                  {{ fixed }}
+                  <input type="hidden" name="part_label__{{ row.item }}__{{ i }}"
+                         value="{{ fixed }}">
+                {% else %}
+                  <input type="text" class="input"
                          name="part_label__{{ row.item }}__{{ i }}"
-                         value="{{ part.label if part else '' }}"></td>
+                         value="{{ part.label if part else '' }}">
+                {% endif %}
+              </td>
               <td><input type="text" class="input" inputmode="decimal"
                          name="part_amount__{{ row.item }}__{{ i }}"
                          value="{{ part.amount if part else '' }}"></td>
@@ -174,6 +192,32 @@
     {% endif %}
   </div>
 </div>
+
+{% if related_parties %}
+  {# Its own toolbar button is gone - these are questions like any other
+     here, and count with them, so this is where they are answered from
+     too. Deciding one still happens on its own page (register lookups,
+     "which party" as well as "yes/no") rather than being rebuilt here. #}
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-head">
+      <h2>Related parties &mdash; not yet ruled on</h2>
+      <span class="hint">{{ related_parties|length }}</span>
+    </div>
+    <div class="card-body">
+      <p class="small" style="margin-top:0">
+        Something in the books looks like it could be a related party.
+        Confirm or dismiss each one before the related party note is complete.
+      </p>
+      <ul style="margin:0;padding-left:20px">
+        {% for item in related_parties %}
+          <li>{{ item.label }}{% if item.why %} &mdash; <span class="muted">{{ item.why }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      <a class="btn" style="margin-top:10px"
+         href="{{ url_for('reports.related_parties', fy_id=fy.id) }}">Rule on these &rarr;</a>
+    </div>
+  </div>
+{% endif %}
 
 <form method="post">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -223,6 +223,8 @@ def preparer_inputs(fy_id):
               "success" if parts else "info")
         return redirect(url_for("reports.preparer_inputs", fy_id=fy_id))
 
+    from ..services import related_parties
+
     rows = input_service.state(financial_year)
     return render_template(
         "reports/preparer_inputs.html",
@@ -233,6 +235,11 @@ def preparer_inputs(fy_id):
         asked=[r for r in rows if r["mode"] == input_service.ASK
                and not r["item"].startswith("field.")],
         blanks=[r for r in rows if r["item"].startswith("field.")],
+        # Its own button is gone (library feedback B... this batch of
+        # feedback, not the library's): the same undecided candidates
+        # that used to hold their own place in the toolbar are questions
+        # too, so they are answered from here now.
+        related_parties=related_parties.undecided(financial_year),
         has_previous=_previous_year(financial_year) is not None)
 
 

@@ -112,11 +112,28 @@ def note_applies(note, figures, financial_year):
         return False, "No balance on " + ", ".join(subjects)
 
     tested = False
+    untestable = False
     for piece in _pieces(note):
-        if (piece.get("condition_source") or "").lower() != "line balance":
+        source = (piece.get("condition_source") or "").lower()
+        if source == "preparer confirms":
+            # A tb_driven note whose own paragraph already says nothing but
+            # the preparer can settle it (library feedback B4): "assets
+            # pledged as security" and "interest rate risk" both read this
+            # way once their line codes are recognised as belonging to
+            # another note. Left off here, the paragraph never gets the
+            # chance to be offered to the preparer at all - it just
+            # disappears, which is the bug. On, its own PRINT/HOLD/OMIT is
+            # still conditions.paragraph()'s to decide, piece by piece.
+            untestable = True
+            continue
+        if source != "line balance":
             continue
         codes = trusted_codes(piece, code, figures)
         if codes is None:
+            # Its own line codes belong to another note - the same
+            # unresolved condition as above, just not yet reclassified as
+            # "preparer confirms" by the importer for this piece.
+            untestable = True
             continue
         tested = True
         live = [c for c in codes if carries_balance(figures, c)]
@@ -124,6 +141,9 @@ def note_applies(note, figures, financial_year):
             return True, "Balance on " + ", ".join(live)
     if tested:
         return False, "No balance on the lines this note depends on"
+    if untestable:
+        return True, ("Its line codes belong to another note, so they "
+                      "cannot decide it; offered to the preparer instead")
     return False, "No trial balance line decides this note; the preparer does"
 
 
