@@ -41,6 +41,8 @@ _RULES = [
     ("preparer_entry", re.compile(
         r"to be entered by the preparer|no document states this total|"
         r"preparer supplies|for the preparer to confirm", re.I)),
+    ("unreflected", re.compile(
+        r"does not appear anywhere in the printed report", re.I)),
 ]
 
 # What each group means, in the order a preparer would work through them.
@@ -196,6 +198,16 @@ _NEEDS = {
         "endpoint": None,
         "kind": "software",
     },
+    "unreflected": {
+        "label": "An answered figure that hasn't reached its note",
+        "file": "No file - the Questions page already has a real figure for "
+                "this; the note's own wording just doesn't say where it goes",
+        "owner": "The preparer",
+        "where": "Check the note by hand and type the figure in directly "
+                "if it is missing.",
+        "endpoint": None,
+        "kind": "answer",
+    },
     "other": {
         "label": "Other",
         "file": "See the reason under the note",
@@ -208,7 +220,8 @@ _NEEDS = {
 
 ORDER = ["stale", "reconcile", "tax", "aged", "loan", "register", "far", "ledger",
          "prior_docs", "practitioner", "client_record", "related",
-         "questions", "prior_split", "preparer_entry", "layout", "other"]
+         "questions", "prior_split", "preparer_entry", "layout",
+         "unreflected", "other"]
 
 
 def classify(reason):
@@ -264,6 +277,7 @@ _ANSWER = {
     "prior_split": "figures typed into the highlighted cells",
     "preparer_entry": "figures typed into the highlighted cells",
     "layout": "not built in the software yet",
+    "unreflected": "whether this note reflects the answered figure - check it by hand",
 }
 
 
