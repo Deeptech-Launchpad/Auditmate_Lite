@@ -701,26 +701,43 @@ def update_note_row():
         if error:
             return jsonify({"ok": False, "error": error}), 400
         fields["amount"] = value
+    if "previous" in payload:
+        value, error = overrides_service.parse_amount(payload["previous"])
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
+        fields["previous"] = value
 
     # Typing the source figure back in, or emptying the cell, is a revert -
-    # not a new override that happens to match.
+    # not a new override that happens to match. A field this request did
+    # not touch is vacuously "at source" for this check; clearing the whole
+    # override on any one field reverting is the existing, coarser rule
+    # from before the prior-year cell existed, kept as it was.
     existing = overrides_service.for_row(section, table_index, row_index)
-    reverting = (
-        "amount" in fields
-        and (fields["amount"] is None
-             or (source.get("current") is not None
-                 and fields["amount"] == source["current"]))
-        and fields.get("label", ...) in (..., None, source.get("label")))
+
+    def _at_source(field_key, source_key):
+        if field_key not in fields:
+            return True
+        value = fields[field_key]
+        return (value is None
+               or (source.get(source_key) is not None
+                   and value == source[source_key]))
+
+    reverting = (bool(fields)
+                and _at_source("amount", "current")
+                and _at_source("previous", "previous")
+                and fields.get("label", ...) in (..., None, source.get("label")))
     if reverting and existing is not None and existing.is_live:
         overrides_service.clear(existing)
         record("report_figure_override", existing.id, "note_edit_cleared",
                after={"section": section.section_key})
         db.session.commit()
         return jsonify({"ok": True, "cleared": True,
-                        "amount": _float(source.get("current"))})
+                        "amount": _float(source.get("current")),
+                        "previous": _float(source.get("previous"))})
     if reverting and existing is None:
         return jsonify({"ok": True, "cleared": True,
-                        "amount": _float(source.get("current"))})
+                        "amount": _float(source.get("current")),
+                        "previous": _float(source.get("previous"))})
 
     try:
         override = overrides_service.set_figure(
@@ -728,8 +745,10 @@ def update_note_row():
             reason=payload.get("reason"),
             label=fields.get("label", ...),
             amount=fields.get("amount", ...),
+            previous_amount=fields.get("previous", ...),
             anchor_label=payload.get("anchor_label") or source.get("label"),
             source_amount=source.get("current"),
+            source_amount_previous=source.get("previous"),
             source_label=source.get("label"),
             source_name=source.get("source_name"))
     except overrides_service.ReasonRequired as needed:
@@ -744,10 +763,13 @@ def update_note_row():
            after={"section": section.section_key,
                   "label": override.label_override,
                   "amount": str(override.amount_override),
+                  "previous_amount": str(override.amount_previous_override),
                   "reason": override.reason})
     db.session.commit()
     return jsonify({"ok": True, "override_id": override.id,
                     "source_amount": _float(override.source_amount),
+                    "source_amount_previous": _float(
+                        override.source_amount_previous),
                     "reason": override.reason})
 
 
@@ -774,6 +796,7 @@ def _source_row(section, table_index, row_index):
     except (IndexError, KeyError, TypeError):
         return {}
     return {"label": row.get("label"), "current": row.get("current"),
+            "previous": row.get("previous"),
             "source_name": ("the trial balance" if row.get("ref")
                             else "the notes library")}
 
@@ -1490,23 +1513,37 @@ def _toc_pages(report, payloads, incomplete):
 @bp.route("/<int:report_id>/preview")
 @login_required
 def preview(report_id):
+    """The report exactly as it will print - editable in place, the same
+    surface and the same endpoints the builder page uses.
+
+    It never passed `editable`, so every edit block in _document.html was
+    off here - the only editable copy was the builder's own page. There was
+    no reason for the two to differ: both show the same assembled payload,
+    both are working copies (never what a client receives - see
+    clean_for_client and the three export routes above, none of which pass
+    `editable`), and an edit here reaches the same endpoints, so it prints
+    in Word and PDF exactly as an edit made in the builder does.
+    """
     report = db.session.get(AuditReport, report_id) or abort(404)
-    payloads = _assemble(report)
+    financial_year = report.financial_year
+    editable = not financial_year.is_closed
+    payloads = _assemble(report, chips=editable)
     incomplete = report_service.record_completeness(report, payloads)
 
     return render_template("reports/preview.html",
                            report=report,
-                           fy=report.financial_year,
-                           customer=report.financial_year.customer,
+                           fy=financial_year,
+                           customer=financial_year.customer,
                            payloads=payloads,
+                           editable=editable,
                            draft_incomplete=bool(incomplete),
                            draft_label=report_service.draft_label(
-                               report.financial_year, incomplete),
+                               financial_year, incomplete),
                            note_numbers=report_service.note_number_map(report),
                            note_anchors=report_service.note_anchor_map(report),
                            checks=checks_service.build(
-                               report, report.financial_year, payloads),
-                           look=_template_look(report.financial_year.customer),
+                               report, financial_year, payloads),
+                           look=_template_look(financial_year.customer),
                            toc_pages=_toc_pages(report, payloads, incomplete),
                            for_pdf=False)
 

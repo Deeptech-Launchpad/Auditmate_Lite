@@ -1,9 +1,14 @@
 /* Report builder: toggle sections, drag to reorder, edit section text. */
 (function () {
+  /* #section-list is the builder page's own sidebar - not present on the
+     standalone preview page, which shows the same document but none of
+     the sections-list chrome around it. Everything that manages that
+     sidebar (search, toggles, drag-reordering, add/delete a note) is
+     fenced below, in its own `if (list)` block; the note and figure
+     editing further down has always had its own separate guard
+     (`if (!report) return`, on #live-report) and runs on either page. */
   const list = document.getElementById('section-list');
-  if (!list) return;
-
-  const reportId = list.dataset.reportId;
+  const reportId = list ? list.dataset.reportId : null;
 
   function csrfHeaders() {
     return {
@@ -21,6 +26,10 @@
     if (!response.ok) throw new Error('save failed');
     return response.json();
   }
+
+  /* Sidebar-only from here to the end of "add and delete a note" below -
+     everything in this fence assumes #section-list exists. */
+  if (list) {
 
   /* ----------------------------------------------------------- search --- */
 
@@ -208,6 +217,8 @@
     }
     window.location.reload();
   });
+
+  }  // end `if (list)` - sidebar-only code
 
   /* ------------------------------------------------- in-place editing ---- */
   /*
@@ -429,8 +440,11 @@
     return true;
   }
 
-  /* Keep the section list in step with a title edited in the preview. */
+  /* Keep the section list in step with a title edited in the preview.
+     No-op on the standalone preview page - there is no sidebar list to
+     keep in step with. */
   function syncTitle(sectionId, title) {
+    if (!list) return;
     const item = list.querySelector(`.section-item[data-section-id="${sectionId}"]`);
     if (!item) return;
     const label = item.querySelector('.stitle');
@@ -633,8 +647,9 @@
   });
 
   /* The pencil in the section list scrolls to the text and puts the cursor
-     in it, rather than opening a second place to edit the same thing. */
-  list.addEventListener('click', event => {
+     in it, rather than opening a second place to edit the same thing.
+     Sidebar-only - no pencil exists to click without the list it sits in. */
+  if (list) list.addEventListener('click', event => {
     const btn = event.target.closest('.edit-btn');
     if (!btn) return;
     const field = report.querySelector(
@@ -714,7 +729,9 @@
      the reason for the change that is being withdrawn is already on the
      record, and stays there (OV-07). */
   function isRevert(field, value) {
-    if (field.dataset.field !== 'amount') return false;
+    if (field.dataset.field !== 'amount' && field.dataset.field !== 'previous') {
+      return false;
+    }
     if (value === '') return true;
     const was = field.dataset.computed;
     if (was === undefined || was === '' || was === 'None') return false;
@@ -722,8 +739,12 @@
     return Math.round(Number(typed)) === Math.round(Number(was));
   }
 
+  function isAmountField(field) {
+    return field.dataset.field === 'amount' || field.dataset.field === 'previous';
+  }
+
   async function saveCell(field) {
-    const key = field.dataset.field;                 /* 'label' | 'amount' */
+    const key = field.dataset.field;         /* 'label' | 'amount' | 'previous' */
     const value = field.textContent.trim();
 
     /* A note figure or caption is an override of what the engine
@@ -731,14 +752,16 @@
        line goes through the statements' own override path, which has
        carried its own record since long before the library asked for one. */
     let reason = null;
-    const isFigure = field.dataset.field === 'amount';
+    const isFigure = isAmountField(field);
     /* A caption is presentation - one client says Revenue, another
        Turnover - and is simply stored. A figure is a change to what the
        accounts state, wherever it sits, so it needs a reason: a line on
        the face of the balance sheet is no different from a row in a note,
-       and the reviewer reads the two side by side. */
+       and the reviewer reads the two side by side. Current year and prior
+       year are both figures - the prior-year column is exactly as much
+       "what the accounts state" as this year's is. */
     if ((isFigure || !field.dataset.lineId) && !isRevert(field, value)) {
-      const was = field.dataset.field === 'amount'
+      const was = isFigure
         ? fmt(field.dataset.computed)
         : (field.dataset.sourceLabel || '');
       reason = await window.__auditmateAskReason(
@@ -746,7 +769,7 @@
         + was + '; the accounts will print ' + (value || '--') + '.');
       if (!reason) {
         /* Nobody will explain it, so it does not happen. */
-        field.textContent = field.dataset.field === 'amount'
+        field.textContent = isFigure
           ? fmt(field.dataset.computed) : (field.dataset.sourceLabel || '');
         say('Change not saved - no reason given', 'failed');
         return;
@@ -780,17 +803,18 @@
         /* A typo must not silently become a nil figure. Put back what was
            there and say why. */
         say(data.error || 'Could not save', 'failed');
-        if (key === 'amount') field.textContent = fmt(field.dataset.computed);
+        if (isAmountField(field)) field.textContent = fmt(field.dataset.computed);
         return;
       }
       if (data.lines) applyLines(data.lines);
-      if (data.cleared && data.amount !== undefined && data.amount !== null) {
-        field.textContent = fmt(data.amount);
+      const revertedTo = key === 'previous' ? data.previous : data.amount;
+      if (data.cleared && revertedTo !== undefined && revertedTo !== null) {
+        field.textContent = fmt(revertedTo);
         const cell = field.closest('td');
         if (cell) cell.classList.remove('is-overridden');
         const mark = cell && cell.querySelector('.ov-mark');
         if (mark) mark.remove();
-        say('Put back to ' + fmt(data.amount), 'saved');
+        say('Put back to ' + fmt(revertedTo), 'saved');
         return;
       }
       say(reason ? 'Saved, with the reason' : 'Saved', 'saved');
@@ -870,7 +894,7 @@
     if (event.key === 'Enter') { event.preventDefault(); field.blur(); }
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (field.dataset.field === 'amount') {
+      if (isAmountField(field)) {
         field.textContent = fmt(field.dataset.computed);
       }
       field.blur();

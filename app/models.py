@@ -2102,6 +2102,13 @@ class ReportFigureOverride(db.Model):
     label_override = db.Column(db.String(255))
     amount_override = db.Column(Numeric(18, 2))
 
+    # The prior-year cell, held apart from the current year's rather than
+    # as a second dimension on the same column: the unique constraint above
+    # is one row per POSITION, and adding a year to that key needs a
+    # migration this codebase does not have (sync-schema only ADDs). One
+    # override row per table row, both years, is the shape that fits.
+    amount_previous_override = db.Column(Numeric(18, 2))
+
     # A paragraph of wording instead of a row of a table (OV-02).
     para_id = db.Column(db.String(40))
     text_override = db.Column(db.Text)
@@ -2110,6 +2117,7 @@ class ReportFigureOverride(db.Model):
     # Kept even after the override is cleared, so a reviewer reading the
     # record a year later can still see what was changed.
     source_amount = db.Column(Numeric(18, 2))
+    source_amount_previous = db.Column(Numeric(18, 2))
     source_label = db.Column(db.String(255))
     source_text = db.Column(db.Text)
 
@@ -2163,6 +2171,7 @@ class ReportFigureOverride(db.Model):
     @property
     def is_empty(self):
         return (self.label_override is None and self.amount_override is None
+                and self.amount_previous_override is None
                 and self.text_override is None)
 
     @property

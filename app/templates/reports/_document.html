@@ -770,17 +770,52 @@
                                             else row.current }}"
                           data-source-label="{{ row.original_label or row.label }}"
                           >{{ row.current|stmt }}</span>
-                    {{ override_mark(row.override_record) }}
+                    {% if row.overridden %}{{ override_mark(row.override_record) }}{% endif %}
                     {% if acct_id %}
                       <button type="button" class="src-dot"
                               data-account-id="{{ acct_id }}"
                               title="Where this figure came from">&#9432;</button>
                     {% endif %}
                   </td>
-                  {{ amount_cell(row.previous, none, row.previous_origin) }}
+                  {#
+                    The prior-year cell, editable the same way the current
+                    year's is. It was read-only unconditionally - the one
+                    year a preparer cannot correct was, until now, the one
+                    a signed set most often needs correcting: last year's
+                    own comparative, read off a document, sometimes wrong.
+                  #}
+                  <td class="num ed-cell{{ ' is-overridden' if row.previous_overridden }}">
+                    <span class="ed-amount" contenteditable="true"
+                          data-field="previous"
+                          data-section-id="{{ section.id }}"
+                          data-table-index="{{ loop_table }}"
+                          data-row-index="{{ loop.index0 }}"
+                          data-anchor="{{ row.original_label or row.label }}"
+                          data-computed="{{ row.computed_previous
+                                            if row.computed_previous is not none
+                                            else row.previous }}"
+                          data-source-label="{{ row.original_label or row.label }}"
+                          >{{ row.previous|stmt }}</span>
+                    {% if row.previous_overridden %}{{ override_mark(row.override_record_previous) }}{% endif %}
+                  </td>
                 {% elif row.override_record and show_working_marks %}
-                  {{ overridden_cell(row.current, row.override_record) }}
-                  {{ amount_cell(row.previous, none, row.previous_origin) }}
+                  {#
+                    override_record is now set whenever EITHER year on this
+                    row is overridden - row.overridden / row.previous_overridden
+                    say which. Marking a cell "typed" because the OTHER
+                    year was overridden would be wrong: a record existing
+                    is not the same fact as this cell being the one changed.
+                  #}
+                  {% if row.overridden %}
+                    {{ overridden_cell(row.current, row.override_record) }}
+                  {% else %}
+                    {{ amount_cell(row.current) }}
+                  {% endif %}
+                  {% if row.previous_overridden %}
+                    {{ overridden_cell(row.previous, row.override_record_previous) }}
+                  {% else %}
+                    {{ amount_cell(row.previous, none, row.previous_origin) }}
+                  {% endif %}
                 {% else %}
                   {{ amount_cell(row.current) }}
                   {{ amount_cell(row.previous, none, row.previous_origin) }}

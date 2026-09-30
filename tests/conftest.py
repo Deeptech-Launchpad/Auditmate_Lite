@@ -38,8 +38,20 @@ class TestConfig(Config):
 
 @pytest.fixture(scope="session")
 def app():
+    """`auditmate_test` is a real, persistent Postgres database, not a
+    throwaway per run - create_all() is a no-op against tables that
+    already exist, so a model changed since the last run left the old
+    schema in place and every test touching the new column failed with
+    UndefinedColumn until the database was dropped by hand. There is no
+    migration tool here to reconcile the difference (sync-schema only
+    adds columns to a real deployment; it does not run against a test
+    database). Dropping and recreating on every session is correct
+    precisely because this database holds nothing worth preserving
+    between runs.
+    """
     app = create_app(TestConfig)
     with app.app_context():
+        _db.drop_all()
         _db.create_all()
         yield app
 

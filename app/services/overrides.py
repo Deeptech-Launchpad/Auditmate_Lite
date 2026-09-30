@@ -102,17 +102,20 @@ def for_row(section, table_index, row_index):
 
 
 def set_figure(section, table_index, row_index, *, reason,
-               label=..., amount=..., anchor_label=None,
-               source_amount=None, source_label=None, source_name=None):
+               label=..., amount=..., previous_amount=..., anchor_label=None,
+               source_amount=None, source_amount_previous=None,
+               source_label=None, source_name=None):
     """Type over one row of a note table. Returns the override.
 
-    `label` and `amount` are given only when that field is being changed -
-    passing neither is how a caller says "leave it as it is". Passing None
-    for one of them clears that field, which restores the source figure.
+    `label`, `amount` and `previous_amount` are given only when that field
+    is being changed - passing none of them is how a caller says "leave it
+    as it is". Passing None for one of them clears that field, which
+    restores the source figure.
 
-    `source_amount` is what the row showed before anybody touched it, read
-    from the rendered table rather than taken from the browser, so the
-    record of the original cannot be edited by the person overriding it.
+    `source_amount` (and `source_amount_previous`) are what the row showed
+    before anybody touched it, read from the rendered table rather than
+    taken from the browser, so the record of the original cannot be edited
+    by the person overriding it.
     """
     reason = _clean(reason)
     override = for_row(section, table_index, row_index)
@@ -130,6 +133,9 @@ def set_figure(section, table_index, row_index, *, reason,
     # not overwrite the original with the figure the first one printed.
     if override.source_amount is None and source_amount is not None:
         override.source_amount = source_amount
+    if (override.source_amount_previous is None
+            and source_amount_previous is not None):
+        override.source_amount_previous = source_amount_previous
     if override.source_label is None and source_label is not None:
         override.source_label = source_label
     if source_name and not override.source_name:
@@ -150,6 +156,15 @@ def set_figure(section, table_index, row_index, *, reason,
                    override.amount_override if override.amount_override
                    is not None else override.source_amount, amount, reason)
             override.amount_override = amount
+            touched = True
+    if previous_amount is not ...:
+        if previous_amount != override.amount_previous_override:
+            _event(override, "set" if fresh else "changed", "previous_amount",
+                   override.amount_previous_override
+                   if override.amount_previous_override is not None
+                   else override.source_amount_previous,
+                   previous_amount, reason)
+            override.amount_previous_override = previous_amount
             touched = True
 
     if touched:
@@ -178,11 +193,14 @@ def clear(override, reason=None):
     had_wording = override.text_override is not None
     for field, value, source in (
             ("amount", override.amount_override, override.source_amount),
+            ("previous_amount", override.amount_previous_override,
+             override.source_amount_previous),
             ("label", override.label_override, override.source_label),
             ("wording", override.text_override, override.source_text)):
         if value is not None:
             _event(override, "cleared", field, value, source, reason)
     override.amount_override = None
+    override.amount_previous_override = None
     override.label_override = None
     override.text_override = None
     override.cleared_at = datetime.utcnow()

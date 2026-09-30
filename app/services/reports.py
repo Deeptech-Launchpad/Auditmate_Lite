@@ -2863,7 +2863,7 @@ def apply_note_overrides(section, tables):
                 row["stale_override"] = override.anchor_label
                 continue
 
-            row["override_record"] = {
+            record = {
                 "source_amount": override.source_amount,
                 "source_label": override.source_label,
                 "source_name": override.source_name or "the source",
@@ -2871,6 +2871,7 @@ def apply_note_overrides(section, tables):
                 "who": override.who,
                 "when": override.updated_at or override.created_at,
             }
+            row["override_record"] = record
             if override.label_override is not None:
                 row["original_label"] = row.get("label")
                 row["label"] = override.label_override
@@ -2879,6 +2880,15 @@ def apply_note_overrides(section, tables):
                 row["computed_current"] = row.get("current")
                 row["current"] = override.amount_override
                 row["overridden"] = True
+            if override.amount_previous_override is not None:
+                row["computed_previous"] = row.get("previous")
+                row["previous"] = override.amount_previous_override
+                row["previous_overridden"] = True
+                # A separate record: the mark on the prior-year cell must
+                # read "the source gave X" against THAT year's source
+                # figure, not the current year's.
+                row["override_record_previous"] = dict(
+                    record, source_amount=override.source_amount_previous)
 
 
 def weasyprint_available() -> bool:

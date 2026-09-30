@@ -46,6 +46,7 @@
   <a href="{{ url_for('reports.builder', fy_id=fy.id) }}" class="btn btn-sm">← Back to builder</a>
   <span class="muted small">
     {{ payloads|length }} sections · {{ customer.legal_name or customer.name }} · {{ fy.year_label }}
+    {% if editable %}· <span class="hint" id="save-hint">Click any figure or note to edit it</span>{% endif %}
   </span>
   <button class="btn btn-sm btn-primary" onclick="window.print()">⎙ Print / Save as PDF</button>
 </div>
@@ -60,7 +61,7 @@
   <div class="draft-stamp">{{ draft_label }}</div>
 {% endif %}
 
-<div class="rpt-doc">
+<div class="rpt-doc"{% if editable %} id="live-report"{% endif %}>
   {% include "reports/_document.html" %}
   {# On screen only. Never in a file that leaves the office.
 
@@ -91,6 +92,13 @@
     {% include "reports/_preparer_checks.html" %}
   {% endif %}
 </div>
+
+{% if editable %}
+  {# preview.html is standalone - it does not extend base.html, which is
+     where CSRF_TOKEN is normally set for report.js's fetch() calls. #}
+  <script>window.CSRF_TOKEN = "{{ csrf_token() }}";</script>
+  <script src="{{ url_for('static', filename='js/report.js') }}"></script>
+{% endif %}
 
 </body>
 </html>
