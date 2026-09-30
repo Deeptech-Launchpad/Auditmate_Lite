@@ -558,11 +558,13 @@ def ensure_report(financial_year) -> AuditReport:
 
     period = (financial_year.start_date, financial_year.end_date)
     previous_period = _previous_period_of(financial_year)
+    prior_wording = prior_year_wording(financial_year)
     for note in load_notes_catalogue(financial_year):
         db.session.add(_build_note_section(
             note, present, order, report.id,
             first_year=bool(financial_year.is_first_year), period=period,
-            previous_period=previous_period, financial_year=financial_year))
+            previous_period=previous_period, financial_year=financial_year,
+            prior_wording=prior_wording))
         order += 1
 
     db.session.flush()
@@ -1274,7 +1276,7 @@ def _assemble_note_content(note, present, first_year=False, period=None,
 
 def _build_note_section(note, present, sort_order, report_id,
                         first_year=False, period=None, previous_period=None,
-                        financial_year=None):
+                        financial_year=None, prior_wording=None):
     from . import bindings, conditions
 
     asked = None
@@ -1318,6 +1320,21 @@ def _build_note_section(note, present, sort_order, report_id,
         # the note in their own words.
         binding["draft_wording"] = drafts
 
+    # The two pristine wordings a preparer can choose between (library
+    # feedback 29/09). Library wording is simply what was just assembled -
+    # kept verbatim rather than re-derived on a later switch back, so a
+    # switch is instant and never re-runs the condition/binding machinery
+    # that produced it. Prior wording only exists when this note actually
+    # matched something in last year's signed accounts; _carried_html does
+    # the same date-rolling and figure-marking a carried note has always
+    # had, so a note that starts on prior wording reads exactly as it did
+    # before this feature existed.
+    prior_html = None
+    if financial_year is not None:
+        prior = (prior_wording or {}).get(note["key"])
+        if prior is not None:
+            prior_html = _carried_html(prior, financial_year)
+
     return AuditReportSection(
         report_id=report_id,
         section_key=f"{NOTE_PREFIX}{note['key']}",
@@ -1326,6 +1343,11 @@ def _build_note_section(note, present, sort_order, report_id,
         sort_order=sort_order,
         is_enabled=enabled,
         content_html=content_html,
+        library_html=content_html,
+        prior_html=prior_html,
+        wording_source="library",
+        library_version_adopted=getattr(
+            financial_year, "library_version_id", None),
         data_binding=binding or None,
     )
 
@@ -1355,16 +1377,86 @@ def rebuild_note_sections(report, financial_year):
     present = _present_keys(financial_year)
     period = (financial_year.start_date, financial_year.end_date)
     previous_period = _previous_period_of(financial_year)
+    prior_wording = prior_year_wording(financial_year)
     added = 0
     for note in load_notes_catalogue(financial_year):
         db.session.add(_build_note_section(
             note, present, order, report.id,
             first_year=bool(financial_year.is_first_year), period=period,
-            previous_period=previous_period, financial_year=financial_year))
+            previous_period=previous_period, financial_year=financial_year,
+            prior_wording=prior_wording))
         order += 1
         added += 1
     db.session.commit()
     return len(notes), added
+
+
+_WORDING_SOURCES = ("library", "prior")
+
+
+def wording_sources(section):
+    """Which pristine wordings this note actually has to offer.
+
+    A toggle is only shown for a choice that exists - "if the note wasn't
+    in last year's FS, show only the library wording" (library feedback
+    29/09) falls straight out of prior_html being None rather than needing
+    its own check.
+    """
+    available = []
+    if section.library_html is not None:
+        available.append("library")
+    if section.prior_html is not None:
+        available.append("prior")
+    return available
+
+
+def wording_is_edited(section):
+    """Whether content_html has drifted from whichever pristine text its
+    current wording_source claims to be showing.
+
+    A section with no wording_source recorded (a statement, the cover
+    page, a note built before this feature existed and never yet
+    switched) has nothing to compare against and reads as not edited -
+    there is no source claim to have drifted from.
+    """
+    if section.wording_source not in _WORDING_SOURCES:
+        return False
+    pristine = (section.library_html if section.wording_source == "library"
+               else section.prior_html)
+    if pristine is None:
+        return False
+    return (section.content_html or "").strip() != pristine.strip()
+
+
+def switch_wording_source(section, source, *, force=False):
+    """Rewrite content_html from the library's or last year's pristine
+    text. Returns a dict the endpoint hands straight back as JSON.
+
+    Refuses rather than silently discards: if the preparer has edited the
+    wording away from what its CURRENT source held, the edit is real work
+    and is not overwritten without `force` - the endpoint asks first, the
+    same pattern already used for a destructive report action elsewhere.
+    """
+    if source not in _WORDING_SOURCES:
+        return {"ok": False, "error": f"Unknown wording source {source!r}."}
+
+    pristine = (section.library_html if source == "library"
+               else section.prior_html)
+    if pristine is None:
+        name = "the notes library" if source == "library" else "last year's accounts"
+        return {"ok": False,
+                "error": f"This note has no wording from {name} to switch to."}
+
+    if not force and wording_is_edited(section):
+        return {"ok": False, "needs_confirm": True,
+                "error": "This note's wording has been edited since it was "
+                        "last set from its source. Switching will replace "
+                        "what is currently printed - continue?"}
+
+    section.wording_source = source
+    section.content_html = pristine
+    db.session.commit()
+    return {"ok": True, "wording_source": source, "content_html": pristine}
 
 
 def prior_year_wording(financial_year):
@@ -1625,82 +1717,6 @@ def prior_text_to_html(text, drop_labels=True):
         else:
             out.append("<p>" + escape(" ".join(lines)) + "</p>")
     return "\n".join(out)
-
-
-def carry_forward_prior_wording(report, financial_year) -> int:
-    """Reformat a note carried forward under an earlier version of this
-    function into paragraphs and headings. Does not carry anything new.
-
-    Runs on every builder load and is idempotent. Returns how many sections
-    were changed this time.
-
-    Library feedback A1: this used to also offer last year's sentences as
-    the starting text of any library-covered note the auditor had not yet
-    typed into - which meant a note the library answers completely still
-    printed last year's wording, because "untouched" was read as an
-    invitation rather than a reason to leave it alone. It no longer does
-    that: a library-covered note's wording comes from the library or it is
-    visibly unwritten (see content_gaps()), never quietly filled from last
-    year. What remains here is maintenance of sections a PRIOR run of this
-    function already carried, tidying flat prior-year text into proper
-    HTML - not introducing a new note to last year's words.
-    """
-    wording = prior_year_wording(financial_year)
-    if not wording:
-        return 0
-
-    filled = 0
-
-    for section in report.sections:
-        if not section.section_key.startswith(NOTE_PREFIX):
-            continue
-        key = section.section_key[len(NOTE_PREFIX):]
-        if section.prior_note_id:                  # already carried
-            # Carried as raw text by an earlier version, and not touched
-            # since: put it into paragraphs and headings. Anything a person
-            # has edited no longer equals the raw text and is left alone.
-            carried = wording.get(key)
-            raw = (carried.body_text or "").strip() if carried else ""
-            if (carried is not None and carried.id == section.prior_note_id
-                    and raw and (section.content_html or "").strip() == raw):
-                section.content_html = _carried_html(carried, financial_year)
-                filled += 1
-            elif (carried is not None and carried.id == section.prior_note_id
-                    and raw):
-                # Stored flat (no paragraph breaks) and carried into the note as
-                # one block: rebuilt from the template's own structure, but only
-                # if nobody has touched it since - the block must be exactly what
-                # the flat wording converts to.
-                from . import template_structure
-                if template_structure.is_flat(carried.body_text):
-                    as_carried = prior_text_to_html(
-                        roll_forward_text(carried.body_text, financial_year))
-                    if (section.content_html or "").strip() == as_carried.strip():
-                        rebuilt = _carried_html(carried, financial_year)
-                        if rebuilt.strip() != as_carried.strip():
-                            section.content_html = rebuilt
-                            filled += 1
-            continue
-
-        # A library-covered note never takes its wording from last year,
-        # complete answer, thin answer or none (library feedback A1, and
-        # the retest checklist's own words: "every note sentence can be
-        # found in the notes library Paragraphs sheet"). This used to
-        # offer last year's text as a "starting point" whenever the
-        # section still held the library's untouched default - which
-        # meant a note the library answers FULLY still got overwritten,
-        # because nobody had manually retyped the library's own words yet.
-        # A note the library has nothing for stays visibly unwritten (see
-        # content_gaps()'s "unwritten" report) rather than being padded
-        # with last year's sentences, which is exactly the silent
-        # patch-over this function used to be.
-        continue
-
-    if filled:
-        db.session.commit()
-        log.info("FY %s: carried %d note(s) forward from last year's accounts",
-                 financial_year.id, filled)
-    return filled
 
 
 def _template_pdf_path(financial_year):
@@ -2242,6 +2258,13 @@ def section_payload(section, customer, financial_year, chips: bool = False):
         # that the face of the statutory statement summarises away.
         "detailed": bool(spec.get("detailed")),
         "footnote": spec.get("footnote"),
+        # Only ever non-trivial for a note (a statement or the cover page
+        # has neither library_html nor prior_html), so the template's
+        # toggle needs no section_type check of its own - an empty list
+        # here already means nothing to switch between.
+        "wording_sources": wording_sources(section),
+        "wording_source": section.wording_source,
+        "wording_edited": wording_is_edited(section),
     }
 
     if section.section_type == "statement":
@@ -2301,7 +2324,15 @@ def section_payload(section, customer, financial_year, chips: bool = False):
         payload["html"] = render_bindings(section.content_html or "",
                                           customer, financial_year,
                                           chips=chips)
-        if section.prior_note_id:
+        # "(Note 8)" in text carried from last year means the note that
+        # held that subject THEN, which is not necessarily numbered 8 now -
+        # renumbered to wherever that subject actually sits this year.
+        # Gated on wording_source rather than the presence of prior_html:
+        # a note switched back to the library keeps its (now unused)
+        # prior_html around for a later switch, and must not have ITS
+        # library sentences hunted for stale note references that were
+        # never carried into them.
+        if section.wording_source == "prior":
             payload["html"] = roll_forward_references(
                 payload["html"], financial_year, section)
         note_table_spec = spec.get("note_table")

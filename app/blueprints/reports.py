@@ -62,13 +62,6 @@ def builder(fy_id):
 
     report = report_service.ensure_report(financial_year)
 
-    # Last year's own sentences, into notes still holding library boilerplate.
-    # Idempotent, and never touches a note the preparer has written in.
-    carried = report_service.carry_forward_prior_wording(report, financial_year)
-    if carried:
-        flash(f"{carried} note(s) start from last year's wording — check each "
-              f"one still describes the company.", "info")
-
     # Last year's overrides, brought across with their reasons (library
     # 3.5, OV-06): this year's comparative is last year's figure, so a
     # preparer inheriting it has to be able to see that it was changed.
@@ -535,6 +528,29 @@ def update_section(section_id):
     db.session.commit()
 
     return jsonify({"ok": True})
+
+
+@bp.route("/api/section/<int:section_id>/wording-source", methods=["PATCH"])
+@login_required
+def switch_section_wording(section_id):
+    """Switch a note between last year's FS and the notes library
+    (library feedback 29/09).
+
+    Refused, with `needs_confirm`, when the wording has drifted from its
+    current source - the client asks and resubmits with `force: true`
+    rather than losing an edit silently.
+    """
+    section = db.session.get(AuditReportSection, section_id) or abort(404)
+    payload = request.get_json(silent=True) or {}
+    source = (payload.get("source") or "").strip()
+
+    result = report_service.switch_wording_source(
+        section, source, force=bool(payload.get("force")))
+    if result["ok"]:
+        record("report_section", section.id, "wording_source",
+               after={"source": source})
+        return jsonify(result)
+    return jsonify(result), 400
 
 
 _COVER_FIELDS = {"legal_name", "uen", "directors", "company_secretary", "office"}

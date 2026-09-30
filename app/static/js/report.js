@@ -660,6 +660,43 @@
     field.focus();
   });
 
+  /* Switching a note between last year's FS and the notes library
+     (library feedback 29/09). Reloads on success rather than patching the
+     DOM in place - the same choice made for adding or deleting a note:
+     one rendering path that is certainly right beats two that agree most
+     of the time, and the note's incomplete-ness, its tables and its
+     confirm boxes all depend on which wording is now showing. */
+  report.addEventListener('click', async event => {
+    const btn = event.target.closest('.wording-src-btn');
+    if (!btn || btn.disabled) return;
+    const wrap = btn.closest('.wording-source');
+    const sectionId = wrap.dataset.sectionId;
+    const source = btn.dataset.source;
+
+    async function attempt(force) {
+      let data;
+      try {
+        const response = await fetch(
+          `/reports/api/section/${sectionId}/wording-source`,
+          { method: 'PATCH', headers: csrfHeaders(),
+            body: JSON.stringify({ source, force }) });
+        data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+          if (data.needs_confirm && window.confirm(data.error)) {
+            return attempt(true);
+          }
+          window.alert(data.error || 'Could not switch the wording.');
+          return;
+        }
+      } catch (err) {
+        window.alert('Could not switch the wording.');
+        return;
+      }
+      window.location.reload();
+    }
+    await attempt(false);
+  });
+
 })();
 
 /* ------------------------------------------------------------------------

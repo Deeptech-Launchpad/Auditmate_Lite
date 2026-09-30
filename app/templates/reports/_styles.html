@@ -217,6 +217,23 @@
   font-family: system-ui, sans-serif; font-size: 11px; color: #8a1c10;
   margin: 2px 0 8px; padding-left: 18px;
 }
+{{ S }} .wording-source {
+  font-family: system-ui, sans-serif; font-size: 11px; margin: 2px 0 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+{{ S }} .wording-src-btn {
+  font: inherit; font-size: 11px; padding: 2px 8px; border-radius: 3px;
+  border: 1px solid #c7ccd1; background: #fff; color: #444; cursor: pointer;
+}
+{{ S }} .wording-src-btn.is-active {
+  background: #eef3f1; color: #0e6e5c; border-color: #0e6e5c; cursor: default;
+}
+{{ S }} .wording-src-btn:disabled { cursor: default; }
+{{ S }} .wording-edited-tag {
+  font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: #7c4a03; background: #fdf1dc; border: 1px solid #e8c88a;
+  border-radius: 2px; padding: 1px 6px;
+}
 {{ S }} p.held-table {
   background: #fdecea; color: #8a1c10; font-style: italic; padding: 4px 8px;
 }

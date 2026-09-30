@@ -1354,6 +1354,30 @@ class AuditReportSection(db.Model):
     content_html = db.Column(db.Text)
     data_binding = db.Column(JSON)
 
+    # Which pristine wording content_html currently holds - "library" or
+    # "prior". NULL for a section with no such choice (a statement, the
+    # cover page, a note the auditor typed from scratch). content_html is
+    # always what prints and what the preparer edits; these two hold the
+    # UNEDITED source text each choice would restore, so switching between
+    # them - or discovering an edit has drifted from either - does not
+    # require re-deriving what the library or last year's accounts actually
+    # said (library feedback 29/09, "for each note, the preparer picks last
+    # year's FS or the notes library").
+    wording_source = db.Column(db.String(10))
+    library_html = db.Column(db.Text)
+    # NULL when this note was not in last year's signed accounts at all -
+    # the state the client's own ask names explicitly: "if the note wasn't
+    # in last year's FS, show only the library wording". A toggle with
+    # nothing to switch to is not offered, rather than offered and empty.
+    prior_html = db.Column(db.Text)
+    # Which library version's wording was last adopted for THIS section,
+    # independent of financial_years.library_version_id (the engagement's
+    # own pin). Adopting a newer version's wording for one note - after an
+    # ACRA/standards-change alert - must not silently repin the whole
+    # engagement to it.
+    library_version_adopted = db.Column(db.Integer,
+                                        db.ForeignKey("note_library_versions.id"))
+
     # Set when this note's text was carried forward from last year's signed
     # accounts rather than the FRS library. Recorded rather than merged in
     # silently: carried wording is last year's claim about this company, and

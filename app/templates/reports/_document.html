@@ -595,6 +595,30 @@
           </ul>
         {% endif %}
 
+        {#
+          Which pristine wording is printing, and the choice between them
+          (library feedback 29/09). Only shown once there is a genuine
+          choice - a note absent from last year's FS has no prior_html and
+          the list has one entry, so no toggle prints for it at all,
+          exactly "if the note wasn't in last year's FS, show only the
+          library wording".
+        #}
+        {% if editable and payload.wording_sources|length > 1 %}
+          <div class="wording-source" data-section-id="{{ section.id }}">
+            {% for src in payload.wording_sources %}
+              <button type="button" class="wording-src-btn{{ ' is-active' if payload.wording_source == src }}"
+                      data-source="{{ src }}"
+                      {% if payload.wording_source == src %}disabled{% endif %}>
+                {{ "Notes library" if src == "library" else "Last year's FS" }}
+              </button>
+            {% endfor %}
+            {% if payload.wording_edited %}
+              <span class="wording-edited-tag"
+                    title="This wording has been edited since it was set from its source.">edited</span>
+            {% endif %}
+          </div>
+        {% endif %}
+
       {% endif %}
 
       {# Paragraphs the library holds until the preparer says whether they
