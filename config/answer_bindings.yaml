@@ -1,0 +1,81 @@
+# Where an answered question's figures land in a note.
+#
+# A question on the Questions page records a figure. That figure then has to
+# appear in the note it belongs to, or the preparer has answered it and the
+# accounts still print an empty table - which is exactly what the client
+# reported (feedback A2: "KMP entered ... but the Note 15 KMP table is
+# empty").
+#
+# This file is the whole declaration. Adding a note here is a config change,
+# not a code change: both paths that build a note table read it.
+#
+#   the library path      services/bindings.py, when the client has no
+#                         template of their own, or it does not cover the note
+#   the template path     services/template_note_tables.py, when the client's
+#                         own signed accounts drive the note's rows
+#
+# Per item:
+#   note          the library note's heading, used to find it. Headings get
+#                 reworded between library versions, so aliases are matched
+#                 too, folded the same way the importer folds a heading.
+#   table_id      the library's own table id. This is the `scope` the figures
+#                 are stored under and read back by, and it is declared rather
+#                 than discovered so the two paths cannot disagree about where
+#                 a figure lives - they did, once: one end discovered the id
+#                 from the library and the other had it hardcoded.
+#   rows          the fixed slots the answer fills, in the order the Questions
+#                 page presents them. `field` is the stored field name - DO NOT
+#                 rename one, it is what already-answered figures are keyed by.
+#                 `patterns` match the caption in a client's own template.
+#   total         optional. For a client who presents the whole disclosure as
+#                 ONE combined line instead of the slots above. The figure
+#                 printed there is the sum of whatever rows were answered.
+#
+# Patterns are case-insensitive regular expressions matched against the
+# caption in its group. Give each concept several, because the same
+# disclosure is worded differently by every firm - matching one client's exact
+# sentence would make this a hardcode with extra steps.
+
+KMP_SPLIT:
+  note: Key management personnel compensation
+  note_aliases:
+    - Key management personnel
+    - Key management personnel remuneration
+    - Compensation of key management personnel
+  table_id: N59_KEY_MANAGEMENT_PERSONNEL_T2
+  rows:
+    - field: short_term_employee_benefits
+      label: Short-term employee benefits
+      patterns:
+        - "short.?term.*(benefit|remuneration|pay|compensation)"
+        - "salaries and other short.?term"
+    - field: post_employment_benefits
+      label: Post-employment benefits
+      patterns:
+        - "post.?employment"
+        - "defined contribution|cpf contribution.*key management"
+    - field: other_long_term_benefits
+      label: Other long-term benefits
+      patterns:
+        - "other long.?term"
+        - "long.?term benefit"
+    - field: termination_benefits
+      label: Termination benefits
+      patterns:
+        - "termination"
+    - field: share_based_payment
+      label: Share-based payment
+      patterns:
+        - "share.?based"
+  total:
+    field: kmp_total
+    label: Key management personnel compensation
+    patterns:
+      # The five slots above, presented as one line. The last of these is the
+      # form the client's own template uses; the others are the wordings the
+      # same disclosure takes elsewhere, so this is a concept match and not
+      # one customer's sentence.
+      - "key management personnel.*(compensation|remuneration|benefit)"
+      - "compensation of key management"
+      - "directors.{0,5} and key management"
+      - "key management personnel services provided"

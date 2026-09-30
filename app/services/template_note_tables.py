@@ -236,27 +236,16 @@ def read(path, title=None):
 
 ZERO = Decimal("0")
 
-# A KMP compensation category (library feedback A2, template-following
-# path): checked ahead of "staff cost|employee benefit" below, which would
-# otherwise catch "Short-term employee benefits" itself and sum every
-# staff account in the books - a much bigger, wrong figure for a note
-# about key management alone. Field names are the ones
-# services/preparer_inputs.py._sync_bound_table() writes to; the scope is
-# the library's own table id for this table, fixed regardless of which
-# note number or row order the client's own template happens to use.
-_KMP_TABLE_ID = "N59_KEY_MANAGEMENT_PERSONNEL_T2"
-_KMP_FIELDS = [
-    (r"short.?term.*(benefit|remuneration|pay)", "short_term_employee_benefits"),
-    (r"post.?employment", "post_employment_benefits"),
-    (r"other long.?term|long.?term benefit", "other_long_term_benefits"),
-    (r"termination", "termination_benefits"),
-    (r"share.?based", "share_based_payment"),
-]
-
 # (pattern on the caption in its group, how to fill it). First match wins.
+#
+# Captions with a declared answer (config/answer_bindings.yaml) come FIRST,
+# ahead of "staff cost|employee benefit" below, which would otherwise catch
+# "Short-term employee benefits" itself and sum every staff account in the
+# books - a much bigger, wrong figure for a note about key management alone.
+# They are prepended at call time rather than built into this list, because
+# the declaration is read from config and this module is imported before an
+# application context exists.
 _CODES = [
-    (pattern, ("kmp", field)) for pattern, field in _KMP_FIELDS
-] + [
     (r"staff cost|employee benefit|salar|wages|payroll",
      ("codes", ["PL-STAFF", "PL-DIRFEE", "PL-CPF", "PL-LEVY"])),
     (r"legal and professional|professional fee|legal fee",
@@ -343,24 +332,42 @@ def _sum_accounts(financial_year, pattern, scope):
 
 def _fill_row(context, figures, financial_year):
     """(this year's value or Held, codes used) for a template caption."""
+    from . import answer_bindings
     from .bindings import Held
 
     text = " ".join(context.lower().split())
+
+    # Declared answers are tried first, ahead of _CODES below, which would
+    # otherwise catch "Short-term employee benefits" itself under
+    # "staff cost|employee benefit" and sum every staff account in the
+    # books - a much bigger, wrong figure for a note about key management
+    # alone. Resolved by best match across every declared note at once
+    # (resolve_caption), not by walking a flattened, order-dependent list:
+    # a pattern declared as "audit fee" and one declared as "non.?audit fee"
+    # both match "Non-audit fees", and whichever came first in a flat list
+    # would silently win regardless of which one actually fits.
+    resolved = answer_bindings.resolve_caption(context)
+    if resolved:
+        item, field = resolved
+        answered = answer_bindings.stored_field(financial_year, item, field)
+        if answered is not None:
+            return answered, []
+
+        # Nothing answered yet. A total row is offered as the sum of the
+        # slots, so it must not be typeable in its own right - a figure
+        # typed there would sit alongside the parts it is meant to be the
+        # sum of, and the note would print two versions of one fact.
+        if answer_bindings.is_total_field(item, field):
+            return Held("Needs the preparer's answer on the Questions "
+                        "page (this line is the total of it)"), []
+        return Held("Needs the preparer's split of this note's figure "
+                    "(Questions page)",
+                    token="ENTERED", field=field,
+                    scope=answer_bindings.table_id(item)), []
+
     for pattern, how in _CODES:
         if not re.search(pattern, text):
             continue
-        if how[0] == "kmp":
-            from . import document_fields
-            field = how[1]
-            entered = document_fields.value(financial_year, "ENTERED", field,
-                                            _KMP_TABLE_ID)
-            if entered is not None:
-                return (entered.amount if entered.amount is not None
-                        else ZERO), []
-            return Held("Needs the preparer's split of key management "
-                        "personnel compensation (Questions page)",
-                        token="ENTERED", field=field,
-                        scope=_KMP_TABLE_ID), []
         if how[0] in ("tax_rate", "tax_exemption"):
             return _tax_row(how[0], context, figures), ["PL-PBT"]
         if how[0] == "codes":

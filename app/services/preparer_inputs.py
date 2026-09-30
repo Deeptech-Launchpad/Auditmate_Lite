@@ -47,7 +47,7 @@ import re
 
 from ..extensions import db
 from ..models import (INPUT_HOLD, INPUT_OMIT, NoteLibraryNote, PreparerInput)
-from . import document_fields
+from . import answer_bindings, document_fields
 from .note_library import normalise_heading
 
 log = logging.getLogger(__name__)
@@ -67,59 +67,66 @@ _basis_only = ("DIVIDEND_PER_SHARE", "IR_SENSITIVITY", "CONTRACT_LIAB_REV",
 ALWAYS = "always"
 FIRST_TIME_ONLY = "on first-time adoption only"
 
-# Rows whose figure(s), once answered, feed a specific table row directly
-# (library feedback A2: "KMP entered ... but the Note 15 KMP table is
-# empty" - the figure was recorded, but nothing bound it to the table's own
-# rows, which read a fixed set of KMP: bindings rather than whatever the
-# preparer happened to type as a row label). Listed by item, the same way
-# `_basis_only` lists its own departure from the sheet, since this is one
-# too: the sheet gives free rows, and these are bound to fixed ones instead.
-_BOUND_TABLE_ITEMS = {"KMP_SPLIT": "Key management personnel compensation"}
-
-# What identifies "the" table under a bound item's note, since the binding
-# a version uses for its rows is not stable across versions - v3.5 holds
-# these five as MANUAL (already answerable in place, just not from this
-# page), v3.11 as KMP:short_term etc (not answerable at all until
-# DOCUMENT_TOKENS knows the prefix - see services/bindings.py). The row
-# labels are the one thing both agree on, so those are what is matched.
-_BOUND_LABELS = {"short-term employee benefits", "post-employment benefits",
-                 "other long-term benefits", "termination benefits",
-                 "share-based payment"}
+# Which questions have a declared landing place in a note is now
+# config/answer_bindings.yaml, read through services/answer_bindings.py, so
+# that adding a note is a config entry rather than a branch here and a
+# second branch in the template path (library feedback A2: "KMP entered ...
+# but the Note 15 KMP table is empty" - the figure was recorded and nothing
+# bound it to the table's own rows).
 
 
-def _bound_table(financial_year, heading):
-    """(table_id, [row labels in order, excluding the total]) for the
-    library table under this note whose rows are the fixed slots an item
-    in `_BOUND_TABLE_ITEMS` fills - or None if this version has no such
-    table (an older library, or the note renamed).
+def _bound_items():
+    return answer_bindings.items()
 
-    Found by heading rather than a hard-coded table id, so a library
-    version that numbers or names its tables differently still resolves -
-    the fixed slots are the point, not which id happens to hold them.
+
+def _bound_table(financial_year, item):
+    """(table_id, [row labels in order]) for the library table holding this
+    item's fixed slots - or None if this library version has no such table
+    (an older library, or the note renamed).
+
+    The table is FOUND by the note's heading and its rows, because the
+    binding a version uses is not stable across versions: v3.5 holds the
+    KMP slots as MANUAL, v3.11 as KMP:short_term. The labels are the one
+    thing both agree on, so those are what is matched - against the
+    declared patterns, so a reworded row still resolves.
+
+    The scope figures are stored under is the DECLARED table_id, not the
+    discovered one. The two used to be able to disagree: this end
+    discovered the id from the library while the template path had it
+    hardcoded, so a library that numbered its tables differently would
+    store a figure where nothing would read it.
     """
     from . import bindings
 
     version = _version(financial_year)
     if version is None:
         return None
-    note = NoteLibraryNote.query.filter_by(
-        library_version_id=version.id).filter(
-        NoteLibraryNote.heading.ilike(heading)).first()
+
+    note = None
+    for heading in answer_bindings.note_headings(item):
+        note = NoteLibraryNote.query.filter_by(
+            library_version_id=version.id).filter(
+            NoteLibraryNote.heading.ilike(heading)).first()
+        if note is not None:
+            break
     if note is None:
         return None
+
+    declared = answer_bindings.table_id(item)
     for piece in note.pieces or []:
-        table_id = piece.get("table_id")
-        if not table_id:
+        found_id = piece.get("table_id")
+        if not found_id:
             continue
-        table = bindings.library_table(version.id, table_id)
+        table = bindings.library_table(version.id, found_id)
         if not table:
             continue
         rows = table.get("rows") or []
-        found = {str(r.get("label") or "").strip().lower() for r in rows}
-        if _BOUND_LABELS & found:
-            labels = [r["label"] for r in rows
-                     if str(r.get("binding") or "") != "DOC:total"]
-            return table_id, labels
+        captions = [str(r.get("label") or "") for r in rows]
+        if not any(answer_bindings.field_for_caption(item, c) for c in captions):
+            continue
+        labels = [r["label"] for r in rows
+                 if str(r.get("binding") or "") != "DOC:total"]
+        return declared or found_id, labels
     return None
 
 
@@ -214,8 +221,8 @@ def catalogue(financial_year):
         mode = str(row.get("Mode") or ASK).strip()
         unanswered = str(row.get("If unanswered") or "").strip()
         fixed_labels = None
-        if item in _BOUND_TABLE_ITEMS:
-            bound = _bound_table(financial_year, _BOUND_TABLE_ITEMS[item])
+        if item in _bound_items():
+            bound = _bound_table(financial_year, item)
             if bound:
                 fixed_labels = bound[1]
         out.append({
@@ -417,7 +424,7 @@ def save(financial_year, item, *, mode=ASK, answer=None, amount=None,
     row.accepted_proposal = bool(accepted_proposal)
     row.decided = True
     row.decided_by = user_id
-    if item in _BOUND_TABLE_ITEMS:
+    if item in _bound_items():
         _sync_bound_table(financial_year, item,
                           [] if row.not_applicable else (row.parts or []))
     if commit:
@@ -431,29 +438,42 @@ def _sync_bound_table(financial_year, item, parts):
     cell already does (see bindings._make_answerable) - so a figure
     answered here is a figure printed there, not two records of one fact.
 
-    `parts` is in the fixed order `catalogue()` presented it in (the
-    hidden label field keeps that order even though the label itself isn't
-    typed), so it lines up with `_bound_table`'s own row order position for
-    position. A blank amount clears that row's entry rather than leaving a
-    stale figure from an earlier answer.
+    `parts` is in the fixed order `catalogue()` presented it in (the hidden
+    label field keeps that order even though the label itself isn't typed),
+    so it lines up with the declared slots position for position. A blank
+    amount clears that slot rather than leaving a stale figure from an
+    earlier answer.
+
+    The field names come from the DECLARATION, not from slugging whatever
+    label the library happened to print. Slugging made the stored key a
+    function of the library's wording, so a reworded row would have started
+    writing to a new key and silently orphaned the figure already answered
+    under the old one.
     """
     from decimal import Decimal, InvalidOperation
 
-    from . import bindings, document_fields
-
-    bound = _bound_table(financial_year, _BOUND_TABLE_ITEMS[item])
-    if bound is None:
+    scope = answer_bindings.table_id(item)
+    if not scope:
         return
-    table_id, labels = bound
+
+    # The page presented the LIBRARY's rows, in the library's order, so each
+    # answered part is identified by resolving its label through the same
+    # matcher the template path uses - not by trusting that the library's
+    # order happens to match the order the slots are declared in.
+    bound = _bound_table(financial_year, item)
+    labels = bound[1] if bound else answer_bindings.row_labels(item)
+
     for label, part in zip(labels, parts):
-        field = bindings._slug(label)
+        field = answer_bindings.field_for_caption(item, label)
+        if not field or answer_bindings.is_total_field(item, field):
+            continue
         raw = str((part or {}).get("amount") or "").strip()
         try:
             amount = Decimal(raw.replace(",", "")) if raw else None
         except InvalidOperation:
             amount = None
         document_fields.save(financial_year, "ENTERED", field,
-                             scope=table_id, amount=amount,
+                             scope=scope, amount=amount,
                              clear=amount is None)
 
 

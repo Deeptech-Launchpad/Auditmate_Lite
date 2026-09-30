@@ -2733,6 +2733,7 @@ def bound_answers_not_reflected(payloads, financial_year):
     """
     from decimal import Decimal, InvalidOperation
 
+    from . import answer_bindings
     from . import preparer_inputs as prep
 
     def _num(value):
@@ -2743,7 +2744,8 @@ def bound_answers_not_reflected(payloads, financial_year):
 
     found = []
     stored = prep.stored(financial_year)
-    for item, note_heading in prep._BOUND_TABLE_ITEMS.items():
+    for item in answer_bindings.items():
+        note_heading = (answer_bindings.note_headings(item) or [item])[0]
         row = stored.get(item)
         if row is None or row.not_applicable or not row.decided:
             continue
