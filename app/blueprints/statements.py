@@ -116,9 +116,20 @@ def detail(statement_id):
     # balance in either year is not presented. Section headings need no
     # handling - the template announces a group when it reaches its first
     # visible line, so a group left empty never announces itself.
-    from ..services.reports import visible_statement_lines
+    from ..services.reports import (note_anchor_map, note_number_map,
+                                    visible_statement_lines)
+
     lines = (list(statement.lines) if show_all
              else visible_statement_lines(statement.lines, detailed=detailed))
+
+    # The Note column. Numbers belong to the report, not to the statement:
+    # they are worked out from whichever notes are enabled, so there are
+    # none to show until a report exists - which is the normal state of an
+    # engagement whose trial balance has only just been approved. The
+    # column is simply left off then, rather than printing a dead column.
+    report = financial_year.report
+    note_numbers = note_number_map(report) if report else {}
+    note_anchors = note_anchor_map(report) if report else {}
 
     unmapped = _unmapped_for(financial_year, statement.statement_type)
 
@@ -133,6 +144,9 @@ def detail(statement_id):
                            customer=financial_year.customer,
                            lines=lines, detailed=detailed, show_all=show_all,
                            hidden_count=len(statement.lines) - len(lines),
+                           note_numbers=note_numbers,
+                           note_anchors=note_anchors,
+                           report=report,
                            title=(DETAILED_PL_LABEL if detailed
                                   else statement.type_label),
                            check=check, unmapped=unmapped,

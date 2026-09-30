@@ -1895,6 +1895,36 @@ def note_number_map(report):
     return mapping
 
 
+def note_anchor_map(report):
+    """{note key: the id that note's section carries in the document}.
+
+    The same keys as note_number_map, so a statement line's `note_ref`
+    resolves in both without the caller having to know that an anchor is
+    "sec-" + NOTE_PREFIX + the key. A statement line carries the bare key
+    while the rendered section carries the prefixed one, and the Statements
+    screen has to build the same link across a page boundary - three places
+    to get that concatenation wrong, so it is done here once.
+    """
+    def is_note(s):
+        return (s.section_type != "statement" and not is_statutory(s)
+                and (s.section_key.startswith(NOTE_PREFIX)
+                    or s.section_key.startswith("custom_")))
+
+    mapping = {}
+    for section in ordered_sections(report, top_level_only=True):
+        for candidate in [section] + sorted(section.children,
+                                            key=lambda c: c.sort_order):
+            if not (is_note(candidate) and candidate.is_enabled):
+                continue
+            anchor = f"sec-{candidate.section_key}"
+            bare = (candidate.section_key[len(NOTE_PREFIX):]
+                    if candidate.section_key.startswith(NOTE_PREFIX)
+                    else candidate.section_key)
+            mapping[bare] = anchor
+            mapping[candidate.section_key] = anchor
+    return mapping
+
+
 def content_gaps(report, financial_year):
     """Where the FRS library, drawn strictly from
     AuditMate_FullFRS_Disclosure_Requirements_1.xlsx, does not cover what

@@ -81,10 +81,19 @@
   </div>
   <div class="card-body tight">
     <div class="table-wrap">
+      {#
+        The Note column only appears once a report exists, because that is
+        what note numbers are counted from. `show_notes` keeps the header,
+        the group spans and the cells in step - three places that must agree
+        or the table shears.
+      #}
+      {% set show_notes = note_numbers and statement.statement_type != 'trial_balance' %}
+      {% set col_count = 4 if show_notes else 3 %}
       <table class="fin" id="statement-table" data-statement-id="{{ statement.id }}">
         <thead>
           <tr>
             <th>&nbsp;</th>
+            {% if show_notes %}<th style="width:56px">Note</th>{% endif %}
             <th style="width:170px">{{ fy.year_label }}</th>
             <th style="width:150px">
               {{ fy.previous_year.year_label if fy.previous_year else 'Prior year' }}
@@ -98,7 +107,7 @@
               {% set ns.group = line.group_key %}
               {% if line.group_key and statement.statement_type != 'trial_balance' %}
               <tr class="group-head">
-                <td colspan="3">{{ line.group_key|replace('_', ' ') }}</td>
+                <td colspan="{{ col_count }}">{{ line.group_key|replace('_', ' ') }}</td>
               </tr>
               {% endif %}
             {% endif %}
@@ -108,6 +117,18 @@
                 {{ line.label }}
                 {% if line.is_overridden %}<span class="override-flag">overridden</span>{% endif %}
               </td>
+              {% if show_notes %}
+                {% set note_no = note_numbers.get(line.note_ref, '') %}
+                {% set note_anchor = note_anchors.get(line.note_ref) %}
+                <td class="num muted">
+                  {%- if note_no and note_anchor and report -%}
+                    <a href="{{ url_for('reports.builder', fy_id=fy.id) }}#{{ note_anchor }}"
+                       title="Go to this note in the report">{{ note_no }}</a>
+                  {%- else -%}
+                    {{ note_no }}
+                  {%- endif -%}
+                </td>
+              {% endif %}
               <td class="num">
                 {% if locked %}
                   {{ line.effective_amount|money if line.effective_amount else '—' }}

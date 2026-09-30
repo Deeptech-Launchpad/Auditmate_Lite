@@ -112,6 +112,7 @@ def builder(fy_id):
                            payloads=payloads,
                            ordered_sections=report_service.ordered_sections(report),
                            note_numbers=report_service.note_number_map(report),
+                           note_anchors=report_service.note_anchor_map(report),
                            content_gaps=gaps,
                            available_accounts=available_accounts,
                            attachable_notes=report_service.attachable_notes(report),
@@ -1412,6 +1413,7 @@ def _toc_pages(report, payloads, incomplete):
                            draft_label=report_service.draft_label(
                                financial_year, incomplete),
                            note_numbers=report_service.note_number_map(report),
+                           note_anchors=report_service.note_anchor_map(report),
                            checks=None,
                            look=_template_look(financial_year.customer),
                            toc_pages=None, for_pdf=True)
@@ -1435,6 +1437,7 @@ def preview(report_id):
                            draft_label=report_service.draft_label(
                                report.financial_year, incomplete),
                            note_numbers=report_service.note_number_map(report),
+                           note_anchors=report_service.note_anchor_map(report),
                            checks=checks_service.build(
                                report, report.financial_year, payloads),
                            look=_template_look(report.financial_year.customer),
@@ -1471,6 +1474,7 @@ def export_word(report_id):
                            draft_label=report_service.draft_label(
                                financial_year, incomplete),
                            note_numbers=report_service.note_number_map(report),
+                           note_anchors=report_service.note_anchor_map(report),
                            checks=checks_service.build(
                                report, financial_year, payloads),
                            look=_template_look(report.financial_year.customer),
@@ -1533,6 +1537,7 @@ def export(report_id):
                            draft_label=report_service.draft_label(
                                report.financial_year, incomplete),
                            note_numbers=report_service.note_number_map(report),
+                           note_anchors=report_service.note_anchor_map(report),
                            checks=checks_service.build(
                                report, report.financial_year, payloads),
                            look=_template_look(report.financial_year.customer),

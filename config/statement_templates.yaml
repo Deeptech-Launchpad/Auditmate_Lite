@@ -202,7 +202,10 @@ cash_flow:
     - {key: cf_unexplained,       label: "Movement not yet analysed", group: summary, indent: 1, formula: cf_unexplained}
     - {key: cf_net_change,        label: "Net increase/(decrease) in cash and cash equivalent", group: summary, subtotal: true, formula: cf_net_change}
     - {key: cf_opening_cash,      label: "Cash and cash equivalents at beginning of period", group: summary, formula: cf_opening_cash}
-    - {key: cf_closing_cash,      label: "Cash and cash equivalents at end of period", group: summary, total: true, formula: cf_closing_cash, note: 9}
+    # `note` is a note KEY, not a printed number - the number is worked out
+    # per render from whichever notes are enabled. This said `9` and so
+    # resolved to nothing and printed blank.
+    - {key: cf_closing_cash,      label: "Cash and cash equivalents at end of period", group: summary, total: true, formula: cf_closing_cash, note: cash_and_cash_equivalents}
 
 # The same cash movement as cash_flow above, presented the other way FRS 7
 # allows: operating activities as actual receipts and payments rather than
@@ -241,7 +244,7 @@ cash_flow_direct:
     - {key: cf_unexplained,         label: "Movement not yet analysed", group: summary, indent: 1, formula: cf_unexplained}
     - {key: cf_net_change,          label: "Net increase/(decrease) in cash and cash equivalent", group: summary, subtotal: true, formula: cf_net_change}
     - {key: cf_opening_cash,        label: "Cash and cash equivalents at beginning of period", group: summary, formula: cf_opening_cash}
-    - {key: cf_closing_cash,        label: "Cash and cash equivalents at end of period", group: summary, total: true, formula: cf_closing_cash, note: 9}
+    - {key: cf_closing_cash,        label: "Cash and cash equivalents at end of period", group: summary, total: true, formula: cf_closing_cash, note: cash_and_cash_equivalents}
 
 accounts_receivable:
   title: Accounts Receivable

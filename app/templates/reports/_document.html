@@ -510,7 +510,22 @@
               {% else %}
               <tr class="{% if line.is_total %}total{% elif line.is_subtotal %}subtotal{% endif %}{% if line.line_key in ('total_assets', 'total_equity_and_liabilities', 'total_equity_liabilities') %} class-total{% endif %}{% if line.is_detail %} detail{% endif %}">
                 <td class="lbl{% if line.indent %} indent-{{ line.indent }}{% endif %}">{{ stmt_label(line, payload.cf_labels) }}</td>
-                {% if show_notes %}<td class="notes">{{ note_numbers.get(line.note_ref, '') if note_numbers else '' }}</td>{% endif %}
+                {% if show_notes %}
+                  {% set note_no = note_numbers.get(line.note_ref, '') if note_numbers else '' %}
+                  {% set note_anchor = note_anchors.get(line.note_ref) if note_anchors else none %}
+                  {#
+                    A link on screen, plain text in print and in Word: a
+                    printed page has nothing to click, and an underlined
+                    blue "9" in a filed set of accounts would be wrong.
+                  #}
+                  <td class="notes">
+                    {%- if note_no and note_anchor and not for_pdf -%}
+                      <a class="note-ref" href="#{{ note_anchor }}">{{ note_no }}</a>
+                    {%- else -%}
+                      {{ note_no }}
+                    {%- endif -%}
+                  </td>
+                {% endif %}
                 {{ stmt_amount(line) }}
                 {{ amount_cell(line.amount_previous,
                     {"token": "PRIORFS", "field": line.line_key,

@@ -45,3 +45,9 @@ pydantic>=2.11
 # WeasyPrint==62.3
 truststore>=0.9
 MarkupSafe==3.0.3
+
+# --- Tests ---
+# Run against their own `auditmate_test` database - see tests/conftest.py.
+# Nothing else is needed: the fixtures are stdlib plus pytest, deliberately,
+# so a test run cannot pull in a toolchain the VPS does not have.
+pytest==8.3.3
