@@ -2354,6 +2354,62 @@ def section_payload(section, customer, financial_year, chips: bool = False):
 _MISSING_BLANK = re.compile(r'class="[^"]*missing-binding[^"]*"[^>]*>([^<]+)<')
 
 
+# ---------------------------------------------------------------------------
+# Placeholders a PERSON left behind
+# ---------------------------------------------------------------------------
+#
+# The markers above are the engine's own: it writes them, it knows where
+# they are, and _MISSING_BLANK finds them by the class it wrapped them in.
+# None of that helps with "{amount}" typed into a note by a preparer
+# drafting against last year's set, or "[year]" left in wording pasted from
+# somewhere else. Those carry no class, so the report has always been blind
+# to exactly the thing a preparer is most likely to leave behind.
+#
+# Two shapes, treated differently on purpose:
+#
+# Braces are unambiguous. No sentence in a set of Singapore FRS accounts
+# contains "{" - it is a template hole every time, whatever the case.
+_TYPED_BRACE = re.compile(r"\{[^{}<>\n]{1,80}\}")
+#
+# Square brackets are not. The engine's own markers are bracketed, and so
+# is the occasional legitimate editorial insertion. Those are stripped
+# before this runs, and what is left has to look like a token rather than
+# prose: no sentence punctuation, and short.
+_TYPED_BRACKET = re.compile(r"\[[^\[\]<>\n]{1,60}\]")
+_BRACKET_IS_PROSE = re.compile(r"[.;:!?]|\band\b|\bthe\b", re.I)
+
+_TAG = re.compile(r"<[^>]+>")
+_MISSING_SPAN = re.compile(
+    r'<span[^>]*class="[^"]*missing-binding[^"]*"[^>]*>.*?</span>',
+    re.I | re.S)
+
+
+def typed_placeholders(html):
+    """Placeholder text a person left in the wording, in the order found.
+
+    The engine's own markers are removed first, so nothing is reported
+    twice: they already have their own reason through _MISSING_BLANK, and a
+    preparer reading "Not filled in: x" and "Placeholder left in the
+    wording: x" against one cell would reasonably conclude the report was
+    confused.
+    """
+    text = _MISSING_SPAN.sub(" ", html or "")
+    text = _UPDATE_MARK.sub(" ", text)
+    text = _TAG.sub(" ", text)
+
+    found = []
+    for match in _TYPED_BRACE.findall(text):
+        if match not in found:
+            found.append(match)
+    for match in _TYPED_BRACKET.findall(text):
+        inner = match[1:-1].strip()
+        if not inner or _BRACKET_IS_PROSE.search(inner):
+            continue
+        if match not in found:
+            found.append(match)
+    return found
+
+
 def _drop_borrowed_refs(section, presented, rows):
     """A line the template never had does not borrow another line's note number.
 
@@ -2449,6 +2505,11 @@ def incomplete_reasons(section, payload, financial_year=None):
 
     for blank in _MISSING_BLANK.findall(payload.get("html") or ""):
         text = f"Not filled in: {blank.strip('[]')}"
+        if text not in reasons:
+            reasons.append(text)
+
+    for found in typed_placeholders(payload.get("html") or ""):
+        text = f"Placeholder left in the wording: {found}"
         if text not in reasons:
             reasons.append(text)
     return reasons

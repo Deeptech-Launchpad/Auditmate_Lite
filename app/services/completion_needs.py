@@ -43,6 +43,8 @@ _RULES = [
         r"preparer supplies|for the preparer to confirm", re.I)),
     ("unreflected", re.compile(
         r"does not appear anywhere in the printed report", re.I)),
+    ("placeholder", re.compile(
+        r"^placeholder left in the wording", re.I)),
 ]
 
 # What each group means, in the order a preparer would work through them.
@@ -208,6 +210,17 @@ _NEEDS = {
         "endpoint": None,
         "kind": "answer",
     },
+    "placeholder": {
+        "label": "Placeholder text left in a note",
+        "file": "No file - wording in a note still carries a template hole "
+                "such as {amount} or [year], typed or pasted in rather than "
+                "written by the engine",
+        "owner": "The preparer",
+        "where": "Open the note in the report and replace the placeholder "
+                 "with the figure or wording it stands for.",
+        "endpoint": None,
+        "kind": "answer",
+    },
     "other": {
         "label": "Other",
         "file": "See the reason under the note",
@@ -221,7 +234,7 @@ _NEEDS = {
 ORDER = ["stale", "reconcile", "tax", "aged", "loan", "register", "far", "ledger",
          "prior_docs", "practitioner", "client_record", "related",
          "questions", "prior_split", "preparer_entry", "layout",
-         "unreflected", "other"]
+         "unreflected", "placeholder", "other"]
 
 
 def classify(reason):
@@ -278,6 +291,7 @@ _ANSWER = {
     "preparer_entry": "figures typed into the highlighted cells",
     "layout": "not built in the software yet",
     "unreflected": "whether this note reflects the answered figure - check it by hand",
+    "placeholder": "placeholder text replaced in the wording",
 }
 
 

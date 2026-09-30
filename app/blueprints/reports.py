@@ -1296,6 +1296,14 @@ def finalise(fy_id):
         return redirect(url_for("reports.builder", fy_id=fy_id))
 
     # No clean final copy while anything is incomplete.
+    #
+    # DRAFT AND FINAL ARE DELIBERATELY DIFFERENT. A draft Word or PDF export
+    # may carry unresolved placeholders - that is what a draft is for, and
+    # those exports stamp "DRAFT - INCOMPLETE" across the page and proceed.
+    # This, the final act, is the gate: an issued set of accounts must not
+    # contain a template hole, whether the engine left it ([... not
+    # provided]) or a person typed it ({amount}, [year]). Both reach this
+    # check through record_completeness.
     incomplete = report_service.record_completeness(report, _assemble(report))
     if incomplete:
         # "Item" rather than "note": a statement that does not reconcile
