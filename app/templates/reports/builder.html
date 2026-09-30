@@ -624,6 +624,19 @@ Anything typed into the report - note wording, edited figures, answers, section 
               {% elif prior_disclosed and section.section_key in prior_disclosed %}
                 · <span class="prior-tag">disclosed last year</span>
               {% endif %}
+              {% if note_open_items and section.section_key in note_open_items %}
+                {% set _code, _qc, _fc = note_open_items[section.section_key] %}
+                ·
+                {% if _qc %}
+                  <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id, note=_code) }}"
+                     title="This note's own questions">{{ _qc }} question{{ 's' if _qc != 1 }}</a>
+                {% endif %}
+                {% if _qc and _fc %}&middot;{% endif %}
+                {% if _fc %}
+                  <a href="{{ url_for('documents.figures', fy_id=fy.id, note=_code) }}"
+                     title="This note's own figures">{{ _fc }} figure{{ 's' if _fc != 1 }}</a>
+                {% endif %}
+              {% endif %}
             </div>
           </span>
           {% if section.section_type != 'statement' %}

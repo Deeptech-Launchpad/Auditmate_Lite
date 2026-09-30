@@ -99,9 +99,12 @@ def builder(fy_id):
 
     from ..services import statements as statements_service
 
+    ordered = report_service.ordered_sections(report)
+
     return render_template("reports/builder.html",
                            report=report, fy=financial_year,
                            sync_status=statements_service.sync_status(financial_year),
+                           note_open_items=_note_open_items(financial_year, ordered),
                            look=_template_look(financial_year.customer),
                            editable=editable,
                            incomplete=incomplete,
@@ -110,7 +113,7 @@ def builder(fy_id):
                            skeleton=template_skeleton.review(report),
                            summarise=completion_needs.summarise,
                            payloads=payloads,
-                           ordered_sections=report_service.ordered_sections(report),
+                           ordered_sections=ordered,
                            note_numbers=report_service.note_number_map(report),
                            note_anchors=report_service.note_anchor_map(report),
                            content_gaps=gaps,
@@ -190,15 +193,24 @@ def preparer_inputs(fy_id):
     from ..services import preparer_inputs as input_service
 
     financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+    # Choosing a note (from the report builder's Sections list) shows only
+    # that note's own questions and figures - the same list, filtered, not
+    # a different page. Kept across a POST redirect so saving an answer
+    # does not drop the preparer back into the full, unfiltered list.
+    note_filter = (request.args.get("note") or "").strip() or None
 
     if request.method == "POST":
+        redirect_args = {"fy_id": fy_id}
+        if note_filter:
+            redirect_args["note"] = note_filter
+
         if request.form.get("action") == "carry":
             moved = input_service.carry_forward(
                 _previous_year(financial_year), financial_year,
                 user_id=current_user.id)
             flash(f"{moved} answer(s) carried from last year."
                   if moved else "Nothing to carry forward.", "success")
-            return redirect(url_for("reports.preparer_inputs", fy_id=fy_id))
+            return redirect(url_for("reports.preparer_inputs", **redirect_args))
 
         saved = cleared = 0
         for item, values in _posted_inputs(request.form).items():
@@ -225,11 +237,16 @@ def preparer_inputs(fy_id):
             parts.append(f"{cleared} put back to unanswered")
         flash(", ".join(parts) + "." if parts else "Nothing changed.",
               "success" if parts else "info")
-        return redirect(url_for("reports.preparer_inputs", fy_id=fy_id))
+        return redirect(url_for("reports.preparer_inputs", **redirect_args))
 
     from ..services import related_parties
 
     rows = input_service.state(financial_year)
+    note_heading = None
+    if note_filter:
+        note_heading = input_service.heading_for_code(financial_year, note_filter)
+        rows = input_service.filter_by_note(rows, note_filter)
+
     return render_template(
         "reports/preparer_inputs.html",
         fy=financial_year, customer=financial_year.customer,
@@ -239,11 +256,14 @@ def preparer_inputs(fy_id):
         asked=[r for r in rows if r["mode"] == input_service.ASK
                and not r["item"].startswith("field.")],
         blanks=[r for r in rows if r["item"].startswith("field.")],
+        note_filter=note_filter, note_heading=note_heading,
         # Its own button is gone (library feedback B... this batch of
         # feedback, not the library's): the same undecided candidates
         # that used to hold their own place in the toolbar are questions
-        # too, so they are answered from here now.
-        related_parties=related_parties.undecided(financial_year),
+        # too, so they are answered from here now. Related parties are not
+        # scoped to one note, so they only show on the unfiltered page.
+        related_parties=(related_parties.undecided(financial_year)
+                         if not note_filter else []),
         has_previous=_previous_year(financial_year) is not None)
 
 
@@ -270,6 +290,44 @@ def _waiting_counts(financial_year):
         out["questions"] = len(preparer_inputs.outstanding(financial_year))
     except Exception:                      # pragma: no cover
         log.exception("Question count failed")
+    return out
+
+
+def _note_open_items(financial_year, sections):
+    """{section_key: (note_code, question_count, figure_count)} for every
+    section that has open items of its own to point at.
+
+    Powers the small "3 open" link beside a note in the Sections list, so a
+    preparer can go straight to that note's own questions and figures
+    instead of hunting them out of the full unfiltered list. Only sections
+    that resolve to a note at all are included - a statement or a
+    structural section (the cover page) has none.
+    """
+    from ..services import document_fields
+    from ..services import preparer_inputs as input_service
+
+    out = {}
+    try:
+        outstanding_rows = input_service.outstanding(financial_year)
+        figures_by_code = {}
+        for document in document_fields.documents(financial_year):
+            for group in document["groups"]:
+                code = str(group.get("note_code") or "").upper()
+                if code:
+                    figures_by_code[code] = (
+                        figures_by_code.get(code, 0) + len(group["missing"]))
+
+        for section in sections:
+            codes = input_service.section_note_codes(section, financial_year)
+            if not codes:
+                continue
+            q_count = sum(1 for row in outstanding_rows
+                         if input_service.codes_for(row) & codes)
+            f_count = sum(figures_by_code.get(code, 0) for code in codes)
+            if q_count or f_count:
+                out[section.section_key] = (sorted(codes)[0], q_count, f_count)
+    except Exception:                      # pragma: no cover - never a 500
+        log.exception("Note open-item count failed")
     return out
 
 

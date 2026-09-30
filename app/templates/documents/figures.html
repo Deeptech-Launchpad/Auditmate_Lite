@@ -13,7 +13,8 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Figures from documents</h1>
+    <h1>{% if note_filter %}Figures for {{ note_heading or note_filter }}
+        {% else %}Figures from documents{% endif %}</h1>
     <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
   </div>
   <div class="page-actions">
@@ -21,6 +22,17 @@
       Financial Statements →</a>
   </div>
 </div>
+
+{% if note_filter %}
+<div class="notice" style="margin-bottom:16px">
+  <span>&#9432;</span>
+  <div>
+    Showing only the figures used by
+    <strong>{{ note_heading or note_filter }}</strong>.
+    <a href="{{ url_for('documents.figures', fy_id=fy.id) }}">Show every document &rarr;</a>
+  </div>
+</div>
+{% endif %}
 
 {#
   Why this page exists at all.
@@ -41,6 +53,10 @@
   Leave a box empty if you have not looked yet; type <strong>0</strong> if
   the figure really is nil.
 </p>
+
+{% if note_filter and not documents %}
+<p class="muted">This note does not use any figures typed in here.</p>
+{% endif %}
 
 {% for document in documents %}
 <div class="card">

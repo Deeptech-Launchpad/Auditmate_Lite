@@ -146,13 +146,50 @@ def _note_codes(version):
                 library_version_id=version.id).all()}
 
 
-def _applies(financial_year, note_code, asked_when):
+# A sheet's own wording for a note is sometimes shorter than the note's
+# actual heading - "Critical judgements" on the Preparer inputs sheet,
+# "Critical judgements in applying accounting policies" in the library.
+# Listed here rather than matched by a general prefix rule, because a
+# fuzzy rule wide enough to catch this would also catch two different
+# notes that happen to share a first word.
+_HEADING_ALIASES = {
+    "criticaljudgements": "criticaljudgementsinapplyingaccountingpolicies",
+}
+
+
+def _resolve_note_codes(note, codes):
+    """Every library code a sheet's free-text "Note" value names.
+
+    Usually one. Sometimes a compound value - "Directors' statement; Going
+    concern" - because one question settles two notes at once, and there is
+    no reason a single figure can only ever speak to one disclosure.
+    A part with no match is dropped rather than guessed at; a question
+    naming a STATEMENT ("Statement of cash flows") rather than a note has
+    genuinely no note to belong to, and stays without one.
+    """
+    found = []
+    for part in str(note or "").split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        key = normalise_heading(part)
+        code = codes.get(key) or codes.get(_HEADING_ALIASES.get(key, ""))
+        if code and code not in found:
+            found.append(code)
+    return found
+
+
+def _applies(financial_year, note_codes, asked_when):
     """Whether this question is worth putting to this preparer.
 
     Almost every "Asked when" reduces to whether the note applies: a
     company with no borrowings is not asked whether a loan payment was
     missed, because it has no borrowings note. Two do not reduce that
     way and are handled by name.
+
+    `note_codes` may name more than one note (a question can settle two
+    disclosures at once). It is worth asking if EITHER could still need
+    it - the question drops only once nothing it could answer applies.
     """
     when = (asked_when or "").strip().lower()
     if when == ALWAYS:
@@ -161,7 +198,10 @@ def _applies(financial_year, note_code, asked_when):
         # Nothing held says whether this is a first FRS set. Asked, with
         # the condition on the question, rather than guessed at either way.
         return True
-    return document_fields._note_applies(financial_year, note_code)
+    if not note_codes:
+        return document_fields._note_applies(financial_year, None)
+    return any(document_fields._note_applies(financial_year, code)
+              for code in note_codes)
 
 
 def _rows_wanted(raw):
@@ -214,9 +254,10 @@ def catalogue(financial_year):
         if not item:
             continue
         note = str(row.get("Note") or "").strip()
-        note_code = codes.get(normalise_heading(note))
+        note_codes = _resolve_note_codes(note, codes)
+        note_code = note_codes[0] if note_codes else None
         asked_when = str(row.get("Asked when") or "").strip()
-        if not _applies(financial_year, note_code, asked_when):
+        if not _applies(financial_year, note_codes, asked_when):
             continue
         mode = str(row.get("Mode") or ASK).strip()
         unanswered = str(row.get("If unanswered") or "").strip()
@@ -230,6 +271,7 @@ def catalogue(financial_year):
             "mode": mode,
             "note": note,
             "note_code": note_code,
+            "note_codes": note_codes,
             "fixed_labels": fixed_labels,
             "concludes": _plain(
                 str(row.get("What the engine concludes") or "").strip(), labels),
@@ -271,13 +313,8 @@ def _headings(version):
 def _in_words(used_in, headings):
     """Turn "N35_SHAREBASED_PAYMENT_P1, N44_..." into note names."""
     names = []
-    for part in str(used_in or "").replace(";", ",").split(","):
-        part = part.strip()
-        if not part:
-            continue
-        # The paragraph suffix - _P1, _P30 - is addressing, not meaning.
-        stem = part.rsplit("_P", 1)[0] if "_P" in part else part
-        name = headings.get(stem) or headings.get(part)
+    for stem in _stems(used_in):
+        name = headings.get(stem)
         if name and name not in names:
             names.append(name)
     return names
@@ -308,6 +345,34 @@ def _field_label(field):
     return " ".join(parts) if parts else field
 
 
+_PARAGRAPH_SUFFIX = re.compile(r"_P\d+$")
+
+
+def _stems(used_in):
+    """Note codes named in a "Used in" value, paragraph addressing stripped.
+
+    "N49_CONTINGENT_LIABILITIES_P2, N50_CONTINGENT_ASSETS_P2" names two
+    notes; the "_P2" is which paragraph within one, not part of which note
+    it is. Order is kept and a code is never repeated, so this doubles as
+    the list `note_codes` needs as well as the set `_used_in_applies` does.
+
+    The suffix stripped is "_P" followed by DIGITS, not "_P" on its own -
+    real codes end in "_POL" ("N11_INTANGIBLE_ASSETS_POL") and would
+    otherwise be truncated to a different, wrong code that happens to
+    still exist ("N11_INTANGIBLE_ASSETS"), silently pointing a field at
+    the wrong note's applicability instead of failing loudly.
+    """
+    stems = []
+    for part in str(used_in or "").replace(";", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        stem = _PARAGRAPH_SUFFIX.sub("", part)
+        if stem not in stems:
+            stems.append(stem)
+    return stems
+
+
 def _used_in_applies(financial_year, used_in):
     """Whether at least one note this blank is used in actually applies to
     this engagement (library feedback B2: about 25 of 63 questions did not
@@ -318,11 +383,7 @@ def _used_in_applies(financial_year, used_in):
     away, the same rule _applies() follows for a first-time-adoption
     question nothing held can settle either way.
     """
-    stems = set()
-    for part in str(used_in or "").replace(";", ",").split(","):
-        part = part.strip()
-        if part:
-            stems.add(part.rsplit("_P", 1)[0] if "_P" in part else part)
+    stems = _stems(used_in)
     if not stems:
         return True
     return any(document_fields._note_applies(financial_year, stem)
@@ -363,6 +424,7 @@ def blanks(financial_year):
             "question": str(row.get("What it holds") or "").strip(),
             "format": str(row.get("Format") or "").strip(),
             "used_in": used_in,
+            "note_codes": _stems(used_in),
             "notes_in_words": _in_words(used_in, headings),
             "rows": "1",
             "parts_wanted": 1,
@@ -507,13 +569,36 @@ def holds(financial_year):
     return out
 
 
-def _section_codes(section):
-    """The library codes a report section covers."""
+def codes_for(row):
+    """The note codes a state()/catalogue()/blanks() row belongs to, as an
+    upper-cased set - the one shape every question and every section is
+    compared in, so a table row's exact code and a paragraph's stemmed one
+    are never accidentally compared as different things."""
+    return {str(code).upper() for code in (row.get("note_codes") or [])}
+
+
+def section_note_codes(section, financial_year):
+    """The library codes a report section covers.
+
+    Most sections carry them already, in the table specs a note was built
+    from. A wording-only section - no table, nothing computed, just a
+    library paragraph ("Corporate information") - carries none, and is
+    resolved the same way a question's own free-text "Note" value is: by
+    its heading, aliases included.
+    """
     binding = section.data_binding or {}
     codes = [str(spec.get("note_code") or "") for spec in
              (binding.get("note_table_specs") or [])]
     codes.append(str(binding.get("library_code") or ""))
-    return {code.upper() for code in codes if code}
+    found = {code.upper() for code in codes if code}
+    if found:
+        return found
+
+    version = _version(financial_year)
+    if version is None:
+        return found
+    resolved = _resolve_note_codes(section.title, _note_codes(version))
+    return {code.upper() for code in resolved}
 
 
 def holds_for_section(section, financial_year):
@@ -523,19 +608,41 @@ def holds_for_section(section, financial_year):
     unanswered holds that note. A held note prints Incomplete and names
     the question, so the person reading the draft is told what is wanted
     rather than that something is.
+
+    Matched EXACTLY, not by one code containing the other - a substring
+    test made "N20_PROVISIONS" match "N20_PROVISIONS_LONGTERM" as well,
+    holding the wrong note open for the wrong reason.
     """
-    codes = _section_codes(section)
+    codes = section_note_codes(section, financial_year)
     if not codes:
         return []
     out = []
     for row in outstanding(financial_year, holding_only=True):
-        note_code = (row.get("note_code") or "").upper()
-        if not note_code or not any(note_code in code or code in note_code
-                                    for code in codes):
+        if not codes_for(row) & codes:
             continue
         question = row.get("question") or row.get("note") or row["item"]
         out.append("Waiting for the preparer: " + question)
     return out
+
+
+def heading_for_code(financial_year, note_code):
+    """The note's own heading, for a filtered page to say what it is
+    showing - "N03_GOING_CONCERN" means nothing to a preparer."""
+    if not note_code:
+        return None
+    version = _version(financial_year)
+    if version is None:
+        return None
+    return _headings(version).get(str(note_code).upper()) or \
+        _headings(version).get(note_code)
+
+
+def filter_by_note(rows, note_code):
+    """Only the rows that belong to this note - questions or figures."""
+    wanted = str(note_code or "").upper()
+    if not wanted:
+        return list(rows)
+    return [row for row in rows if wanted in codes_for(row)]
 
 
 def values_for_bindings(financial_year):

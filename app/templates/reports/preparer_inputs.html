@@ -157,7 +157,8 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Questions to answer</h1>
+    <h1>{% if note_filter %}Questions for {{ note_heading or note_filter }}
+        {% else %}Questions to answer{% endif %}</h1>
     <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
   </div>
   <div class="page-actions">
@@ -166,6 +167,16 @@
   </div>
 </div>
 
+{% if note_filter %}
+<div class="notice" style="margin-bottom:16px">
+  <span>&#9432;</span>
+  <div>
+    Showing only the questions and figures for
+    <strong>{{ note_heading or note_filter }}</strong>.
+    <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id) }}">Show every question &rarr;</a>
+  </div>
+</div>
+{% else %}
 <p class="muted" style="max-width:68ch">
   Some of what a set of accounts must disclose is not in the trial balance.
   Sometimes the balance is there but the breakdown is not &mdash; one stock
@@ -174,6 +185,7 @@
   arriving in February. Those are the questions below, and only this
   company&rsquo;s auditor can answer them.
 </p>
+{% endif %}
 
 <div class="card" style="margin-bottom:16px">
   <div class="card-body" style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">

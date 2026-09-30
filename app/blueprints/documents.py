@@ -205,6 +205,16 @@ def figures(fy_id):
     from ..services import document_fields
 
     financial_year = db.session.get(FinancialYear, fy_id) or abort(404)
+    # Choosing a note (from the report builder's Sections list) shows only
+    # the figures that note uses. A document token with no note of its own
+    # (TAX is asked for once, not per note) has nothing to filter to, so it
+    # drops out of a filtered view rather than showing figures for every
+    # note at once.
+    note_filter = (request.args.get("note") or "").strip() or None
+
+    redirect_args = {"fy_id": fy_id}
+    if note_filter:
+        redirect_args["note"] = note_filter
 
     if request.method == "POST":
         # Listing the classes of asset a note is presented in comes first
@@ -214,7 +224,7 @@ def figures(fy_id):
                                   document_fields)
         if handled:
             flash(handled, "success")
-            return redirect(url_for("documents.figures", fy_id=fy_id))
+            return redirect(url_for("documents.figures", **redirect_args))
 
         saved = cleared = 0
         errors = []
@@ -241,12 +251,32 @@ def figures(fy_id):
             if cleared:
                 told.append(f"{cleared} put back to Incomplete")
             flash(" and ".join(told) + ".", "success")
-        return redirect(url_for("documents.figures", fy_id=fy_id))
+        return redirect(url_for("documents.figures", **redirect_args))
+
+    documents = document_fields.documents(financial_year)
+    note_heading = None
+    if note_filter:
+        from ..services import preparer_inputs as input_service
+
+        note_heading = input_service.heading_for_code(financial_year, note_filter)
+        wanted = note_filter.upper()
+        filtered = []
+        for document in documents:
+            groups = [g for g in document["groups"]
+                     if str(g.get("note_code") or "").upper() == wanted]
+            if not groups:
+                continue
+            filtered.append(dict(document, groups=groups,
+                                 missing=[f for g in groups
+                                         for f in g["missing"]]))
+        documents = filtered
 
     return render_template("documents/figures.html",
                            fy=financial_year,
                            customer=financial_year.customer,
-                           documents=document_fields.documents(financial_year))
+                           documents=documents,
+                           note_filter=note_filter,
+                           note_heading=note_heading)
 
 
 def _handle_classes(financial_year, form, document_fields):

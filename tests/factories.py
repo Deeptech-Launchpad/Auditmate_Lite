@@ -10,7 +10,8 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models import (AuditReport, AuditReportSection, Customer,
-                        FinancialStatement, FinancialYear, StatementLine)
+                        FinancialStatement, FinancialYear, NoteLibraryNote,
+                        NoteLibrarySheet, NoteLibraryVersion, StatementLine)
 
 
 def customer(name="Testco Pte Ltd"):
@@ -51,6 +52,45 @@ def report(fy=None, note_keys=("revenue", "cash_and_cash_equivalents")):
         ))
     db.session.flush()
     return rep
+
+
+def library_version(notes=(), preparer_inputs=(), label=None):
+    """A minimal notes-library version, self-contained for a test.
+
+    `auditmate_test` starts empty except for schema - it is never seeded
+    with a real workbook import, so a test that queries
+    `NoteLibraryVersion.query.get(<id>)` against whatever happens to be
+    imported in a developer's own database is not testing anything
+    reliable. This builds only what a test actually needs: a handful of
+    notes (key, code, heading) and a "Preparer inputs" sheet of raw rows,
+    the same shape `version.sheet("Preparer inputs")` returns from a real
+    import.
+
+    `notes` is [(key, library_code, heading)]. `preparer_inputs` is
+    [{"Item": ..., "Note": ..., ...}] - whatever columns the row needs.
+    """
+    import uuid
+    from datetime import date
+
+    version = NoteLibraryVersion(
+        version_label=label or f"test-{uuid.uuid4().hex[:12]}",
+        valid_from=date(2020, 1, 1), valid_to=date(2099, 12, 31),
+        status="active")
+    db.session.add(version)
+    db.session.flush()
+
+    for order, (key, code, heading) in enumerate(notes):
+        db.session.add(NoteLibraryNote(
+            library_version_id=version.id, key=key, library_code=code,
+            heading=heading, sort_order=order))
+
+    if preparer_inputs:
+        db.session.add(NoteLibrarySheet(
+            library_version_id=version.id, name="Preparer inputs",
+            rows=list(preparer_inputs), row_count=len(preparer_inputs)))
+
+    db.session.flush()
+    return version
 
 
 def statement(fy=None, statement_type="balance_sheet", lines=()):
