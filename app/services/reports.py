@@ -63,6 +63,11 @@ GROUP_HEADINGS = {
         "investing": "Cash flows from investing activities",
         "financing": "Cash flows from financing activities",
     },
+    "cash_flow_direct": {
+        "operating": "Cash flows from operating activities",
+        "investing": "Cash flows from investing activities",
+        "financing": "Cash flows from financing activities",
+    },
     # The supplementary Detailed Profit and Loss Statement does caption its
     # blocks, unlike the statutory statement it expands.
     "profit_and_loss_detailed": {

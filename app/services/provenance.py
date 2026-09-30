@@ -44,7 +44,7 @@ ZERO = Decimal("0")
 # trial balance statement itself mirrors the client's own accounts one for
 # one, so it can never strand anything and is not part of the comparison.
 ROLLUP_STATEMENTS = ("profit_and_loss", "balance_sheet",
-                     "changes_in_equity", "cash_flow")
+                     "changes_in_equity", "cash_flow", "cash_flow_direct")
 
 
 # --------------------------------------------------------------------------

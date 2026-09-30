@@ -204,15 +204,28 @@ TB_SOURCE_PRECEDENCE = [
 # not at all.
 TB_SOURCE_PAIRED = {"balance_sheet", "profit_and_loss"}
 
+# The statements the firm issues, in the order they are presented. This drives
+# the cards on the Statements screen and nothing else - building is driven by
+# statement_templates.yaml and statements.build_all, deliberately, so a
+# statement can stop being shown without its figures stopping being computed.
 STATEMENT_TYPES = [
     ("trial_balance", "Trial Balance"),
     ("profit_and_loss", "Statement of Comprehensive Income"),
     ("balance_sheet", "Statement of Financial Position"),
+    ("cash_flow", "Statement of Indirect Cash Flow"),
+    ("cash_flow_direct", "Statement of Direct Cash Flow"),
     ("changes_in_equity", "Statement of Changes in Equity"),
-    ("cash_flow", "Statement of Cash Flows"),
-    ("accounts_payable", "Accounts Payable"),
-    ("accounts_receivable", "Accounts Receivable"),
 ]
+
+# Statements still built, still stored, no longer given a card of their own.
+# The ageing analyses moved into the receivables and payables notes, but their
+# `ar_*` / `ap_*` lines are still mapping targets and engagements still hold
+# their rows - so they keep a name. Without this every one of those rows would
+# print as "-" wherever a statement is named, including the approval blocker.
+LEGACY_STATEMENT_LABELS = {
+    "accounts_payable": "Accounts Payable",
+    "accounts_receivable": "Accounts Receivable",
+}
 
 FY_STATUSES = [
     ("in_progress", "In Progress"),
@@ -855,7 +868,9 @@ class FinancialStatement(db.Model):
 
     @property
     def type_label(self):
-        return label_for(STATEMENT_TYPES, self.statement_type)
+        return label_for(
+            STATEMENT_TYPES, self.statement_type,
+            default=LEGACY_STATEMENT_LABELS.get(self.statement_type, "—"))
 
     @property
     def total_current(self):

@@ -19,6 +19,7 @@ FS_LABELS = {
     "profit_and_loss": "P&L",
     "balance_sheet": "Balance Sheet",
     "cash_flow": "Cash Flow",
+    "cash_flow_direct": "Cash Flow",
     "changes_in_equity": "Changes in Equity",
     "accounts_receivable": "Balance Sheet",
     "accounts_payable": "Balance Sheet",

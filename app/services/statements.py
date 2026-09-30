@@ -32,6 +32,7 @@ CATEGORY_SOURCES = {
                       "fixed_asset_register", "bank_statement"],
     "changes_in_equity": ["trial_balance", "general_ledger"],
     "cash_flow": ["trial_balance", "bank_statement", "general_ledger"],
+    "cash_flow_direct": ["trial_balance", "bank_statement", "general_ledger"],
     "accounts_receivable": ["receivables", "customer_invoice"],
     "accounts_payable": ["payables", "vendor_invoice"],
 }
@@ -399,7 +400,8 @@ def _build_context(financial_year_id: int, statement_type: str) -> dict:
                 return Decimal(str(line.effective_amount or 0))
         return ZERO
 
-    if statement_type in ("balance_sheet", "cash_flow", "changes_in_equity"):
+    if statement_type in ("balance_sheet", "cash_flow", "cash_flow_direct",
+                          "changes_in_equity"):
         context["profit_for_year"] = statement_value("profit_and_loss",
                                                      "profit_for_year")
         context["profit_before_tax"] = statement_value("profit_and_loss",
@@ -408,7 +410,8 @@ def _build_context(financial_year_id: int, statement_type: str) -> dict:
         context["total_comprehensive_income"] = statement_value(
             "profit_and_loss", "total_comprehensive_income")
 
-    if statement_type in ("changes_in_equity", "cash_flow"):
+    if statement_type in ("changes_in_equity", "cash_flow",
+                          "cash_flow_direct"):
         def base_value(stype, line_key):
             """The figure straight from the trial balance, before formulas.
 
@@ -459,7 +462,7 @@ def _build_context(financial_year_id: int, statement_type: str) -> dict:
             context["opening_retained_earnings"] = prior_accum or base_value(
                 "balance_sheet", "retained_earnings")
 
-    if statement_type == "cash_flow":
+    if statement_type in ("cash_flow", "cash_flow_direct"):
         # Opening and closing cash are facts, not derivations: closing cash
         # IS the balance sheet figure. Deriving it from movements and hoping
         # it agrees would let an unexplained gap pass unnoticed.
@@ -558,7 +561,8 @@ def _prior_context(financial_year, statement_type):
     is known: an equity statement built on a guessed opening balance is
     worse than one marked incomplete.
     """
-    if statement_type not in ("changes_in_equity", "cash_flow"):
+    if statement_type not in ("changes_in_equity", "cash_flow",
+                              "cash_flow_direct"):
         return None
     if financial_year is None or financial_year.is_first_year:
         return None
@@ -624,9 +628,14 @@ def build_all(financial_year_id: int, use_ai: bool = True,
               cascade: bool = True) -> dict:
     """Rebuild every statement in the correct dependency order."""
     # Order matters: each statement feeds the next.
+    # accounts_receivable and accounts_payable no longer have a card on the
+    # Statements screen (see STATEMENT_TYPES) but are still built: engagements
+    # hold their rows, and sync_status() takes the OLDEST generated_at across
+    # every statement of the year - so a statement that stopped rebuilding
+    # would report the whole year permanently out of date.
     order = ["trial_balance", "profit_and_loss", "balance_sheet",
              "changes_in_equity", "accounts_receivable",
-             "accounts_payable", "cash_flow"]
+             "accounts_payable", "cash_flow", "cash_flow_direct"]
     results = {}
     for statement_type in order:
         results[statement_type] = build_statement(

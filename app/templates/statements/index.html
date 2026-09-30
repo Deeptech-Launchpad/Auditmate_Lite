@@ -104,7 +104,7 @@
       <a class="statement-card" href="{{ url_for('statements.detail', statement_id=statement.id) }}">
         <div class="st-name">{{ label }}</div>
         <div class="st-meta">
-          {{ statement.lines|length }} lines ·
+          {{ presented.get(key, statement.lines|length) }} lines ·
           {% if key in locked_types %}
             <span class="pill pill-green">Locked</span>
           {% elif statement.status == 'draft' %}
@@ -125,6 +125,33 @@
       </div>
     {% endif %}
   {% endfor %}
+
+  {#
+    The Detailed Profit and Loss Statement is the Statement of Comprehensive
+    Income with its breakdown lines shown, not a statement of its own - so it
+    has no row of its own to go stale, and it locks when that statement does.
+  #}
+  {% if detailed_pl %}
+    <a class="statement-card"
+       href="{{ url_for('statements.detail', statement_id=detailed_pl.id, detailed='1') }}">
+      <div class="st-name">{{ detailed_pl_label }}</div>
+      <div class="st-meta">
+        {{ detailed_pl_lines }} lines ·
+        {% if 'profit_and_loss' in locked_types %}
+          <span class="pill pill-green">Locked</span>
+        {% else %}
+          <span class="pill pill-grey">Draft</span>
+        {% endif %}
+        <br>
+        <span class="muted small">Expands the Comprehensive Income statement</span>
+      </div>
+    </a>
+  {% else %}
+    <div class="statement-card" style="opacity:.55">
+      <div class="st-name">{{ detailed_pl_label }}</div>
+      <div class="st-meta">Not generated yet</div>
+    </div>
+  {% endif %}
 </div>
 
 <div class="card" style="margin-top:20px">

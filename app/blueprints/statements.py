@@ -20,6 +20,12 @@ from ..services.mapping import learn_mapping
 
 bp = Blueprint("statements", __name__, url_prefix="/statements")
 
+# The Detailed Profit and Loss Statement is not a statement of its own: it is
+# the Statement of Comprehensive Income showing the breakdown lines its face
+# rolls into subtotals. Giving it its own FinancialStatement row would give the
+# same figure two places to be overridden, and the two could then disagree.
+DETAILED_PL_LABEL = "Statement of Detailed Profit and Loss"
+
 
 @bp.route("/fy/<int:fy_id>")
 @login_required
@@ -31,6 +37,13 @@ def index(fy_id):
     verified_docs = sum(1 for d in financial_year.documents
                         if d.review_status == "verified")
 
+    # The card says how many lines the statement PRESENTS, not how many the
+    # template defines. A count of every working line reads as a fuller
+    # statement than the one that prints.
+    from ..services.reports import visible_statement_lines
+    presented = {key: len(visible_statement_lines(statement.lines))
+                 for key, statement in existing.items()}
+
     return render_template("statements/index.html",
                            locked_types=(statement_service.LOCKED_WITH_TRIAL_BALANCE
                                          if financial_year.tb_is_approved else ()),
@@ -38,6 +51,12 @@ def index(fy_id):
                            customer=financial_year.customer,
                            statement_types=STATEMENT_TYPES,
                            existing=existing,
+                           presented=presented,
+                           detailed_pl=existing.get("profit_and_loss"),
+                           detailed_pl_label=DETAILED_PL_LABEL,
+                           detailed_pl_lines=len(visible_statement_lines(
+                               existing["profit_and_loss"].lines, detailed=True))
+                           if existing.get("profit_and_loss") else 0,
                            verified_docs=verified_docs,
                            sync_status=statement_service.sync_status(financial_year))
 
@@ -80,16 +99,26 @@ def detail(statement_id):
     statement = db.session.get(FinancialStatement, statement_id) or abort(404)
     financial_year = statement.financial_year
 
+    # `detailed` is the Detailed Profit and Loss Statement: the same statement,
+    # with the breakdown lines the statutory face rolls into its subtotals.
+    # `all` drops the presentation rules entirely and shows every working line,
+    # including the ones nil in both years - the only way to type a figure into
+    # a line the company has no balance on yet.
+    detailed = request.args.get("detailed") == "1"
+    show_all = request.args.get("all") == "1"
+
     check = None
     if statement.statement_type == "balance_sheet":
         check = balance_check(statement.lines)
 
-    # Group lines for display headings.
-    groups, seen = [], set()
-    for line in statement.lines:
-        if line.group_key not in seen:
-            seen.add(line.group_key)
-            groups.append(line.group_key)
+    # The same rule the report prints by, rather than a second one that could
+    # drift from it: breakdown lines stay off the face, and a line with no
+    # balance in either year is not presented. Section headings need no
+    # handling - the template announces a group when it reaches its first
+    # visible line, so a group left empty never announces itself.
+    from ..services.reports import visible_statement_lines
+    lines = (list(statement.lines) if show_all
+             else visible_statement_lines(statement.lines, detailed=detailed))
 
     unmapped = _unmapped_for(financial_year, statement.statement_type)
 
@@ -102,7 +131,11 @@ def detail(statement_id):
                                financial_year, statement.statement_type),
                            statement=statement, fy=financial_year,
                            customer=financial_year.customer,
-                           groups=groups, check=check, unmapped=unmapped,
+                           lines=lines, detailed=detailed, show_all=show_all,
+                           hidden_count=len(statement.lines) - len(lines),
+                           title=(DETAILED_PL_LABEL if detailed
+                                  else statement.type_label),
+                           check=check, unmapped=unmapped,
                            reclassifications=reclassifications,
                            valid_keys=statement_service.line_keys_for(
                                statement.statement_type))

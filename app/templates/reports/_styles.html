@@ -610,13 +610,20 @@ body { margin: 0; }                 /* the browser's 8 px margin put every line 
 {{ S }} table.fin.stmt-profit_and_loss tr td.lbl,
 {{ S }} table.fin.stmt-profit_and_loss tr.subtotal td.lbl,
 {{ S }} table.fin.stmt-profit_and_loss tr.total td.lbl { padding-left: 0; }
-/* the cash flow: headings at the margin, their lines one level in */
-{{ S }} table.fin.stmt-cash_flow tr.group-head td { padding-left: 0; }
-{{ S }} table.fin.stmt-cash_flow td.indent-1 { padding-left: 12pt; }
-{{ S }} table.fin.stmt-cash_flow td.indent-0 { padding-left: 0; }
+/* the cash flows: headings at the margin, their lines one level in. Both
+   methods are laid out the same way - only the operating section differs. */
+{{ S }} table.fin.stmt-cash_flow tr.group-head td,
+{{ S }} table.fin.stmt-cash_flow_direct tr.group-head td { padding-left: 0; }
+{{ S }} table.fin.stmt-cash_flow td.indent-1,
+{{ S }} table.fin.stmt-cash_flow_direct td.indent-1 { padding-left: 12pt; }
+{{ S }} table.fin.stmt-cash_flow td.indent-0,
+{{ S }} table.fin.stmt-cash_flow_direct td.indent-0 { padding-left: 0; }
 {{ S }} table.fin.stmt-cash_flow tr.subtotal td.lbl,
-{{ S }} table.fin.stmt-cash_flow tr.total td.lbl { padding-left: 0; }
-{{ S }} table.fin.stmt-cash_flow tr.group-head.sect td { font-size: 9.9pt; }
+{{ S }} table.fin.stmt-cash_flow tr.total td.lbl,
+{{ S }} table.fin.stmt-cash_flow_direct tr.subtotal td.lbl,
+{{ S }} table.fin.stmt-cash_flow_direct tr.total td.lbl { padding-left: 0; }
+{{ S }} table.fin.stmt-cash_flow tr.group-head.sect td,
+{{ S }} table.fin.stmt-cash_flow_direct tr.group-head.sect td { font-size: 9.9pt; }
 {{ S }} table.fin.stmt-changes_in_equity td.lbl { padding-left: 0; }
 {{ S }} table.fin.stmt-profit_and_loss-detailed td.indent-1,
 {{ S }} table.fin.stmt-profit_and_loss-detailed tr.detail td.lbl { padding-left: 12pt; }

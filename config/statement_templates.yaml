@@ -175,7 +175,7 @@ changes_in_equity:
     - {key: soce_close_total,   label: "Balance at end of year", group: closing, total: true, formula: soce_close_total}
 
 cash_flow:
-  title: Statement of Cash Flows
+  title: Statement of Indirect Cash Flow
   columns: [current, previous]
   lines:
     - {key: cf_profit_before_tax, label: "Profit before taxation and changes in working capital", group: operating, indent: 1, formula: cf_profit_before_tax}
@@ -203,6 +203,45 @@ cash_flow:
     - {key: cf_net_change,        label: "Net increase/(decrease) in cash and cash equivalent", group: summary, subtotal: true, formula: cf_net_change}
     - {key: cf_opening_cash,      label: "Cash and cash equivalents at beginning of period", group: summary, formula: cf_opening_cash}
     - {key: cf_closing_cash,      label: "Cash and cash equivalents at end of period", group: summary, total: true, formula: cf_closing_cash, note: 9}
+
+# The same cash movement as cash_flow above, presented the other way FRS 7
+# allows: operating activities as actual receipts and payments rather than
+# profit adjusted for non-cash items.
+#
+# The operating lines carry NO formula on purpose. Receipts from customers and
+# payments to suppliers and employees are transaction facts; a trial balance
+# states balances and cannot produce them. Until a source is agreed they stay
+# empty, and cf_unexplained shows the whole movement as not yet analysed -
+# which is the truthful reading, not a gap to paper over.
+#
+# Everything below operating is identical in both methods and reuses the same
+# line keys and formulas, because it is the same cash: investing, financing,
+# and the reconciliation to opening and closing balances.
+cash_flow_direct:
+  title: Statement of Direct Cash Flow
+  columns: [current, previous]
+  lines:
+    - {key: cfd_receipts_customers, label: "Cash receipts from customers", group: operating, indent: 1}
+    - {key: cfd_paid_suppliers,     label: "Cash paid to suppliers", group: operating, indent: 1}
+    - {key: cfd_paid_employees,     label: "Cash paid to employees", group: operating, indent: 1}
+    - {key: cf_operations,          label: "Cash (used in)/generated from operations", group: operating, subtotal: true, formula: sum_group_operating}
+    - {key: cf_tax_paid,            label: "Income tax paid", group: operating_after, indent: 1, formula: cf_tax_paid}
+    - {key: cf_expenses_paid,       label: "Expenses paid", group: operating_after, indent: 1}
+    - {key: cf_operating_total,     label: "Net cash flow (used in)/generated from operating activities", group: operating_after, subtotal: true, formula: cf_operating_total}
+
+    - {key: cf_purchase_ppe,        label: "Purchase of fixed assets", group: investing, indent: 1, formula: cf_purchase_ppe}
+    - {key: cf_investing_other,     label: "Other investing activities", group: investing, indent: 1}
+    - {key: cf_investing_total,     label: "Net cash flow used in investing activities", group: investing, subtotal: true, formula: sum_group_investing}
+
+    - {key: cf_share_capital,       label: "Share Capital", group: financing, indent: 1, formula: cf_share_capital}
+    - {key: cf_borrowings,          label: "Proceeds from / (repayment of) borrowings", group: financing, indent: 1, formula: cf_borrowings}
+    - {key: cf_dividends,           label: "Dividends paid", group: financing, indent: 1}
+    - {key: cf_financing_total,     label: "Net cash flow from financing activities", group: financing, subtotal: true, formula: sum_group_financing}
+
+    - {key: cf_unexplained,         label: "Movement not yet analysed", group: summary, indent: 1, formula: cf_unexplained}
+    - {key: cf_net_change,          label: "Net increase/(decrease) in cash and cash equivalent", group: summary, subtotal: true, formula: cf_net_change}
+    - {key: cf_opening_cash,        label: "Cash and cash equivalents at beginning of period", group: summary, formula: cf_opening_cash}
+    - {key: cf_closing_cash,        label: "Cash and cash equivalents at end of period", group: summary, total: true, formula: cf_closing_cash, note: 9}
 
 accounts_receivable:
   title: Accounts Receivable

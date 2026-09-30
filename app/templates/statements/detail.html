@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ statement.type_label }} · Auditmate Lite{% endblock %}
+{% block title %}{{ title }} · Auditmate Lite{% endblock %}
 {% block breadcrumb %}
   <a href="{{ url_for('customers.detail', customer_id=customer.id) }}">{{ customer.name }}</a>
   <span class="sep">/</span>
@@ -7,13 +7,13 @@
   <span class="sep">/</span>
   <a href="{{ url_for('statements.index', fy_id=fy.id) }}">Statements</a>
   <span class="sep">/</span>
-  <span class="current">{{ statement.type_label }}</span>
+  <span class="current">{{ title }}</span>
 {% endblock %}
 
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>{{ statement.type_label }}</h1>
+    <h1>{{ title }}</h1>
     <p class="subtitle">
       {{ customer.name }} · year ended {{ fy.end_date|datefmt }} · {{ customer.books_currency }}
     </p>
@@ -64,8 +64,20 @@
 
 <div class="card">
   <div class="card-head">
-    <h2>{{ statement.type_label }}</h2>
-    <span class="hint">as at {{ fy.end_date|datefmt }}</span>
+    <h2>{{ title }}</h2>
+    <span class="hint">
+      as at {{ fy.end_date|datefmt }}
+      {% if show_all %}
+        · showing every working line
+        <a href="{{ url_for('statements.detail', statement_id=statement.id,
+                            detailed='1' if detailed else none) }}">show as presented</a>
+      {% elif hidden_count %}
+        · {{ hidden_count }} line{{ 's' if hidden_count != 1 }} not presented
+        <a href="{{ url_for('statements.detail', statement_id=statement.id,
+                            detailed='1' if detailed else none, all='1') }}"
+           title="Lines with no balance in either year, and breakdown lines the face rolls into its subtotals. Show them to type a figure into one.">show all working lines</a>
+      {% endif %}
+    </span>
   </div>
   <div class="card-body tight">
     <div class="table-wrap">
@@ -81,7 +93,7 @@
         </thead>
         <tbody>
           {% set ns = namespace(group=None) %}
-          {% for line in statement.lines %}
+          {% for line in lines %}
             {% if line.group_key != ns.group %}
               {% set ns.group = line.group_key %}
               {% if line.group_key and statement.statement_type != 'trial_balance' %}
