@@ -596,6 +596,47 @@
         {% endif %}
 
         {#
+          ACRA / standards-change alert: this note's library wording has
+          moved on since the engagement was pinned. Computed fresh every
+          render (section_payload -> acra_alert), never stored, so there is
+          no dismissal to click past - adopting the new wording is the only
+          thing that changes what prints here. States only that the two
+          named versions differ, with a diff; never that ACRA caused it.
+        #}
+        {% if editable and payload.acra_alert %}
+          <div class="acra-alert" data-section-id="{{ section.id }}"
+               data-version-id="{{ payload.acra_alert.to_version_id }}">
+            <p class="acra-what">
+              The notes library has moved from
+              <strong>{{ payload.acra_alert.from_version }}</strong> to
+              <strong>{{ payload.acra_alert.to_version }}</strong>, and this
+              note's wording differs between the two.
+            </p>
+            {% if payload.acra_alert.standards_changed %}
+              <p class="acra-standards">
+                The library's own standards label:
+                {{ payload.acra_alert.from_version }} says
+                &ldquo;{{ payload.acra_alert.standards_changed.before or '(none)' }}&rdquo;;
+                {{ payload.acra_alert.to_version }} says
+                &ldquo;{{ payload.acra_alert.standards_changed.after or '(none)' }}&rdquo;.
+              </p>
+            {% endif %}
+            <details class="acra-diff">
+              <summary>What changed</summary>
+              <pre>{% for line in payload.acra_alert.diff %}{% if line.startswith('+') and not line.startswith('+++') %}<ins>{{ line }}</ins>
+{% elif line.startswith('-') and not line.startswith('---') %}<del>{{ line }}</del>
+{% elif not (line.startswith('@@') or line.startswith('+++') or line.startswith('---')) %}{{ line }}
+{% endif %}{% endfor %}</pre>
+            </details>
+            <button type="button" class="btn-sm acra-adopt"
+                    data-section-id="{{ section.id }}"
+                    data-version-id="{{ payload.acra_alert.to_version_id }}">
+              Adopt {{ payload.acra_alert.to_version }}'s wording
+            </button>
+          </div>
+        {% endif %}
+
+        {#
           Which pristine wording is printing, and the choice between them
           (library feedback 29/09). Only shown once there is a genuine
           choice - a note absent from last year's FS has no prior_html and

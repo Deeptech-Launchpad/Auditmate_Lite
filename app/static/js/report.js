@@ -699,6 +699,39 @@
     await attempt(false);
   });
 
+  /* Adopting a newer library version's wording for one note (the ACRA /
+     standards-change alert). Same confirm-and-retry shape as the
+     wording-source switch above - an edit is never silently discarded. */
+  report.addEventListener('click', async event => {
+    const btn = event.target.closest('.acra-adopt');
+    if (!btn) return;
+    const sectionId = btn.dataset.sectionId;
+    const versionId = btn.dataset.versionId;
+
+    async function attempt(force) {
+      let data;
+      try {
+        const response = await fetch(
+          `/reports/api/section/${sectionId}/adopt-library-version`,
+          { method: 'PATCH', headers: csrfHeaders(),
+            body: JSON.stringify({ version_id: versionId, force }) });
+        data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+          if (data.needs_confirm && window.confirm(data.error)) {
+            return attempt(true);
+          }
+          window.alert(data.error || 'Could not adopt the new wording.');
+          return;
+        }
+      } catch (err) {
+        window.alert('Could not adopt the new wording.');
+        return;
+      }
+      window.location.reload();
+    }
+    await attempt(false);
+  });
+
 })();
 
 /* ------------------------------------------------------------------------

@@ -715,6 +715,49 @@ def _match_customer_template(report, financial_year):
                   f"Switch any back on in the Sections list.", "info")
 
 
+def refresh_template_presentation(financial_year):
+    """Re-draw PL and BS in the customer's own line order/headings after a
+    statement rebuild, so a mapping change does not leave the Statements
+    screen showing last year's layout over this year's new figures.
+
+    Deliberately narrower than `_match_customer_template()`: it never
+    switches a section on or off, retitles anything, or touches a note table
+    or the cover - those are one-time, preparer-owned decisions made at
+    report creation. It only refreshes `data_binding["presentation"]` /
+    `["headings"]` / `["cash_flow_wording"]` on whatever the report already
+    looks like. No-op if there is no report yet, or the customer explicitly
+    uses the standard layout.
+    """
+    report = AuditReport.query.filter_by(
+        financial_year_id=financial_year.id).first()
+    if report is None:
+        return
+
+    if financial_year.customer.report_template_path == "STANDARD":
+        return
+
+    from . import template_follow, template_statements
+    path = template_follow._template_path(financial_year)
+    if path is None:
+        from pathlib import Path
+        for document in financial_year.documents:
+            if (document.category == "signed_accounts"
+                    and Path(str(document.storage_path)).suffix.lower() == ".pdf"
+                    and Path(str(document.storage_path)).exists()):
+                path = Path(str(document.storage_path))
+                break
+    if path is None:
+        return
+
+    try:
+        profile = template_statements.read_profile(path)
+        template_statements.apply_presentation(report, profile,
+                                               template_path=path)
+    except Exception:                                      # noqa: BLE001
+        log.exception("Could not refresh the template presentation for FY %s",
+                      financial_year.id)
+
+
 # --------------------------------------------------------------------------
 # The FRS notes engine: selection, suppression, numbering
 # --------------------------------------------------------------------------
@@ -1457,6 +1500,172 @@ def switch_wording_source(section, source, *, force=False):
     section.content_html = pristine
     db.session.commit()
     return {"ok": True, "wording_source": source, "content_html": pristine}
+
+
+def _library_key(section):
+    """The bare library note key this section was built from, or None for
+    a statement, the cover page, or any other non-note section."""
+    if not section.section_key.startswith(NOTE_PREFIX):
+        return None
+    return section.section_key[len(NOTE_PREFIX):]
+
+
+def _render_note_content(note, financial_year, present=None):
+    """content_html for a note dict (one catalogue entry) under today's
+    facts - the same dispatch `_build_note_section()` uses to build a
+    section from scratch, kept separate from it so adopting a newer
+    library version's wording (feedback: ACRA/standards-change alert)
+    never risks the creation path. Ignores table specs and "awaiting
+    preparer" tracking - adopting new wording for an already-built section
+    changes its paragraphs, not whether it is enabled or what it asks for.
+    """
+    from . import conditions
+
+    period = (financial_year.start_date, financial_year.end_date)
+    first_year = bool(financial_year.is_first_year)
+    previous_period = _previous_period_of(financial_year)
+    if conditions.is_v2(note):
+        content_html, _table_specs, _asked = _assemble_v2_note(
+            note, financial_year, first_year=first_year, period=period,
+            previous_period=previous_period)
+    else:
+        if present is None:
+            present = _present_keys(financial_year)
+        content_html, _table_specs, _drafts = _assemble_note_content(
+            note, present, first_year=first_year, period=period,
+            previous_period=previous_period)
+    return content_html
+
+
+def _note_wording(catalogue, key):
+    """A note's paragraph text, plain and joined in document order, from a
+    build_catalogue()-shaped list - for the ACRA diff display only, never
+    for what is actually adopted (see _render_note_content, which keeps
+    the HTML and fills today's figures into its blanks)."""
+    for note in catalogue:
+        if note["key"] == key:
+            pieces = note.get("pieces") or []
+            text = "\n".join(p.get("wording") or "" for p in pieces
+                             if (p.get("wording") or "").strip())
+            return text or None
+    return None
+
+
+def acra_alert(section, financial_year):
+    """A library-wording-changed alert for one note, or None.
+
+    Compares the engagement's PINNED library version against whichever
+    version is actually in force for this year-end (library feedback:
+    ACRA/standards-change alert). Computed fresh on every render rather
+    than stored, so it is never silently dismissed (F3) - adopting the
+    newer wording is the only thing that changes what this returns.
+
+    Honesty rule (F4): states only that the wording differs between two
+    named versions, with a diff. Never claims ACRA caused it. Where the
+    library's own `standards` label differs too, that is shown as a
+    second, separately attributed fact - evidence, not a causal claim.
+    """
+    key = _library_key(section)
+    if key is None:
+        return None
+    pinned_id = getattr(financial_year, "library_version_id", None)
+    if pinned_id is None:
+        return None
+
+    from . import note_library
+    newest = note_library.version_for(financial_year.end_date)
+    if newest is None or newest.id == pinned_id:
+        return None
+
+    # A report can carry forty-odd notes, and most engagements are already
+    # on the newest version (the check above returns long before here for
+    # those) - but for the ones that are not, building the whole catalogue
+    # again for every single note would be wasteful. One build per version
+    # per request is enough; `g` is request-scoped, never a stored cache.
+    from flask import g
+    cached = getattr(g, "_acra_catalogues", None)
+    if cached is None:
+        cached = g._acra_catalogues = {}
+    if pinned_id not in cached:
+        cached[pinned_id] = note_library.build_catalogue(pinned_id)
+    if newest.id not in cached:
+        cached[newest.id] = note_library.build_catalogue(newest.id)
+
+    old_wording = _note_wording(cached[pinned_id], key)
+    new_wording = _note_wording(cached[newest.id], key)
+    if old_wording is None or new_wording is None or old_wording == new_wording:
+        return None
+
+    import difflib
+    diff = list(difflib.unified_diff(old_wording.split(), new_wording.split(),
+                                     lineterm=""))
+
+    from ..models import NoteLibraryVersion, NoteLibraryNote
+    pinned_version = db.session.get(NoteLibraryVersion, pinned_id)
+    old_note = NoteLibraryNote.query.filter_by(
+        library_version_id=pinned_id, key=key).first()
+    new_note = NoteLibraryNote.query.filter_by(
+        library_version_id=newest.id, key=key).first()
+    standards_changed = None
+    if (old_note is not None and new_note is not None
+            and old_note.standards != new_note.standards
+            and (old_note.standards or new_note.standards)):
+        standards_changed = {"before": old_note.standards,
+                             "after": new_note.standards}
+
+    return {
+        "from_version": pinned_version.version_label if pinned_version else None,
+        "to_version": newest.version_label,
+        "to_version_id": newest.id,
+        "diff": diff,
+        "standards_changed": standards_changed,
+    }
+
+
+def adopt_library_version(section, version, financial_year, force=False):
+    """Adopt a newer library version's wording for this one note only.
+
+    Mirrors switch_wording_source()'s edit-preservation guard exactly: an
+    edit away from the current source is never silently discarded (F
+    shares E's guarantee, not a weaker version of it). Records
+    `library_version_adopted` on the section - the engagement's own pin
+    (`financial_year.library_version_id`) is never touched (F2): one note
+    moving to newer wording is a different decision from repinning the
+    whole engagement.
+    """
+    key = _library_key(section)
+    if key is None:
+        return {"ok": False, "error": "This section has no library note to adopt."}
+
+    from . import note_library
+    catalogue = note_library.build_catalogue(version.id)
+    note = next((n for n in catalogue if n["key"] == key), None)
+    if note is None:
+        return {"ok": False,
+                "error": f"This note does not exist in library version "
+                         f"{version.version_label}."}
+
+    new_html = _render_note_content(note, financial_year)
+    if not (new_html or "").strip():
+        return {"ok": False,
+                "error": "This note has nothing to print under the new "
+                         "version."}
+
+    if not force and wording_is_edited(section):
+        return {"ok": False, "needs_confirm": True,
+                "error": "This note's wording has been edited since it was "
+                        "last set from its source. Adopting the newer "
+                        "library wording will replace what is currently "
+                        "printed - continue?"}
+
+    section.library_html = new_html
+    section.library_version_adopted = version.id
+    if section.wording_source in (None, "library"):
+        section.wording_source = "library"
+        section.content_html = new_html
+    db.session.commit()
+    return {"ok": True, "content_html": section.content_html,
+           "library_version_adopted": version.id}
 
 
 def prior_year_wording(financial_year):
@@ -2265,6 +2474,7 @@ def section_payload(section, customer, financial_year, chips: bool = False):
         "wording_sources": wording_sources(section),
         "wording_source": section.wording_source,
         "wording_edited": wording_is_edited(section),
+        "acra_alert": acra_alert(section, financial_year),
     }
 
     if section.section_type == "statement":

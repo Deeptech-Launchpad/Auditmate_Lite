@@ -553,6 +553,37 @@ def switch_section_wording(section_id):
     return jsonify(result), 400
 
 
+@bp.route("/api/section/<int:section_id>/adopt-library-version",
+         methods=["PATCH"])
+@login_required
+def adopt_section_library_version(section_id):
+    """Adopt a newer library version's wording for this one note (the ACRA /
+    standards-change alert's "suggest the new wording" action).
+
+    Refused, with `needs_confirm`, on the same terms as switching wording
+    source - an edit is never silently discarded. Never repins the
+    engagement's own library version (F2); only this section moves.
+    """
+    from ..models import NoteLibraryVersion
+
+    section = db.session.get(AuditReportSection, section_id) or abort(404)
+    financial_year = section.report.financial_year
+    payload = request.get_json(silent=True) or {}
+    version_id = payload.get("version_id")
+    version = db.session.get(NoteLibraryVersion, version_id) if version_id \
+        else None
+    if version is None:
+        return jsonify({"ok": False, "error": "Unknown library version."}), 400
+
+    result = report_service.adopt_library_version(
+        section, version, financial_year, force=bool(payload.get("force")))
+    if result["ok"]:
+        record("report_section", section.id, "library_version_adopted",
+               after={"version": version.version_label})
+        return jsonify(result)
+    return jsonify(result), 400
+
+
 _COVER_FIELDS = {"legal_name", "uen", "directors", "company_secretary", "office"}
 
 
