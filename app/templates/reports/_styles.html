@@ -501,11 +501,16 @@
   font-style: italic;
 }
 
-/* The circled i that opens the sources panel. */
+/* The circled i that opens the sources panel. Fixed size rather than 1em:
+   the glyph itself (U+24D8) falls outside most system fonts, so without an
+   explicit size and line-height it renders however large a browser's own
+   fallback font happens to draw it - inconsistent across machines even
+   though the text size around it never changes. */
 {{ S }} .src-dot {
   border: 0; background: none; cursor: pointer; padding: 0 0 0 4px;
-  font-size: 1em; line-height: 1; color: #1c4f86; opacity: 0;
-  transition: opacity .12s;
+  display: inline-flex; align-items: center;
+  font-size: 13px; line-height: 1; width: 13px; height: 13px;
+  color: #1c4f86; opacity: 0; transition: opacity .12s;
 }
 {{ S }}.is-editing.show-sources .src-dot { opacity: 1; }
 {{ S }}.is-editing .ed-cell:hover .src-dot { opacity: 1; }
