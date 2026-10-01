@@ -961,6 +961,18 @@
   });
 
 
+  /* What the cell held when it was entered, so Escape can put it back.
+     Escape used to restore fmt(dataset.computed) instead - the figure the
+     engine worked out - which is a different thing and is empty on any row
+     the trial balance does not compute. Pressing Escape on one of those
+     wiped it to "--" on screen: an abandoned edit should leave no trace,
+     and instead it looked like it had deleted the figure. */
+  report.addEventListener('focusin', event => {
+    const field = event.target.closest('.ed-amount, .ed-label');
+    if (!field) return;
+    field.dataset.enteredWith = field.textContent.trim();
+  });
+
   /* Enter commits a cell rather than inserting a line break into a table. */
   report.addEventListener('keydown', event => {
     const field = event.target.closest('.ed-amount, .ed-label');
@@ -968,7 +980,9 @@
     if (event.key === 'Enter') { event.preventDefault(); field.blur(); }
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (isAmountField(field)) {
+      if (field.dataset.enteredWith !== undefined) {
+        field.textContent = field.dataset.enteredWith;
+      } else if (isAmountField(field)) {
         field.textContent = fmt(field.dataset.computed);
       }
       field.blur();

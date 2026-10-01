@@ -61,7 +61,13 @@
   <div class="draft-stamp">{{ draft_label }}</div>
 {% endif %}
 
-<div class="rpt-doc"{% if editable %} id="live-report"{% endif %}>
+{# `is-editing` as well as the id, and both for the same reason. The id is
+   what report.js binds to; the class is what every editing cue in
+   _styles.html hangs off - the dotted keyline under a field, the hover
+   tint, the focus ring, the source marks. Without it this page was
+   editable and gave no sign of it: a figure took the caret and looked
+   exactly like printed text, so a click read as a dead click. #}
+<div class="rpt-doc{{ ' is-editing' if editable }}"{% if editable %} id="live-report"{% endif %}>
   {% include "reports/_document.html" %}
   {# On screen only. Never in a file that leaves the office.
 
