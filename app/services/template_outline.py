@@ -329,40 +329,10 @@ def apply_to_report(report, template_path):
             section.title = titles[key]
             retitled += 1
 
-    lined = 0
     from . import template_statements
     profile = template_statements.read_profile(template_path)
-    statement_profile = {
-        "statement_comprehensive_income": profile.get("profit_and_loss"),
-        "statement_financial_position": profile.get("balance_sheet"),
-        "statement_changes_equity": profile.get("changes_in_equity"),
-    }
-    for section in report.sections:
-        if section.section_key == "statement_cash_flows" and profile.get("cash_flow_wording"):
-            binding = dict(section.data_binding or {})
-            wording = dict(profile["cash_flow_wording"])
-            try:
-                from . import template_note_tables
-                table = template_note_tables.read_statement(
-                    template_path, r"statement of cash flows")
-            except Exception:                              # noqa: BLE001
-                log.exception("Could not read the template's cash flow rows")
-                table = None
-            if table:
-                wording["rows"] = [
-                    {"label": r["label"], "kind": r["kind"],
-                     "cells": [str(c) for c in r["cells"]] if r["cells"] else None}
-                    for r in table["rows"]]
-            binding["cash_flow_wording"] = wording
-            section.data_binding = binding
-        rows = statement_profile.get(section.section_key)
-        if rows and section.section_key in outline:
-            binding = dict(section.data_binding or {})
-            binding["presentation"] = rows
-            if section.section_key == "statement_financial_position":
-                binding["headings"] = profile.get("balance_sheet_headings") or {}
-            section.data_binding = binding
-            lined += 1
+    lined = template_statements.apply_presentation(
+        report, profile, template_path=template_path, outline=outline)
 
     aligned = _align_notes(report, profile)
     directors = _directors_statement(report, template_path)

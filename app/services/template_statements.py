@@ -200,6 +200,61 @@ def read_profile(template_path):
     return profile
 
 
+def apply_presentation(report, profile, template_path=None, outline=None):
+    """Write a profile's line order, headings and cash-flow wording onto the
+    report's statement sections.
+
+    This is the narrow slice of `template_outline.apply_to_report()` that is
+    safe to repeat on every statement rebuild, not just once at report
+    creation - it only ever writes `data_binding["presentation"]` /
+    `["headings"]` / `["cash_flow_wording"]`. It never switches a section on
+    or off, retitles anything, redraws a note table or touches the cover -
+    those are one-time, preparer-overridable decisions made at creation and
+    must not be undone by a later mapping change or TB rebuild.
+
+    Returns the number of statements whose line order/headings were drawn
+    from the profile (the cash-flow wording overlay is not counted here, to
+    match the "drew N statement(s) in its own lines" message this feeds).
+    """
+    statement_profile = {
+        "statement_comprehensive_income": profile.get("profit_and_loss"),
+        "statement_financial_position": profile.get("balance_sheet"),
+        "statement_changes_equity": profile.get("changes_in_equity"),
+    }
+    lined = 0
+    for section in report.sections:
+        if (section.section_key == "statement_cash_flows"
+                and profile.get("cash_flow_wording")):
+            binding = dict(section.data_binding or {})
+            wording = dict(profile["cash_flow_wording"])
+            if template_path:
+                try:
+                    from . import template_note_tables
+                    table = template_note_tables.read_statement(
+                        template_path, r"statement of cash flows")
+                except Exception:                              # noqa: BLE001
+                    log.exception("Could not read the template's cash flow rows")
+                    table = None
+                if table:
+                    wording["rows"] = [
+                        {"label": r["label"], "kind": r["kind"],
+                         "cells": [str(c) for c in r["cells"]]
+                                  if r["cells"] else None}
+                        for r in table["rows"]]
+            binding["cash_flow_wording"] = wording
+            section.data_binding = binding
+
+        rows = statement_profile.get(section.section_key)
+        if rows and (outline is None or section.section_key in outline):
+            binding = dict(section.data_binding or {})
+            binding["presentation"] = rows
+            if section.section_key == "statement_financial_position":
+                binding["headings"] = profile.get("balance_sheet_headings") or {}
+            section.data_binding = binding
+            lined += 1
+    return lined
+
+
 _CF_LABELS = (
     (r"^net cash (provided|generated).*operating", "cf_operating_total"),
     (r"^net cash.*investing", "cf_investing_total"),
@@ -442,10 +497,35 @@ def _present_profit_and_loss(book, rows):
         add(out, "other_income", _labelled(rows, "other_income", "Other income"),
             _agg(book, [k for k in opex if k in income], -1),
             note="other_income", keys=[k for k in opex if k in income])
-    add(out, "admin_expenses",
-        _labelled(rows, "admin_expenses", "Administrative expenses"),
-        _agg(book, admin, -1), note=_note(book, "operating_expenses"),
-        keys=admin)
+    # Only sweep every operating-expense line into one row when the
+    # template actually presents it that way (an "admin_expenses" caption
+    # was recognised) - the same conservatism other_income and finance_cost
+    # already get above. A template that lists its expenses out individually
+    # (staff costs, depreciation, ... as their own face lines) has no such
+    # caption to follow, and forcing them into one guessed "Administrative
+    # expenses" row is exactly the swept-together presentation the client
+    # fed back on. Fall back to one line per expense, under its own
+    # standard label - the PL equivalent of the balance sheet's extras path.
+    if "admin_expenses" in have:
+        add(out, "admin_expenses",
+            _labelled(rows, "admin_expenses", "Administrative expenses"),
+            _agg(book, admin, -1), note=_note(book, "operating_expenses"),
+            keys=admin)
+    else:
+        for key in admin:
+            line = book.get(key)
+            if line is None or _is_derived(line):
+                continue
+            # Same sign convention as the aggregate above (_agg(..., -1)) -
+            # these are the same raw opex lines, only shown one at a time
+            # instead of summed, and must deduct the same way admin_expenses
+            # itself would have.
+            current, previous = _agg(book, [key], -1)
+            if not _nonzero(current, previous):
+                continue
+            out.append(PresentedLine(
+                key, line.effective_label, current, previous,
+                group="pl_flat", note=getattr(line, "note_ref", None)))
     if show_finance:
         add(out, "finance_cost", _labelled(rows, "finance_cost", "Finance cost"),
             _agg(book, [k for k in opex if k in finance], -1),

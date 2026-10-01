@@ -705,6 +705,16 @@ def approve(financial_year_id, approved_by=None, user_id=None,
     from .statements import build_all
     results = build_all(financial_year_id)
 
+    # The customer's own template's line order/headings (feedback: "all six
+    # documents start from last year's signed FS layout") must stay current
+    # too - a mapping change can change which lines are non-zero, which
+    # changes what the template's presentation shows. Narrower than report
+    # creation's full template-follow: never touches section on/off, titles
+    # or note tables, only the presentation overlay.
+    from .reports import refresh_template_presentation
+    refresh_template_presentation(financial_year)
+    db.session.commit()
+
     return {"ok": True, "statements": results, **totals}
 
 
