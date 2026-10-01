@@ -267,7 +267,7 @@ Anything typed into the report - note wording, edited figures, answers, section 
     <br>
     With <strong>Show sources</strong> on, a blue underline means the figure
     came from the trial balance and amber means an auditor changed it. Click
-    the &#9432; beside any figure to see which accounts and which uploaded
+    the <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.4" style="vertical-align:-1px"><circle cx="8" cy="8" r="6.4"/><path d="M8 7.1v4.1" stroke-linecap="round"/><circle cx="8" cy="4.8" r=".85" fill="currentColor" stroke="none"/></svg> beside any figure to see which accounts and which uploaded
     document it came from. None of these marks are printed.
   </div>
 </div>
@@ -791,7 +791,12 @@ Anything typed into the report - note wording, edited figures, answers, section 
   <div>
     <div class="card">
       <div class="card-head">
-        <h2>Live preview <span class="edit-badge">click any text or figure to edit</span></h2>
+        {# "any figure" was not true: a statement line drawn in the
+           customer's own layout is a total of several standard lines and
+           cannot be typed over - only the notes and the standard lines
+           behind it can. Claiming otherwise made a deliberate rule look
+           like a dead click. #}
+        <h2>Live preview <span class="edit-badge">click any wording, or a figure in a note, to edit</span></h2>
         <div class="preview-tools">
           <button type="button" id="show-sources" class="chip-toggle on"
                   aria-pressed="true"
@@ -840,9 +845,8 @@ Anything typed into the report - note wording, edited figures, answers, section 
                 background:var(--border); margin:0 4px; }
   .section-item .pos { min-width:22px; text-align:right; font-size:11.5px;
     font-weight:700; color:#8a8577; font-variant-numeric:tabular-nums; }
-  .origin-dot { border:0; background:none; cursor:pointer; color:#2563a8; font-size:12px;
-    line-height:1; width:12px; height:12px; display:inline-flex; align-items:center;
-    padding:0 0 0 4px; vertical-align:middle; }
+  /* .origin-dot lives in _styles.html, which this page also includes - one
+     definition, so the builder and the preview cannot drift apart again. */
   .origin-pop { position:absolute; z-index:2000; max-width:300px; background:#fff; color:#222;
     border:1px solid #b9b3a2; border-radius:6px; padding:8px 10px; font-size:12px; line-height:1.4;
     box-shadow:0 6px 18px rgba(0,0,0,.18); font-family:inherit; text-align:left; font-weight:400; }
@@ -864,8 +868,8 @@ Anything typed into the report - note wording, edited figures, answers, section 
           <span><i class="sw sw-tb"></i>from the trial balance</span>
           <span><i class="sw sw-calc"></i>calculated from other lines</span>
           <span><i class="sw sw-over"></i>changed by an auditor</span>
-          <span class="legend-tip">Click any figure to edit it &middot;
-            click &#9432; to see the accounts behind it</span>
+          <span class="legend-tip">Click a figure in a note to edit it &middot;
+            click <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.4" style="vertical-align:-1px"><circle cx="8" cy="8" r="6.4"/><path d="M8 7.1v4.1" stroke-linecap="round"/><circle cx="8" cy="4.8" r=".85" fill="currentColor" stroke="none"/></svg> to see the accounts behind it</span>
         </div>
         <div class="rpt-mini{{ ' is-editing' if editable }}" id="live-report">
           <div class="rpt-doc">

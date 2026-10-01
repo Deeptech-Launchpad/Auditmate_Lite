@@ -51,6 +51,24 @@
 {% set show_working_marks = editable|default(false)
                             or not for_pdf|default(false) %}
 
+{#
+  The "where did this figure come from" mark, drawn rather than typed.
+
+  It used to be the character U+24D8 (circled i). That character is absent
+  from most system fonts, so each machine substituted whatever its own
+  fallback had - on Windows a large boxed emoji glyph that overflowed its
+  13px button and sat in the accounts looking like a misplaced icon, while
+  the same page on another machine drew a neat hairline circle. A glyph
+  that renders at a size nothing in the CSS chose is not something font-size
+  can fix; the drawing has to be ours. This SVG is identical everywhere.
+#}
+{% macro info_icon() -%}
+<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"
+     fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.4"/><path
+     d="M8 7.1v4.1" stroke-linecap="round"/><circle cx="8" cy="4.8" r=".85" fill="currentColor"
+     stroke="none"/></svg>
+{%- endmacro %}
+
 {% macro amount_cell(value, edit=none, origin=none) %}
   {% if value is none and edit and editable %}
     <td class="num unsourced is-editable">
@@ -64,7 +82,7 @@
     <td class="num{{ ' unsourced' if value is none }}">{{ value|stmt }}
       {%- if origin and editable %}
         <button type="button" class="origin-dot" data-origin="{{ origin }}"
-                title="Where this figure came from" aria-label="Where this figure came from">&#9432;</button>
+                title="Where this figure came from" aria-label="Where this figure came from">{{ info_icon() }}</button>
       {%- endif %}</td>
   {% endif %}
 {% endmacro %}
@@ -173,11 +191,17 @@
 {% macro stmt_amount(line) %}
   {% if editable and not line.id and line.sources and line.sources.kind != 'empty' %}
     {# A line of the customer's own layout: it is added up from lines that are
-       edited on the standard statement, but where it comes from can be read here. #}
+       edited on the standard statement, but where it comes from can be read here.
+
+       It says so on the cell. Clicking a figure and having nothing happen
+       reads as a broken page, not as a deliberate rule - and the rule is
+       worth stating, because the figure genuinely cannot be typed over:
+       "Administrative expenses" here is the sum of twenty-eight accounts,
+       and a number typed over the total would belong to none of them. #}
     <td class="num ed-cell from-tb">
-      <span>{{ line.effective_amount|stmt }}</span>
+      <span title="Added up from the lines below it - edit those, or the note behind this figure, and this total follows. Click the mark beside it to see what makes it up.">{{ line.effective_amount|stmt }}</span>
       <button type="button" class="src-dot" data-sources='{{ line.sources|tojson|forceescape }}'
-              title="Where this figure came from">&#9432;</button>
+              title="Where this figure came from">{{ info_icon() }}</button>
     </td>
   {% elif editable and line.id %}
     {% set from_tb = (line.source_line_item_ids or [])|length %}
@@ -191,7 +215,7 @@
       {{ override_mark(line.override_record) }}
       {% if from_tb or line.is_computed %}
         <button type="button" class="src-dot" data-line-id="{{ line.id }}"
-                title="Where this figure came from">&#9432;</button>
+                title="Where this figure came from">{{ info_icon() }}</button>
       {% endif %}
     </td>
   {% elif line.override_record and show_working_marks %}
@@ -438,11 +462,11 @@
                   <td class="num">{{ '' if row.cells[0] is none else row.cells[0]|stmt
                     }}{% if editable and row.sources and row.sources.kind != 'empty' and row.cells[0] is not none %}<button type="button"
                         class="src-dot" data-sources='{{ row.sources|tojson|forceescape }}'
-                        title="Where this figure came from">&#9432;</button>{% endif %}</td>
+                        title="Where this figure came from">{{ info_icon() }}</button>{% endif %}</td>
                   <td class="num">{{ '' if row.cells[1] is none else row.cells[1]|stmt
                     }}{% if editable and row.prior_origin and row.cells[1] is not none %}<button type="button"
                         class="origin-dot" data-origin="{{ row.prior_origin }}"
-                        title="Where this figure came from">&#9432;</button>{% endif %}</td>
+                        title="Where this figure came from">{{ info_icon() }}</button>{% endif %}</td>
                 </tr>
               {% endif %}
             {% endfor %}
@@ -839,7 +863,7 @@
                     {% if acct_id %}
                       <button type="button" class="src-dot"
                               data-account-id="{{ acct_id }}"
-                              title="Where this figure came from">&#9432;</button>
+                              title="Where this figure came from">{{ info_icon() }}</button>
                     {% endif %}
                   </td>
                   {#
