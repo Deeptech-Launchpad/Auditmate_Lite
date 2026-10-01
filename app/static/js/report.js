@@ -332,7 +332,9 @@
     /* Figures and labels save through their own endpoints - see the second
        block below, which owns them and exposes this hook. */
     if (isCell(field)) {
-      if (window.__auditmateSaveCell) await window.__auditmateSaveCell(field);
+      const wasText = original.get(field) || '';
+      if (field.textContent.trim() === wasText) return;
+      if (window.__auditmateSaveCell) await window.__auditmateSaveCell(field, wasText);
       return;
     }
 
@@ -780,7 +782,7 @@
     return field.dataset.field === 'amount' || field.dataset.field === 'previous';
   }
 
-  async function saveCell(field) {
+  async function saveCell(field, wasText) {
     const key = field.dataset.field;         /* 'label' | 'amount' | 'previous' */
     const value = field.textContent.trim();
 
@@ -800,14 +802,16 @@
     if ((isFigure || !field.dataset.lineId) && !isRevert(field, value)) {
       const was = isFigure
         ? fmt(field.dataset.computed)
-        : (field.dataset.sourceLabel || '');
+        : (wasText || '');
       reason = await window.__auditmateAskReason(
         (field.dataset.sourceLabel || 'This row') + ': the source gives '
         + was + '; the accounts will print ' + (value || '--') + '.');
       if (!reason) {
-        /* Nobody will explain it, so it does not happen. */
+        /* Nobody will explain it, so it does not happen - and it goes back
+           to what was here before this edit, not to a source label that
+           only ever existed for figures. */
         field.textContent = isFigure
-          ? fmt(field.dataset.computed) : (field.dataset.sourceLabel || '');
+          ? fmt(field.dataset.computed) : (wasText || '');
         say('Change not saved - no reason given', 'failed');
         return;
       }

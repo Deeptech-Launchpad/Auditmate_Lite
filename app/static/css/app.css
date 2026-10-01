@@ -632,6 +632,19 @@ table.fin tr.overridden input.amount { background: var(--amber-light); border-co
   overflow-y: auto; flex: 1; min-height: 0;
 }
 
+/* The overrides panel sits below the live preview in normal page flow,
+   not beside it - the sticky rule above would otherwise stick it at the
+   same offset and it would cover the report underneath as the page
+   scrolls. */
+.report-layout > .card.ov-panel,
+.report-layout > div > .card.ov-panel {
+  position: static; max-height: none; display: block;
+}
+.report-layout > .card.ov-panel > .card-body,
+.report-layout > div > .card.ov-panel > .card-body {
+  overflow-y: visible; flex: none; min-height: auto;
+}
+
 .section-search {
   width: 100%; padding: 7px 10px; margin-bottom: 10px; font-size: 13px;
   border: 1px solid var(--border); border-radius: 3px; background: var(--surface);
