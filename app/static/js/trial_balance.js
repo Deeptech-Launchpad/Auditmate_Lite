@@ -169,9 +169,37 @@
 
   grid.addEventListener('change', async event => {
     const select = event.target;
-    if (!select.classList.contains('map-select') || readOnly) return;
+    if (!select.classList.contains('map-select')) return;
 
     const row = select.closest('tr');
+
+    if (readOnly) {
+      // Approved, but a mapping change is the one edit allowed here: reopen,
+      // remap and re-approve in one action rather than three separate
+      // screens. Every check approve() runs (balance, opening-balance,
+      // signed-accounts) runs again - this is a real new approval, not a
+      // bypass of one.
+      if (!confirm('This trial balance is approved. Reopening it, '
+                   + 'remapping this account and re-approving will rebuild '
+                   + 'every statement. Continue?')) {
+        select.value = select.dataset.locked;
+        return;
+      }
+      setStatus('Reopening, remapping and re-approving…');
+      const data = await patch(row, { standard_key: select.value,
+                                      force_reapprove: true });
+      if (!data) { select.value = select.dataset.locked; return; }
+      if (!data.reapproved) {
+        setStatus(data.reapprove_error
+          || 'Remapped, but could not re-approve - check the trial balance.',
+          'error');
+        return;
+      }
+      setStatus('Remapped and re-approved - reloading…', 'ok');
+      location.reload();
+      return;
+    }
+
     const data = await patch(row, { standard_key: select.value });
     if (!data) return;
 
@@ -203,13 +231,11 @@
   if (readOnly) {
     /*
      * An approved trial balance is the source of the statements and the
-     * audit report, so it cannot be edited in place - changing a mapping
-     * here would silently change figures in a report that may already have
-     * gone out. Reopening is the way back, and it is one click away.
-     *
-     * The controls are left enabled rather than set disabled: a disabled
-     * select swallows the click, so it just looks broken. Kept live, it can
-     * answer the question the click was asking.
+     * audit report, so it is not edited in place by default. A mapping
+     * change is the one exception: confirmed, it reopens, remaps and
+     * re-approves in a single action (feedback: mapping changes should
+     * update the statements, not need a separate Reopen -> remap -> Approve
+     * visit) - everything else on the grid stays genuinely locked.
      */
     grid.querySelectorAll('input.cell').forEach(i => { i.readOnly = true; });
     grid.classList.add('is-locked');
@@ -218,24 +244,12 @@
                 'Use "Reopen to edit" above to change it.';
 
     grid.querySelectorAll('.map-select').forEach(select => {
+      // Deliberately left open, unlike every other control on a locked
+      // grid - see the 'change' handler above for what picking a new value
+      // here actually does.
       select.dataset.locked = select.value;
-      select.setAttribute('aria-disabled', 'true');
-      select.title = WHY;
-      select.addEventListener('mousedown', event => {
-        event.preventDefault();
-        select.blur();
-        setStatus(WHY, 'error');
-      });
-      select.addEventListener('keydown', event => {
-        if (event.key === 'Tab') return;
-        event.preventDefault();
-        setStatus(WHY, 'error');
-      });
-      /* Belt and braces: if a change ever gets through, put it back. */
-      select.addEventListener('change', () => {
-        select.value = select.dataset.locked;
-        setStatus(WHY, 'error');
-      });
+      select.title = 'Changing this reopens, remaps and re-approves the '
+                    + 'trial balance in one step.';
     });
 
     grid.querySelectorAll('.icon-btn').forEach(button => {

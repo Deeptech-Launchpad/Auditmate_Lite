@@ -327,8 +327,32 @@ def update_account(account_id):
     payload = request.get_json(silent=True) or {}
 
     if "standard_key" in payload:
+        force_reapprove = bool(payload.get("force_reapprove"))
         result = tb_service.set_mapping(account_id, payload["standard_key"],
-                                        user_id=current_user.id)
+                                        user_id=current_user.id,
+                                        force=force_reapprove)
+        if not result.get("ok") and result.get("needs_confirm"):
+            return jsonify(result), 400
+        if force_reapprove:
+            # The trial balance was approved, and the preparer confirmed
+            # they want this one mapping change applied right now rather
+            # than visiting Reopen, then Mapping, then Approve as three
+            # separate screens. Every validation `approve()` already runs
+            # (balance, opening-balance, signed-accounts) runs again here -
+            # this is a real new approval, not a bypass of one.
+            financial_year_id = account.financial_year_id
+            tb_service.reopen(financial_year_id, user_id=current_user.id)
+            result = tb_service.set_mapping(
+                account_id, payload["standard_key"], user_id=current_user.id,
+                force=True)
+            if not result.get("ok"):
+                return jsonify(result), 400
+            approval = tb_service.approve(
+                financial_year_id, approved_by=current_user.name,
+                user_id=current_user.id)
+            result["reapproved"] = approval.get("ok", False)
+            if not approval.get("ok"):
+                result["reapprove_error"] = approval.get("error")
         if not result.get("ok"):
             return jsonify(result), 400
 

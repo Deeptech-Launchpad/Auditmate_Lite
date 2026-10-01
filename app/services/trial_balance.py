@@ -527,7 +527,8 @@ def add_account(financial_year_id, account_name, debit=None, credit=None,
     return account
 
 
-def set_mapping(account_id, standard_key, user_id=None, learn=True):
+def set_mapping(account_id, standard_key, user_id=None, learn=True,
+                force=False):
     """Assign an account to a statement line, and remember it for next year."""
     from .mapping import learn_mapping
     from .statements import line_keys_for, load_templates
@@ -537,14 +538,18 @@ def set_mapping(account_id, standard_key, user_id=None, learn=True):
         return {"ok": False, "error": "account not found"}
 
     # Refused once the trial balance is approved, the same as a line_code
-    # change (see update_account). A statement built and locked against
-    # this account's old statement line must not silently start
-    # disagreeing with the trial balance behind it - the whole point of
-    # locking the statements down was that nothing feeding them moves.
-    if account.financial_year.tb_is_approved:
-        return {"ok": False, "error": "The trial balance is approved. "
-                "Reopen it to change how an account maps to the "
-                "statements."}
+    # change (see update_account) - unless the caller has already reopened
+    # it on purpose (`force`, used by the one-click reopen+remap+reapprove
+    # flow in the blueprint). A statement built and locked against this
+    # account's old statement line must not silently start disagreeing
+    # with the trial balance behind it while still "approved" - the whole
+    # point of locking the statements down was that nothing feeding them
+    # moves without a new approval to show for it.
+    if account.financial_year.tb_is_approved and not force:
+        return {"ok": False, "needs_confirm": True,
+                "error": "The trial balance is approved. Reopening it, "
+                "remapping this account and re-approving will rebuild "
+                "every statement."}
 
     statement_type = None
     for name in load_templates():
