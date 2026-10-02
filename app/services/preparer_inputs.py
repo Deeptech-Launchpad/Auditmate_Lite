@@ -582,10 +582,16 @@ def section_note_codes(section, financial_year):
 
     Most sections carry them already, in the table specs a note was built
     from. A wording-only section - no table, nothing computed, just a
-    library paragraph ("Corporate information") - carries none, and is
-    resolved the same way a question's own free-text "Note" value is: by
-    its heading, aliases included.
+    library paragraph ("Corporate information") - carries none.
+
+    Three fallbacks in descending reliability:
+    1. note_table_specs[*].note_code — set when report was built from v2 library
+    2. Direct key lookup via section_key — always reliable; section_key is
+       "note__" + NoteLibraryNote.key, so we can reverse the mapping directly
+    3. Heading match — legacy fallback for sections whose title matches a
+       library heading exactly after normalisation
     """
+    _NOTE_PREFIX = "note__"
     binding = section.data_binding or {}
     codes = [str(spec.get("note_code") or "") for spec in
              (binding.get("note_table_specs") or [])]
@@ -597,6 +603,18 @@ def section_note_codes(section, financial_year):
     version = _version(financial_year)
     if version is None:
         return found
+
+    # Direct key lookup: strip "note__" prefix and query the library directly.
+    # This works for every section regardless of how it was originally built,
+    # including sections built before note_code was added to table specs and
+    # template-following sections whose titles don't match library headings.
+    if (section.section_key or "").startswith(_NOTE_PREFIX):
+        note_key = section.section_key[len(_NOTE_PREFIX):]
+        note_row = NoteLibraryNote.query.filter_by(
+            library_version_id=version.id, key=note_key).first()
+        if note_row and note_row.library_code:
+            return {note_row.library_code.upper()}
+
     resolved = _resolve_note_codes(section.title, _note_codes(version))
     return {code.upper() for code in resolved}
 

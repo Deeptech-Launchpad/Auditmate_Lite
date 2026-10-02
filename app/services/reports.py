@@ -1471,6 +1471,45 @@ def wording_is_edited(section):
     return (section.content_html or "").strip() != pristine.strip()
 
 
+def backfill_wording_columns(report, financial_year):
+    """Populate library_html / prior_html on sections that predate workstream E.
+
+    Sections created before those columns existed have both NULL. For such a
+    section, library_html is set to content_html (which is exactly what the
+    creation path set it to: `library_html=content_html`), and prior_html is
+    re-derived from the prior year where available. Skips non-note sections and
+    any section that already has at least one column set.
+
+    Called lazily from the builder so old engagements get the toggle without a
+    destructive regeneration.
+    """
+    from . import preparer_inputs as pi
+
+    prior_wording = prior_year_wording(financial_year)
+    changed = False
+
+    for section in report.sections:
+        if not section.section_key.startswith(NOTE_PREFIX):
+            continue
+        if section.library_html is not None or section.prior_html is not None:
+            continue
+        # Backfill library_html from the current content (safe: this is the
+        # value the creation path always assigned on first build).
+        section.library_html = section.content_html or ""
+        section.wording_source = section.wording_source or "library"
+
+        # Backfill prior_html from the previous year's FS where available.
+        note_key = section.section_key[len(NOTE_PREFIX):]
+        prior = prior_wording.get(note_key)
+        if prior is not None:
+            section.prior_html = _carried_html(prior, financial_year)
+
+        changed = True
+
+    if changed:
+        db.session.commit()
+
+
 def switch_wording_source(section, source, *, force=False):
     """Rewrite content_html from the library's or last year's pristine
     text. Returns a dict the endpoint hands straight back as JSON.

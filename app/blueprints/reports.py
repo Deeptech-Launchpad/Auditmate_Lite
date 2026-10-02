@@ -87,6 +87,11 @@ def builder(fy_id):
     available_accounts = ([a for a in all_accounts if a["key"] in gap_account_keys]
                           if gap_account_keys else all_accounts)
 
+    # One-time backfill for sections that predate workstream E (library_html /
+    # prior_html columns). Safe to call on every load: skips any section that
+    # already has either column set, and is a no-op after the first visit.
+    report_service.backfill_wording_columns(report, financial_year)
+
     payloads = _assemble(report, chips=editable)
     incomplete = report_service.record_completeness(report, payloads)
 
