@@ -637,6 +637,11 @@ Anything typed into the report - note wording, edited figures, answers, section 
                      title="This note's own figures">{{ _fc }} figure{{ 's' if _fc != 1 }}</a>
                 {% endif %}
               {% endif %}
+              {% if note_missing_figures and section.section_key in note_missing_figures %}
+                {% set _mc = note_missing_figures[section.section_key] %}
+                · <a href="#sec-{{ section.section_key }}"
+                     title="This note has incomplete figure cells — click to jump to them in the preview">{{ _mc }} cell{{ 's' if _mc != 1 }} to fill</a>
+              {% endif %}
             </div>
           </span>
           {% if section.section_type != 'statement' %}

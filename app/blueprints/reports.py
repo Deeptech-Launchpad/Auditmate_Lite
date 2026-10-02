@@ -103,6 +103,7 @@ def builder(fy_id):
                            report=report, fy=financial_year,
                            sync_status=statements_service.sync_status(financial_year),
                            note_open_items=_note_open_items(financial_year, ordered),
+                           note_missing_figures=_incomplete_figure_counts(payloads),
                            look=_template_look(financial_year.customer),
                            editable=editable,
                            incomplete=incomplete,
@@ -326,6 +327,32 @@ def _note_open_items(financial_year, sections):
                 out[section.section_key] = (sorted(codes)[0], q_count, f_count)
     except Exception:                      # pragma: no cover - never a 500
         log.exception("Note open-item count failed")
+    return out
+
+
+def _incomplete_figure_counts(payloads):
+    """{section_key: count} of held (Incomplete) table cells for enabled sections.
+
+    Counts held_current and held_previous across all table rows in each
+    section payload. These are the cells that render as "Incomplete" in the
+    note tables — figures the builder is waiting for that no automatic source
+    has supplied yet. Surfaced in the sidebar alongside question counts so a
+    preparer knows where to click.
+    """
+    out = {}
+    for p in payloads:
+        section = p.get("section")
+        if not section:
+            continue
+        count = 0
+        for table in p.get("tables") or []:
+            for row in table.get("rows") or []:
+                if row.get("held_current"):
+                    count += 1
+                if row.get("held_previous"):
+                    count += 1
+        if count:
+            out[section.section_key] = count
     return out
 
 
