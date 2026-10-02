@@ -2410,6 +2410,7 @@ def content_gaps(report, financial_year):
                     # it can send the preparer to the note rather than
                     # naming it and leaving them to find it.
                     "section_id": section.id,
+                    "section_key": section.section_key,
                     "para_id": item.get("para_id") or "",
                     "note": section.title,
                     "heading": item.get("heading") or "",

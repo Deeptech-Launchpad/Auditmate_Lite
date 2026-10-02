@@ -386,16 +386,16 @@ Anything typed into the report - note wording, edited figures, answers, section 
                 {{ gap.wording|safe }}
               </div>
             {% endif %}
+            {% if gap.para_id %}
+              {{ fix_it('#confirm-' ~ gap.section_id ~ '-' ~ gap.para_id, 'Go to the note') }}
+            {% elif gap.section_key %}
+              {{ fix_it('#sec-' ~ gap.section_key, 'Go to the note') }}
+            {% endif %}
             {% if gap.wording and 'not provided' in gap.wording %}
-              {# Library feedback B2: this used to have no anchor at all and
-                 opened the Questions page at the top. The blanks that leave
-                 "not provided" in a note's wording are always listed in
-                 that page's "Wording the notes are missing" card, so this
-                 jumps there rather than to the page in general. #}
-              {{ fix_it(url_for('reports.preparer_inputs', fy_id=fy.id) ~ '#blanks-section',
-                        'Fill in the wording') }}
-            {% elif gap.section_id %}
-              {{ fix_it('#confirm-' ~ gap.section_id ~ '-' ~ gap.para_id if gap.para_id else '#sec-' ~ gap.section_id, 'Go to the note') }}
+              <div class="gap-detail muted small" style="margin-top:4px">
+                This paragraph has an unfilled blank &mdash;
+                <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id) }}#blanks-section">fill it in on the Questions page</a>.
+              </div>
             {% endif %}
           </div>
         </div>
