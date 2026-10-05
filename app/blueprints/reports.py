@@ -307,7 +307,13 @@ def _note_open_items(financial_year, sections):
 
     out = {}
     try:
-        outstanding_rows = input_service.outstanding(financial_year)
+        # Exclude DERIVE-mode rows: those are auto-settled by the engine and
+        # show as "Already settled — nothing to do" on the Questions page.
+        # The badge should only count questions that actually need human input.
+        outstanding_rows = [
+            r for r in input_service.outstanding(financial_year)
+            if r.get("mode") != input_service.DERIVE
+        ]
         figures_by_code = {}
         for document in document_fields.documents(financial_year):
             for group in document["groups"]:
