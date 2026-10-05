@@ -239,6 +239,80 @@
   const hint = document.getElementById('save-hint');
   if (!report) return;
 
+  /* -------------------------------------------------- section selection --
+     Keeps left panel (is-selected), preview highlight (is-note-selected)
+     and Checks panel in sync. Called from three places: section-item click,
+     edit-btn click, and clicking a note heading in the preview. */
+  const checksPanel = document.getElementById('checks-panel');
+  const checksPanelBody = document.getElementById('checks-panel-body');
+  let selectedSectionId = null;
+
+  function selectSection(sectionId, sectionKey) {
+    if (sectionId === selectedSectionId) return;
+    selectedSectionId = sectionId;
+
+    // Left panel: highlight the selected row
+    if (list) {
+      list.querySelectorAll('.section-item').forEach(el =>
+        el.classList.toggle('is-selected', el.dataset.sectionId == sectionId));
+    }
+
+    // Preview: green outline on the selected note
+    report.querySelectorAll('.rpt-page.is-note-selected')
+      .forEach(el => el.classList.remove('is-note-selected'));
+    const previewEl = sectionKey ? report.querySelector(`#sec-${sectionKey}`) : null;
+    if (previewEl) {
+      previewEl.classList.add('is-note-selected');
+      previewEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Checks panel: load content for this section
+    loadChecksPanel(sectionId);
+  }
+
+  async function loadChecksPanel(sectionId) {
+    if (!checksPanelBody) return;
+    checksPanelBody.innerHTML = '<p class="cp-empty">Loading…</p>';
+    try {
+      const resp = await fetch(`/reports/api/section/${sectionId}/checks-panel`);
+      if (!resp.ok) throw new Error(resp.status);
+      checksPanelBody.innerHTML = await resp.text();
+    } catch (err) {
+      checksPanelBody.innerHTML = '<p class="cp-empty muted">Could not load.</p>';
+    }
+  }
+
+  // Click on a section-item in the left panel → select it
+  if (list) {
+    list.addEventListener('click', event => {
+      const item = event.target.closest('.section-item');
+      if (!item) return;
+      // Don't intercept toggle checkboxes, edit buttons, delete buttons or drag handles
+      if (event.target.closest('.toggle, .edit-btn, .delete-section, .handle')) return;
+      selectSection(item.dataset.sectionId, item.dataset.sectionKey);
+    });
+  }
+
+  // Click a note heading in the preview → select that section
+  report.addEventListener('click', event => {
+    const page = event.target.closest('.rpt-page[id^="sec-"]');
+    if (!page) return;
+    // Only intercept if the click wasn't on an editable or interactive element
+    if (event.target.closest('[contenteditable],[data-section-id] button,.confirm-actions button,.wording-src-btn,.origin-btn')) return;
+    const sectionKey = page.id.slice(4); // strip "sec-"
+    const item = list && list.querySelector(`.section-item[data-section-key="${sectionKey}"]`);
+    if (item) selectSection(item.dataset.sectionId, sectionKey);
+  });
+
+  // Checks panel navigation: prev / next note
+  document.addEventListener('click', event => {
+    const btn = event.target.closest('[data-cp-nav]');
+    if (!btn) return;
+    const targetId = btn.dataset.cpNav;
+    const item = list && list.querySelector(`.section-item[data-section-id="${targetId}"]`);
+    if (item) selectSection(targetId, item.dataset.sectionKey);
+  });
+
   let hintTimer = null;
 
   function say(message, tone) {
@@ -654,8 +728,11 @@
   if (list) list.addEventListener('click', event => {
     const btn = event.target.closest('.edit-btn');
     if (!btn) return;
+    const sectionId = btn.dataset.sectionId;
+    const item = list.querySelector(`.section-item[data-section-id="${sectionId}"]`);
+    selectSection(sectionId, item ? item.dataset.sectionKey : null);
     const field = report.querySelector(
-      `[contenteditable="true"][data-section-id="${btn.dataset.sectionId}"]` +
+      `[contenteditable="true"][data-section-id="${sectionId}"]` +
       `[data-field="content_html"]`);
     if (!field) return;
     field.scrollIntoView({ behavior: 'smooth', block: 'center' });

@@ -1,0 +1,202 @@
+{#
+  Checks panel — rendered as an HTML fragment into #checks-panel-body via AJAX
+  when the preparer selects a note in the left panel. Shows the selected note's
+  wording, tables and confirm boxes in a structured editor alongside the preview.
+
+  Variables: section, payload, fy, report, editable, prev_section, next_section,
+             next_incomplete, is_incomplete
+#}
+
+{# ---- navigation header ---- #}
+<div class="cp-header">
+  <button class="cp-nav" {{ 'data-cp-nav="' ~ prev_section.id ~ '"' if prev_section else 'disabled' }}
+          title="{{ prev_section.title if prev_section else 'First section' }}">&lsaquo;</button>
+  <div class="cp-title">{{ section.title }}</div>
+  {% if is_incomplete %}
+    <span class="cp-status-incomplete">&#9679; Incomplete</span>
+  {% else %}
+    <span class="cp-status-done">&#10003; Done</span>
+  {% endif %}
+  <button class="cp-nav" {{ 'data-cp-nav="' ~ next_section.id ~ '"' if next_section else 'disabled' }}
+          title="{{ next_section.title if next_section else 'Last section' }}">&rsaquo;</button>
+</div>
+
+{# ---- source legend ---- #}
+<div class="cp-legend">
+  <span><i class="sw sw-tb" style="width:20px;height:8px;display:inline-block;border-bottom:2px solid #2563a8;margin-right:2px"></i>Trial balance</span>
+  <span><i style="width:20px;height:8px;display:inline-block;border-bottom:2px solid #2563a8;border-bottom-style:dashed;margin-right:2px"></i>Last year&rsquo;s FS</span>
+  <span><i style="width:20px;height:8px;display:inline-block;border-bottom:2px solid #1a7a44;margin-right:2px"></i>Entered by you</span>
+  <span><i style="width:20px;height:8px;display:inline-block;border-bottom:2px solid #c47f0a;margin-right:2px"></i>Changed by you</span>
+  <span class="muted" style="flex-basis:100%;font-size:10px">Click &#x24D8; on any figure for its source</span>
+</div>
+
+{% set is_note = section.section_type not in ('statement', 'cover_page', 'template') %}
+
+{# ---- wording section (notes only) ---- #}
+{% if is_note and section.content_html %}
+
+  {# Wording source tabs — only shown when there's a choice #}
+  {% if editable and payload.wording_sources|length > 1 %}
+  <div class="cp-block">
+    <div class="cp-block-head">
+      <span class="cp-label">Wording source</span>
+      {% if payload.wording_edited %}<span class="cp-edited">Edited</span>{% endif %}
+    </div>
+    <div class="cp-tabs">
+      {% for src in payload.wording_sources %}
+        <button type="button"
+                class="cp-tab{{ ' active' if payload.wording_source == src }}"
+                data-source="{{ src }}"
+                data-section-id="{{ section.id }}"
+                {% if payload.wording_source == src %}disabled{% endif %}
+                onclick="this.closest('.cp-tabs').querySelectorAll('.cp-tab').forEach(b=>b.classList.remove('active'));this.classList.add('active');
+                         fetch('/reports/api/section/{{section.id}}/wording-source',{method:'PATCH',headers:{'Content-Type':'application/json','X-CSRFToken':window.CSRF_TOKEN},body:JSON.stringify({source:this.dataset.source})}).then(()=>location.reload())">
+          {{ 'Notes library' if src == 'library' else "Last year's FS" }}
+        </button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# Wording paragraphs — display-only with an edit link to the preview #}
+  <div class="cp-block">
+    <div class="cp-block-head">
+      <span class="cp-label">Wording</span>
+    </div>
+    <div class="cp-wording-preview"
+         style="font-size:12px;line-height:1.5;padding:8px 10px;background:#f8f7f3;
+                border:1px solid var(--border);border-radius:3px;max-height:160px;
+                overflow-y:auto;color:#2d2a23">
+      {{ payload.html|striptags|truncate(400)|safe if payload.html else section.content_html|striptags|truncate(400)|safe }}
+    </div>
+    <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+      Click the wording in the preview panel to edit it inline.
+    </div>
+  </div>
+
+{% endif %}
+
+{# ---- tables ---- #}
+{% for table in payload.tables %}
+  {% if table.rows %}
+  <div class="cp-block">
+    <div class="cp-block-head">
+      <span class="cp-label">{{ table.title or 'Table' }}</span>
+      <span class="muted" style="font-size:10px">{{ table.rows|length }} row{{ 's' if table.rows|length != 1 }}</span>
+    </div>
+    <table class="cp-table">
+      <thead>
+        <tr>
+          <th style="width:50%">Row</th>
+          <th class="num">{{ fy.year_label }}</th>
+          {% if table.show_prior %}<th class="num">Prior</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in table.rows %}
+          {% if not row.is_total %}
+          <tr>
+            <td style="font-size:12px">{{ row.label }}</td>
+            <td class="num">
+              {% if row.held_current %}
+                <span style="color:#c0392b;font-size:11px">Incomplete</span>
+              {% elif row.amount_current is not none %}
+                {{ row.amount_current|stmt }}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            {% if table.show_prior %}
+            <td class="num">
+              {% if row.held_previous %}
+                <span style="color:#c0392b;font-size:11px">Incomplete</span>
+              {% elif row.amount_previous is not none %}
+                {{ row.amount_previous|stmt }}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% else %}
+          <tr style="font-weight:700;border-top:1px solid var(--border)">
+            <td style="font-size:12px">{{ row.label }}</td>
+            <td class="num">{{ row.amount_current|stmt if row.amount_current is not none else '—' }}</td>
+            {% if table.show_prior %}<td class="num">{{ row.amount_previous|stmt if row.amount_previous is not none else '—' }}</td>{% endif %}
+          </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if editable %}
+      <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+        Click figures in the preview to edit them, or
+        <a href="#sec-{{ section.section_key }}"
+           onclick="event.preventDefault();const el=document.querySelector('#live-report #sec-{{section.section_key}}');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})">
+          scroll to this note</a>.
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
+{% endfor %}
+
+{# ---- confirm / awaiting boxes ---- #}
+{% set confirms = (section.data_binding or {}).get('awaiting_preparer') or [] %}
+{% if confirms %}
+  <div class="cp-block">
+    <div class="cp-block-head">
+      <span class="cp-label">{{ confirms|length }} item{{ 's' if confirms|length != 1 }} to confirm</span>
+    </div>
+    {% for item in confirms %}
+      <div style="padding:8px 10px;border:1px solid #f5c6c0;border-radius:3px;
+                  background:#fdf2f1;margin-bottom:8px;font-size:12px">
+        <div style="font-weight:700;margin-bottom:4px;color:#333">
+          {{ item.heading or item.question or 'Confirm' }}
+        </div>
+        {% if item.question and item.heading %}
+          <div class="muted" style="margin-bottom:6px">{{ item.question }}</div>
+        {% endif %}
+        {% if editable %}
+          <div style="font-size:11px">
+            <a href="{{ url_for('reports.builder', fy_id=fy.id) }}#confirm-{{ section.id }}-{{ item.para_id }}"
+               onclick="event.preventDefault();const el=document.querySelector('#live-report #confirm-{{section.id}}-{{item.para_id}}');if(el){el.classList.add('is-open');el.scrollIntoView({behavior:'smooth',block:'center'})}">
+              Go to this confirm box in the preview &rarr;
+            </a>
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{# ---- INCOMPLETE reasons ---- #}
+{% if payload.incomplete %}
+  <div class="cp-block">
+    <div class="cp-block-head">
+      <span class="cp-label" style="color:#c0392b">Why incomplete</span>
+    </div>
+    <ul style="margin:0;padding-left:18px;font-size:12px;color:#555;line-height:1.6">
+      {% for reason in payload.incomplete[:8] %}
+        <li>{{ reason }}</li>
+      {% endfor %}
+      {% if payload.incomplete|length > 8 %}
+        <li class="muted">… and {{ payload.incomplete|length - 8 }} more</li>
+      {% endif %}
+    </ul>
+  </div>
+{% endif %}
+
+{# ---- footer: next waiting + stats ---- #}
+<div class="cp-footer">
+  {% if next_incomplete %}
+    <button class="cp-next-btn" data-cp-nav="{{ next_incomplete.id }}">
+      Go to next waiting: {{ next_incomplete.title }} &rsaquo;
+    </button>
+  {% elif is_incomplete %}
+    <div style="font-size:12px;color:#1a7a44;font-weight:600">&#10003; No other notes waiting.</div>
+  {% endif %}
+  <div class="cp-stats">
+    {% set n_accounts = report.financial_year.trial_balance_accounts|selectattr('standard_key')|list|length if report.financial_year.trial_balance_accounts is defined else 0 %}
+    &#10003; Enabled sections: {{ report.enabled_sections|length }} of {{ report.sections|length }}
+  </div>
+</div>

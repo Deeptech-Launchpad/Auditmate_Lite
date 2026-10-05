@@ -523,6 +523,55 @@ def _record_decisions(financial_year, form, rp_service):
     return decided
 
 
+@bp.route("/api/section/<int:section_id>/checks-panel")
+@login_required
+def section_checks_panel(section_id):
+    """HTML fragment rendered into the Checks panel when a section is selected."""
+    section = db.session.get(AuditReportSection, section_id) or abort(404)
+    report = section.report
+    financial_year = report.financial_year
+    editable = not financial_year.is_closed
+
+    payload = report_service.section_payload(
+        section, financial_year.customer, financial_year, chips=editable)
+
+    # Previous / next enabled non-child sections for navigation arrows.
+    ordered = report_service.ordered_sections(report)
+    top_enabled = [s for s in ordered if s.is_enabled and not s.parent_section_id]
+    try:
+        idx = next(i for i, s in enumerate(top_enabled) if s.id == section_id)
+    except StopIteration:
+        idx = None
+    prev_section = top_enabled[idx - 1] if idx and idx > 0 else None
+    next_section = top_enabled[idx + 1] if idx is not None and idx < len(top_enabled) - 1 else None
+
+    # Find the next incomplete note so "Go to next waiting" knows where to go.
+    incomplete_ids = {
+        s.id for s in top_enabled
+        if (s.data_binding or {}).get("awaiting_preparer")
+        or payload.get("incomplete")  # crude: recompute per-section if needed
+    }
+    next_incomplete = next(
+        (s for s in top_enabled
+         if s.id != section_id and (s.data_binding or {}).get("awaiting_preparer")),
+        None)
+
+    is_incomplete = bool(payload.get("incomplete"))
+
+    return render_template(
+        "reports/_checks_panel.html",
+        section=section,
+        payload=payload,
+        fy=financial_year,
+        report=report,
+        editable=editable,
+        prev_section=prev_section,
+        next_section=next_section,
+        next_incomplete=next_incomplete,
+        is_incomplete=is_incomplete,
+    )
+
+
 @bp.route("/api/section/<int:section_id>", methods=["PATCH"])
 @login_required
 def update_section(section_id):
