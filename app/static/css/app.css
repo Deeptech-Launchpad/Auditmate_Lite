@@ -625,8 +625,9 @@ table.fin tr.overridden input.amount { background: var(--amber-light); border-co
 .report-layout > .card,
 .report-layout > div > .card {
   position: sticky; top: 74px; max-height: calc(100vh - 90px);
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; min-width: 0;
 }
+.report-layout > div { min-width: 0; }
 .report-layout > .card > .card-body,
 .report-layout > div > .card > .card-body {
   overflow-y: auto; flex: 1; min-height: 0;
@@ -946,6 +947,25 @@ tr.change-row.status-pending  { background: var(--amber-light); }
 .checks-panel .cp-block-head .cp-edited {
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
   color: #c47f0a; border: 1px solid #c47f0a; border-radius: 2px; padding: 1px 4px;
+}
+.checks-panel .cp-table .cp-ed-cell {
+  display: inline-block; min-width: 40px; padding: 1px 3px; border-radius: 2px;
+  cursor: text; border-bottom: 1px dashed var(--text-faint);
+}
+.checks-panel .cp-table .cp-ed-cell:hover { background: #f0f4ff; border-bottom-color: var(--brand); }
+.checks-panel .cp-table .cp-ed-cell:focus { outline: none; background: #fff; border: 1px solid var(--brand); border-radius: 2px; }
+.checks-panel .cp-table .cp-incomplete { color: #c0392b; font-size: 11px; }
+.checks-panel .cp-table .cp-total { font-weight: 700; border-top: 1px solid var(--border); }
+.checks-panel .cp-wording-edit {
+  font-size: 12px; line-height: 1.6; padding: 8px 10px; max-height: 200px;
+  overflow-y: auto; background: #f8f7f3; border: 1px solid var(--border);
+  border-radius: 3px; color: #2d2a23; cursor: text; min-height: 48px;
+}
+.checks-panel .cp-wording-edit:focus { outline: none; border-color: var(--brand); background: #fff; }
+.checks-panel .cp-wording-edit p { margin: 0 0 6px; }
+.checks-panel .cp-wording-edit p:last-child { margin-bottom: 0; }
+.checks-panel .cp-wording-edit:empty::before {
+  content: attr(data-placeholder); color: var(--text-faint); font-style: italic;
 }
 .checks-panel .cp-tabs {
   display: flex; gap: 0; margin-bottom: 6px;

@@ -251,10 +251,12 @@
     if (sectionId === selectedSectionId) return;
     selectedSectionId = sectionId;
 
-    // Left panel: highlight the selected row
+    // Left panel: highlight the selected row and scroll it into view
     if (list) {
       list.querySelectorAll('.section-item').forEach(el =>
         el.classList.toggle('is-selected', el.dataset.sectionId == sectionId));
+      const selectedEl = list.querySelector(`.section-item[data-section-id="${sectionId}"]`);
+      if (selectedEl) selectedEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     // Preview: green outline on the selected note
@@ -441,6 +443,58 @@
       if (key === 'title') syncTitle(field.dataset.sectionId, value);
     } catch (err) {
       say('Could not save — your text is still here', 'failed');
+    }
+  });
+
+  /* Edits from the Checks panel — wording and table cells.
+     Scoped to #checks-panel-body so it never clashes with the preview handler. */
+  document.addEventListener('focusin', event => {
+    const cp = event.target.closest('#checks-panel-body');
+    if (!cp) return;
+    const field = event.target.closest('[contenteditable="true"]');
+    if (!field) return;
+    if (isCell(field)) {
+      original.set(field, field.textContent.trim());
+    } else if (field.dataset.field === 'content_html') {
+      original.set(field, serialise(field));
+    }
+  });
+
+  document.addEventListener('focusout', async event => {
+    const cp = event.target.closest('#checks-panel-body');
+    if (!cp) return;
+    const field = event.target.closest('[contenteditable="true"]');
+    if (!field) return;
+
+    // Table cell (ed-amount)
+    if (isCell(field)) {
+      const wasText = original.get(field) || '';
+      if (field.textContent.trim() === wasText) return;
+      if (window.__auditmateSaveCell) await window.__auditmateSaveCell(field, wasText);
+      return;
+    }
+
+    // Wording (content_html)
+    if (field.dataset.field === 'content_html') {
+      const value = serialise(field);
+      if (value === original.get(field)) return;
+      const kept = await recordWording(field, original.get(field) || '');
+      if (!kept) {
+        field.innerHTML = original.get(field) || '';
+        say('Change not saved - no reason given', 'failed');
+        return;
+      }
+      say('Saving…', 'saving');
+      try {
+        await patchSection(field.dataset.sectionId, { content_html: serialise(field) });
+        const saved = serialise(field);
+        original.set(field, saved);
+        say('Saved', 'saved');
+        const previewBody = report.querySelector(`.rpt-body[data-section-id="${field.dataset.sectionId}"][data-field="content_html"]`);
+        if (previewBody) { previewBody.innerHTML = field.innerHTML; original.set(previewBody, saved); }
+      } catch (err) {
+        say('Could not save — your text is still here', 'failed');
+      }
     }
   });
 

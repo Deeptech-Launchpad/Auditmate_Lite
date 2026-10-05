@@ -9,7 +9,7 @@
 
 {# ---- navigation header ---- #}
 <div class="cp-header">
-  <button class="cp-nav" {{ 'data-cp-nav="' ~ prev_section.id ~ '"' if prev_section else 'disabled' }}
+  <button class="cp-nav" {% if prev_section %}data-cp-nav="{{ prev_section.id }}"{% else %}disabled{% endif %}
           title="{{ prev_section.title if prev_section else 'First section' }}">&lsaquo;</button>
   <div class="cp-title">{{ section.title }}</div>
   {% if is_incomplete %}
@@ -17,7 +17,7 @@
   {% else %}
     <span class="cp-status-done">&#10003; Done</span>
   {% endif %}
-  <button class="cp-nav" {{ 'data-cp-nav="' ~ next_section.id ~ '"' if next_section else 'disabled' }}
+  <button class="cp-nav" {% if next_section %}data-cp-nav="{{ next_section.id }}"{% else %}disabled{% endif %}
           title="{{ next_section.title if next_section else 'Last section' }}">&rsaquo;</button>
 </div>
 
@@ -58,19 +58,18 @@
   </div>
   {% endif %}
 
-  {# Wording paragraphs — display-only with an edit link to the preview #}
+  {# Wording — editable inline, same save path as the preview panel #}
   <div class="cp-block">
     <div class="cp-block-head">
       <span class="cp-label">Wording</span>
+      {% if payload.wording_edited %}<span class="cp-edited">Edited</span>{% endif %}
     </div>
-    <div class="cp-wording-preview"
-         style="font-size:12px;line-height:1.5;padding:8px 10px;background:#f8f7f3;
-                border:1px solid var(--border);border-radius:3px;max-height:160px;
-                overflow-y:auto;color:#2d2a23">
-      {{ payload.html|striptags|truncate(400)|safe if payload.html else section.content_html|striptags|truncate(400)|safe }}
-    </div>
-    <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
-      Click the wording in the preview panel to edit it inline.
+    <div class="rpt-body cp-wording-edit"
+         {% if editable %}contenteditable="true"
+         data-section-id="{{ section.id }}"
+         data-field="content_html"
+         data-placeholder="Click to write this section…"{% endif %}>
+      {{ payload.html|safe if payload.html else section.content_html|safe }}
     </div>
   </div>
 
@@ -78,64 +77,79 @@
 
 {# ---- tables ---- #}
 {% for table in payload.tables %}
+  {% set t_idx = loop.index0 %}
   {% if table.rows %}
   <div class="cp-block">
     <div class="cp-block-head">
-      <span class="cp-label">{{ table.title or 'Table' }}</span>
+      <span class="cp-label">{{ table.heading or 'Table' }}</span>
       <span class="muted" style="font-size:10px">{{ table.rows|length }} row{{ 's' if table.rows|length != 1 }}</span>
     </div>
     <table class="cp-table">
       <thead>
         <tr>
-          <th style="width:50%">Row</th>
+          <th style="width:44%">Row</th>
           <th class="num">{{ fy.year_label }}</th>
-          {% if table.show_prior %}<th class="num">Prior</th>{% endif %}
+          <th class="num">Prior</th>
         </tr>
       </thead>
       <tbody>
         {% for row in table.rows %}
-          {% if not row.is_total %}
+          {% set r_idx = loop.index0 %}
+          {% set anchor = row.original_label or row.label %}
+          {% if not row.bold %}
           <tr>
-            <td style="font-size:12px">{{ row.label }}</td>
-            <td class="num">
+            <td style="font-size:11px">{{ row.label }}</td>
+            {# Current year cell #}
+            <td class="num{% if row.held_current %} cp-held{% endif %}">
               {% if row.held_current %}
-                <span style="color:#c0392b;font-size:11px">Incomplete</span>
-              {% elif row.amount_current is not none %}
-                {{ row.amount_current|stmt }}
+                <span class="cp-incomplete">Incomplete</span>
+              {% elif editable and row.current is not none %}
+                <span class="ed-amount cp-ed-cell" contenteditable="true"
+                      data-field="amount"
+                      data-section-id="{{ section.id }}"
+                      data-table-index="{{ t_idx }}"
+                      data-row-index="{{ r_idx }}"
+                      data-anchor="{{ anchor }}"
+                      data-computed="{{ row.computed_current if row.computed_current is not none else row.current }}"
+                      data-source-label="{{ anchor }}"
+                      >{{ row.current|stmt }}</span>
+              {% elif row.current is not none %}
+                {{ row.current|stmt }}
               {% else %}
                 <span class="muted">—</span>
               {% endif %}
             </td>
-            {% if table.show_prior %}
-            <td class="num">
+            {# Prior year cell #}
+            <td class="num{% if row.held_previous %} cp-held{% endif %}">
               {% if row.held_previous %}
-                <span style="color:#c0392b;font-size:11px">Incomplete</span>
-              {% elif row.amount_previous is not none %}
-                {{ row.amount_previous|stmt }}
+                <span class="cp-incomplete">Incomplete</span>
+              {% elif editable and row.previous is not none %}
+                <span class="ed-amount cp-ed-cell" contenteditable="true"
+                      data-field="previous"
+                      data-section-id="{{ section.id }}"
+                      data-table-index="{{ t_idx }}"
+                      data-row-index="{{ r_idx }}"
+                      data-anchor="{{ anchor }}"
+                      data-computed="{{ row.computed_previous if row.computed_previous is not none else row.previous }}"
+                      data-source-label="{{ anchor }}"
+                      >{{ row.previous|stmt }}</span>
+              {% elif row.previous is not none %}
+                {{ row.previous|stmt }}
               {% else %}
                 <span class="muted">—</span>
               {% endif %}
             </td>
-            {% endif %}
           </tr>
           {% else %}
-          <tr style="font-weight:700;border-top:1px solid var(--border)">
-            <td style="font-size:12px">{{ row.label }}</td>
-            <td class="num">{{ row.amount_current|stmt if row.amount_current is not none else '—' }}</td>
-            {% if table.show_prior %}<td class="num">{{ row.amount_previous|stmt if row.amount_previous is not none else '—' }}</td>{% endif %}
+          <tr class="cp-total">
+            <td style="font-size:11px">{{ row.label }}</td>
+            <td class="num">{{ row.current|stmt if row.current is not none else '—' }}</td>
+            <td class="num">{{ row.previous|stmt if row.previous is not none else '—' }}</td>
           </tr>
           {% endif %}
         {% endfor %}
       </tbody>
     </table>
-    {% if editable %}
-      <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
-        Click figures in the preview to edit them, or
-        <a href="#sec-{{ section.section_key }}"
-           onclick="event.preventDefault();const el=document.querySelector('#live-report #sec-{{section.section_key}}');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})">
-          scroll to this note</a>.
-      </div>
-    {% endif %}
   </div>
   {% endif %}
 {% endfor %}
