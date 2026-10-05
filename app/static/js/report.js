@@ -678,6 +678,26 @@
     }
   } catch (err) { /* nothing to restore */ }
 
+  /* Restore the Checks panel selection after any page reload (wording-source
+     switch, note toggle, etc.). Save on unload so every existing reload call
+     is covered without touching them individually. */
+  try {
+    const saved = sessionStorage.getItem('am-checks-section');
+    if (saved && list) {
+      sessionStorage.removeItem('am-checks-section');
+      const item = list.querySelector(`.section-item[data-section-id="${saved}"]`);
+      if (item) selectSection(saved, item.dataset.sectionKey);
+    }
+  } catch (err) { /* nothing to restore */ }
+
+  window.addEventListener('beforeunload', () => {
+    try {
+      if (selectedSectionId) {
+        sessionStorage.setItem('am-checks-section', selectedSectionId);
+      }
+    } catch (err) { /* ignore */ }
+  });
+
   /* "Go to the note" for a held paragraph lands on its own confirm box. */
   document.addEventListener('click', event => {
     const link = event.target.closest('a.gap-fix[href^="#confirm-"]');
@@ -744,8 +764,10 @@
      DOM in place - the same choice made for adding or deleting a note:
      one rendering path that is certainly right beats two that agree most
      of the time, and the note's incomplete-ness, its tables and its
-     confirm boxes all depend on which wording is now showing. */
-  report.addEventListener('click', async event => {
+     confirm boxes all depend on which wording is now showing.
+     Listens on document so it also catches the button in the Checks panel,
+     which lives outside #live-report. */
+  document.addEventListener('click', async event => {
     const btn = event.target.closest('.wording-src-btn');
     if (!btn || btn.disabled) return;
     const wrap = btn.closest('.wording-source');

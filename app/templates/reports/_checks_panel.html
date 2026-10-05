@@ -35,22 +35,22 @@
 {# ---- wording section (notes only) ---- #}
 {% if is_note and section.content_html %}
 
-  {# Wording source tabs — only shown when there's a choice #}
+  {# Wording source tabs — reuse the same .wording-src-btn class and
+     data attributes as the preview panel so the existing delegated handler
+     in report.js picks them up, including the edit-preservation confirmation
+     flow. The wrapping .wording-source div must carry data-section-id. #}
   {% if editable and payload.wording_sources|length > 1 %}
   <div class="cp-block">
     <div class="cp-block-head">
       <span class="cp-label">Wording source</span>
       {% if payload.wording_edited %}<span class="cp-edited">Edited</span>{% endif %}
     </div>
-    <div class="cp-tabs">
+    <div class="wording-source cp-tabs" data-section-id="{{ section.id }}">
       {% for src in payload.wording_sources %}
         <button type="button"
-                class="cp-tab{{ ' active' if payload.wording_source == src }}"
+                class="wording-src-btn cp-tab{{ ' is-active active' if payload.wording_source == src }}"
                 data-source="{{ src }}"
-                data-section-id="{{ section.id }}"
-                {% if payload.wording_source == src %}disabled{% endif %}
-                onclick="this.closest('.cp-tabs').querySelectorAll('.cp-tab').forEach(b=>b.classList.remove('active'));this.classList.add('active');
-                         fetch('/reports/api/section/{{section.id}}/wording-source',{method:'PATCH',headers:{'Content-Type':'application/json','X-CSRFToken':window.CSRF_TOKEN},body:JSON.stringify({source:this.dataset.source})}).then(()=>location.reload())">
+                {% if payload.wording_source == src %}disabled{% endif %}>
           {{ 'Notes library' if src == 'library' else "Last year's FS" }}
         </button>
       {% endfor %}
@@ -196,7 +196,6 @@
     <div style="font-size:12px;color:#1a7a44;font-weight:600">&#10003; No other notes waiting.</div>
   {% endif %}
   <div class="cp-stats">
-    {% set n_accounts = report.financial_year.trial_balance_accounts|selectattr('standard_key')|list|length if report.financial_year.trial_balance_accounts is defined else 0 %}
-    &#10003; Enabled sections: {{ report.enabled_sections|length }} of {{ report.sections|length }}
+    &#10003; {{ report.enabled_sections|length }} of {{ report.sections|length }} sections enabled
   </div>
 </div>
