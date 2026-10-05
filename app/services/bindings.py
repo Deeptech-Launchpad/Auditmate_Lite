@@ -1346,6 +1346,8 @@ def build_table(spec, financial_year, statements=None):
                         {"token": held.token, "field": held.field,
                          "scope": held.scope, "member": held.member}
                         if held.editable else None)
+                else:
+                    row[f"hint_{column}_nil"] = held.reason
                 row[column] = None
         # Kept, not dropped: the Preparer checks page asks where else in
         # the draft the same line code prints, and a rendered row is the

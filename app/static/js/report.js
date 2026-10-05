@@ -486,13 +486,13 @@
   document.addEventListener('mouseover', event => {
     const cp = event.target.closest('#checks-panel-body');
     if (!cp) return;
-    const cell = event.target.closest('.cp-null-cell[data-hint]');
+    const cell = event.target.closest('[data-hint]');
     if (cell) showHint(cell.dataset.hint, cell);
   });
   document.addEventListener('mouseout', event => {
     const cp = event.target.closest('#checks-panel-body');
     if (!cp) return;
-    if (event.target.closest('.cp-null-cell[data-hint]')) hideHint();
+    if (event.target.closest('[data-hint]')) hideHint();
   });
 
   /* Edits from the Checks panel — wording and table cells.

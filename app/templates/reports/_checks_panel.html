@@ -153,10 +153,9 @@
                       data-hint="{% if row.current == 0 %}Zero in the trial balance{% else %}Trial balance · {{ row.current|stmt }}{% endif %}"
                       >{{ row.current|stmt }}</span>
               {% elif row.current is not none %}
-                {{ row.current|stmt }}
+                <span class="cp-ro-cell" data-hint="{% if row.current == 0 %}Zero in the trial balance{% else %}Trial balance · {{ row.current|stmt }}{% endif %}">{{ row.current|stmt }}</span>
               {% else %}
-                <span class="muted cp-null-cell"
-                      {% if row.previous is not none %}data-hint="No account in this year's trial balance"{% endif %}>—</span>
+                <span class="muted cp-null-cell" data-hint="No account in this year's trial balance">—</span>
               {% endif %}
             </td>
             {# Prior year cell #}
@@ -187,9 +186,9 @@
                       data-hint="{% if row.previous == 0 %}Zero in last year's financial statements{% else %}Last year's financial statements · {{ row.previous|stmt }}{% endif %}"
                       >{{ row.previous|stmt }}</span>
               {% elif row.previous is not none %}
-                {{ row.previous|stmt }}
+                <span class="cp-ro-cell" data-hint="{% if row.previous == 0 %}Zero in last year's financial statements{% else %}Last year's financial statements · {{ row.previous|stmt }}{% endif %}">{{ row.previous|stmt }}</span>
               {% else %}
-                <span class="muted">—</span>
+                <span class="muted cp-null-cell" data-hint="{{ row.hint_previous_nil or 'Not in prior year financial statements' }}">—</span>
               {% endif %}
             </td>
           </tr>
