@@ -1468,12 +1468,13 @@ def _nil(row):
     if not _is_figure(row["binding"]):
         return False
     current, previous = row["current"], row["previous"]
-    # Nil this year, and last year not loaded at all: nothing to say about
-    # the row yet. The rows that do carry a figure still show last year as
-    # incomplete, so the gap stays visible.
-    if (isinstance(current, Decimal) and not current
-            and _is_held(previous) and previous.whole_year):
-        return True
+    # No current-year account (None) or zero this year, and prior year is
+    # unknown in its entirety (whole_year hold): nothing to show for this row.
+    # Rows that do carry a real current-year figure still show last year as
+    # Incomplete, so the preparer can fill the split.
+    if _is_held(previous) and previous.whole_year:
+        if current is None or (isinstance(current, Decimal) and not current):
+            return True
     if _is_held(current) or _is_held(previous):
         return False
     return not any((current, previous))
