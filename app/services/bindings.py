@@ -1477,6 +1477,14 @@ def _nil(row):
                                or (_is_held(previous) and previous.whole_year))
     if not current_real and previous_wholly_unknown:
         return True
+    # MANUAL/MEMO rows have no TB source — the preparer must supply the figure.
+    # If neither year has a real value yet (nothing entered, nothing from prior
+    # year FS), hide the row rather than show it as perpetually Incomplete.
+    # Once the preparer enters a value _make_answerable turns it into a Decimal
+    # and the row reappears automatically.
+    if row["binding"] in ("MANUAL", "MEMO"):
+        if not any(isinstance(v, Decimal) for v in (current, previous)):
+            return True
     if _is_held(current) or _is_held(previous):
         return False
     return not any((current, previous))
