@@ -454,6 +454,47 @@
     }
   });
 
+  /* Cell source tooltip — shows on focus (editable cells) or hover (null cells).
+     A single floating div is reused for all cells. */
+  const cellHint = (() => {
+    const el = document.createElement('div');
+    el.id = 'cp-cell-hint';
+    document.body.appendChild(el);
+    return el;
+  })();
+  function showHint(text, anchor) {
+    cellHint.textContent = text;
+    cellHint.classList.add('visible');
+    const r = anchor.getBoundingClientRect();
+    const top = r.top - cellHint.offsetHeight - 6;
+    cellHint.style.left = Math.max(4, r.left + r.width / 2 - cellHint.offsetWidth / 2) + 'px';
+    cellHint.style.top = (top < 4 ? r.bottom + 6 : top) + 'px';
+  }
+  function hideHint() { cellHint.classList.remove('visible'); }
+
+  document.addEventListener('focusin', event => {
+    const cp = event.target.closest('#checks-panel-body');
+    if (!cp) return;
+    const cell = event.target.closest('[data-hint]');
+    if (cell) showHint(cell.dataset.hint, cell);
+  });
+  document.addEventListener('focusout', event => {
+    const cp = event.target.closest('#checks-panel-body');
+    if (!cp) return;
+    if (event.target.closest('[data-hint]')) hideHint();
+  });
+  document.addEventListener('mouseover', event => {
+    const cp = event.target.closest('#checks-panel-body');
+    if (!cp) return;
+    const cell = event.target.closest('.cp-null-cell[data-hint]');
+    if (cell) showHint(cell.dataset.hint, cell);
+  });
+  document.addEventListener('mouseout', event => {
+    const cp = event.target.closest('#checks-panel-body');
+    if (!cp) return;
+    if (event.target.closest('.cp-null-cell[data-hint]')) hideHint();
+  });
+
   /* Edits from the Checks panel — wording and table cells.
      Scoped to #checks-panel-body so it never clashes with the preview handler. */
   document.addEventListener('focusin', event => {

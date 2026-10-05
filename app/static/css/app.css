@@ -973,6 +973,17 @@ tr.change-row.status-pending  { background: var(--amber-light); }
 .checks-panel .cp-table .cp-held-answer:hover { background: #fff5f5; border-bottom-color: #a93226; }
 .checks-panel .cp-table .cp-held-answer:focus { outline: none; background: #fff; border: 1px solid var(--brand); border-radius: 2px; }
 .checks-panel .cp-table .cp-total { font-weight: 700; border-top: 1px solid var(--border); }
+.checks-panel .cp-table .cp-null-cell[data-hint] { cursor: help; }
+/* Cell source tooltip */
+#cp-cell-hint {
+  position: fixed; z-index: 9000;
+  background: #2c2c2c; color: #fff;
+  padding: 5px 9px; border-radius: 4px;
+  font-size: 11px; line-height: 1.4; white-space: nowrap;
+  pointer-events: none; opacity: 0; transition: opacity .12s;
+  max-width: 280px; white-space: normal;
+}
+#cp-cell-hint.visible { opacity: 1; }
 .checks-panel .cp-wording-edit {
   font-size: 12px; line-height: 1.6; padding: 8px 10px; max-height: 200px;
   overflow-y: auto; background: #f8f7f3; border: 1px solid var(--border);

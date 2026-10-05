@@ -124,11 +124,13 @@
                       data-anchor="{{ anchor }}"
                       data-computed="{{ row.computed_current if row.computed_current is not none else row.current }}"
                       data-source-label="{{ anchor }}"
+                      data-hint="{% if row.current == 0 %}Zero in the trial balance{% else %}Trial balance · {{ row.current|stmt }}{% endif %}"
                       >{{ row.current|stmt }}</span>
               {% elif row.current is not none %}
                 {{ row.current|stmt }}
               {% else %}
-                <span class="muted">—</span>
+                <span class="muted cp-null-cell"
+                      {% if row.previous is not none %}data-hint="No account in this year's trial balance"{% endif %}>—</span>
               {% endif %}
             </td>
             {# Prior year cell #}
@@ -156,6 +158,7 @@
                       data-anchor="{{ anchor }}"
                       data-computed="{{ row.computed_previous if row.computed_previous is not none else row.previous }}"
                       data-source-label="{{ anchor }}"
+                      data-hint="{% if row.previous == 0 %}Zero in last year's financial statements{% else %}Last year's financial statements · {{ row.previous|stmt }}{% endif %}"
                       >{{ row.previous|stmt }}</span>
               {% elif row.previous is not none %}
                 {{ row.previous|stmt }}
