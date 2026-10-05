@@ -632,6 +632,14 @@ table.fin tr.overridden input.amount { background: var(--amber-light); border-co
 .report-layout > div > .card > .card-body {
   overflow-y: auto; flex: 1; min-height: 0;
 }
+/* Preview panel: single scroll container — rpt-mini fills the card-body,
+   src-legend stays pinned at top, no outer card-body scroll. */
+.preview-card-body {
+  display: flex; flex-direction: column; overflow: hidden !important;
+  padding-bottom: 0;
+}
+.preview-card-body .src-legend { flex-shrink: 0; }
+.preview-card-body .rpt-mini { flex: 1; min-height: 0; }
 
 /* The overrides panel sits below the live preview in normal page flow,
    not beside it - the sticky rule above would otherwise stick it at the

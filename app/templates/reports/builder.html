@@ -831,7 +831,7 @@ Anything typed into the report - note wording, edited figures, answers, section 
           <span class="hint" id="save-hint">Enabled sections, in order</span>
         </div>
       </div>
-      <div class="card-body">
+      <div class="card-body preview-card-body">
         {#
           The same partial the exported report uses, so the builder shows the
           finished document rather than an approximation of it. Styles are
@@ -842,7 +842,7 @@ Anything typed into the report - note wording, edited figures, answers, section 
           {% with for_pdf = False, scope = '.rpt-mini', look = look|default(none) %}
             {% include "reports/_styles.html" %}
           {% endwith %}
-          .rpt-mini { max-height: 680px; overflow: auto; background: #e9ecef;
+          .rpt-mini { overflow: auto; background: #e9ecef;
                       padding: 14px; border-radius: 6px; }
           {# The customer's template, scaled down to this panel: text size and
              page margins follow it, so the preview reads like their report. #}
