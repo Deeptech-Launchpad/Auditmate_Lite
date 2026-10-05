@@ -102,7 +102,19 @@
             {# Current year cell #}
             <td class="num{% if row.held_current %} cp-held{% endif %}">
               {% if row.held_current %}
-                <span class="cp-incomplete">Incomplete</span>
+                {% if editable and row.held_current_edit %}
+                  <span class="held-answer cp-held-answer" contenteditable="true"
+                        data-fy-id="{{ fy.id }}"
+                        data-section-id="{{ section.id }}"
+                        data-token="{{ row.held_current_edit.token }}"
+                        data-doc-field="{{ row.held_current_edit.field }}"
+                        data-scope="{{ row.held_current_edit.scope }}"
+                        data-member="{{ row.held_current_edit.member }}"
+                        data-placeholder="Incomplete"
+                        title="{{ row.held_current }} — type to answer here"></span>
+                {% else %}
+                  <span class="cp-incomplete" title="{{ row.held_current }}">Incomplete</span>
+                {% endif %}
               {% elif editable and row.current is not none %}
                 <span class="ed-amount cp-ed-cell" contenteditable="true"
                       data-field="amount"
@@ -122,7 +134,19 @@
             {# Prior year cell #}
             <td class="num{% if row.held_previous %} cp-held{% endif %}">
               {% if row.held_previous %}
-                <span class="cp-incomplete">Incomplete</span>
+                {% if editable and row.held_previous_edit %}
+                  <span class="held-answer cp-held-answer" contenteditable="true"
+                        data-fy-id="{{ fy.id }}"
+                        data-section-id="{{ section.id }}"
+                        data-token="{{ row.held_previous_edit.token }}"
+                        data-doc-field="{{ row.held_previous_edit.field }}"
+                        data-scope="{{ row.held_previous_edit.scope }}"
+                        data-member="{{ row.held_previous_edit.member }}"
+                        data-placeholder="Incomplete"
+                        title="{{ row.held_previous }} — type to answer here"></span>
+                {% else %}
+                  <span class="cp-incomplete" title="{{ row.held_previous }}">Incomplete</span>
+                {% endif %}
               {% elif editable and row.previous is not none %}
                 <span class="ed-amount cp-ed-cell" contenteditable="true"
                       data-field="previous"

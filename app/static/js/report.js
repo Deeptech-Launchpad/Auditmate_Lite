@@ -498,6 +498,77 @@
     }
   });
 
+  /* Held-answer cells in the Checks panel — same save path as the preview
+     panel's .held-answer handler, but scoped to #checks-panel-body.
+     On success: reload just the Checks panel fragment so totals that were
+     held because of this figure also settle, without a full page reload. */
+  document.addEventListener('focusin', event => {
+    const cp = event.target.closest('#checks-panel-body');
+    if (!cp) return;
+    const field = event.target.closest('.held-answer');
+    if (!field) return;
+    field.dataset.original = field.textContent.trim();
+  });
+
+  document.addEventListener('focusout', async event => {
+    const cp = event.target.closest('#checks-panel-body');
+    if (!cp) return;
+    const field = event.target.closest('.held-answer');
+    if (!field) return;
+    const value = field.textContent.trim();
+    if (value === (field.dataset.original || '')) return;
+
+    say('Saving…', 'saving');
+    try {
+      const response = await fetch('/reports/api/document-figure', {
+        method: 'PATCH', headers: csrfHeaders(),
+        body: JSON.stringify({
+          financial_year_id: Number(field.dataset.fyId),
+          token: field.dataset.token,
+          field: field.dataset.docField,
+          scope: field.dataset.scope,
+          member: field.dataset.member,
+          amount: value
+        })
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        field.textContent = field.dataset.original || '';
+        say(data.error || 'Could not save', 'failed');
+        return;
+      }
+      say(value === '' ? 'Cleared' : 'Saved', 'saved');
+      /* Reload the Checks panel so totals and sibling held cells reflect the
+         newly answered figure. A full page reload would also work (and is
+         what the preview panel does) but the Checks panel fragment is enough
+         and keeps the user's place. */
+      const sectionId = field.dataset.sectionId
+                     || cp.querySelector('[data-section-id]')?.dataset?.sectionId;
+      if (sectionId) {
+        const r = await fetch(`/reports/api/section/${sectionId}/checks-panel`);
+        if (r.ok) { cp.innerHTML = await r.text(); }
+      } else {
+        location.reload();
+      }
+    } catch (err) {
+      field.textContent = field.dataset.original || '';
+      say('Could not save - the figure was not stored', 'failed');
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    const cp = event.target.closest('#checks-panel-body');
+    if (!cp) return;
+    const field = event.target.closest('.held-answer');
+    if (!field) return;
+    if (event.key === 'Enter') { event.preventDefault(); field.blur(); }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      field.textContent = field.dataset.original || '';
+      field.blur();
+    }
+  });
+
   /* Which elements of a note body count as a paragraph a person can type
      over. Headings and list items are wording the accounts print, so they
      are in; a table placed by the note is not - its rows have their own

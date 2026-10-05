@@ -955,6 +955,15 @@ tr.change-row.status-pending  { background: var(--amber-light); }
 .checks-panel .cp-table .cp-ed-cell:hover { background: #f0f4ff; border-bottom-color: var(--brand); }
 .checks-panel .cp-table .cp-ed-cell:focus { outline: none; background: #fff; border: 1px solid var(--brand); border-radius: 2px; }
 .checks-panel .cp-table .cp-incomplete { color: #c0392b; font-size: 11px; }
+.checks-panel .cp-table .cp-held-answer {
+  display: inline-block; min-width: 48px; padding: 1px 3px; border-radius: 2px;
+  cursor: text; border-bottom: 1px dashed #c0392b;
+}
+.checks-panel .cp-table .cp-held-answer:empty::before {
+  content: attr(data-placeholder); color: #c0392b; font-size: 11px; font-style: italic;
+}
+.checks-panel .cp-table .cp-held-answer:hover { background: #fff5f5; border-bottom-color: #a93226; }
+.checks-panel .cp-table .cp-held-answer:focus { outline: none; background: #fff; border: 1px solid var(--brand); border-radius: 2px; }
 .checks-panel .cp-table .cp-total { font-weight: 700; border-top: 1px solid var(--border); }
 .checks-panel .cp-wording-edit {
   font-size: 12px; line-height: 1.6; padding: 8px 10px; max-height: 200px;
