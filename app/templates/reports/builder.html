@@ -20,6 +20,11 @@
     <p class="subtitle">{{ customer.name }} · {{ fy.year_label }}</p>
   </div>
   <div class="page-actions">
+    {% if incomplete %}
+      <span class="pill pill-red" style="align-self:center;padding:5px 10px;font-size:12px">
+        Draft &mdash; {{ incomplete|length }} note{{ 's' if incomplete|length != 1 }} waiting
+      </span>
+    {% endif %}
     {% set questions_waiting = (waiting.questions or 0) + (waiting.parties or 0) %}
     <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id) }}"
        class="btn supply">Questions
@@ -601,7 +606,8 @@ Anything typed into the report - note wording, edited figures, answers, section 
         <div class="section-item {{ '' if section.is_enabled else 'disabled' }} {{ 'section-child' if section.parent_section_id else '' }}"
              id="sec-{{ section.id }}"
              draggable="{{ 'true' if (editable and section.is_enabled and not section.parent_section_id) else 'false' }}"
-             data-section-id="{{ section.id }}">
+             data-section-id="{{ section.id }}"
+             data-section-key="{{ section.section_key }}">
           <span class="handle">⠿</span>
           {# One running number down the whole list - the order the sections
              print in - whatever they are. A note also carries its own number in
@@ -667,7 +673,8 @@ Anything typed into the report - note wording, edited figures, answers, section 
         <div class="section-item {{ '' if section.is_enabled else 'disabled' }} {{ 'section-child' if section.parent_section_id else '' }}"
              id="sec-{{ section.id }}"
              draggable="{{ 'true' if (editable and section.is_enabled and not section.parent_section_id) else 'false' }}"
-             data-section-id="{{ section.id }}">
+             data-section-id="{{ section.id }}"
+             data-section-key="{{ section.section_key }}">
           <span class="handle">⠿</span>
           {# One running number down the whole list - the order the sections
              print in - whatever they are. A note also carries its own number in
@@ -978,6 +985,26 @@ Anything typed into the report - note wording, edited figures, answers, section 
     </details>
     {% endif %}
   </div>
+
+  {# Third column: Checks panel — loads the editing UI for the selected note
+     via AJAX when the preparer clicks a section in the left panel. Starts
+     empty; JS populates it on selection. #}
+  <div class="card checks-panel" id="checks-panel"
+       data-fy-id="{{ fy.id }}" data-report-id="{{ report.id }}"
+       data-editable="{{ 'true' if editable else 'false' }}">
+    <div class="card-head">
+      <h2>Checks</h2>
+      {% if incomplete %}
+        <span class="pill pill-red" style="margin-left:auto">
+          {{ incomplete|length }} blocking approval
+        </span>
+      {% endif %}
+    </div>
+    <div class="card-body" id="checks-panel-body">
+      <p class="cp-empty">Select a note from the list to review and edit it here.</p>
+    </div>
+  </div>
+
 </div>
 {% endblock %}
 
