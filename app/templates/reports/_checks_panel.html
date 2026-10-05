@@ -75,6 +75,32 @@
 
 {% endif %}
 
+{# ---- open questions / figures for this note ---- #}
+{% if open_items %}
+  {% set _code, _qc, _fc = open_items %}
+  <div class="cp-block cp-open-items">
+    <div class="cp-block-head">
+      <span class="cp-label" style="color:#b45309">&#9888; Action needed</span>
+    </div>
+    {% if _qc %}
+      <div style="margin-bottom:6px;font-size:12px">
+        <strong>{{ _qc }} question{{ 's' if _qc != 1 }}</strong> waiting for your answer &mdash;
+        <a href="{{ url_for('reports.preparer_inputs', fy_id=fy.id, note=_code) }}">
+          Go to Questions &rarr;
+        </a>
+      </div>
+    {% endif %}
+    {% if _fc %}
+      <div style="font-size:12px">
+        <strong>{{ _fc }} figure{{ 's' if _fc != 1 }}</strong> waiting to be provided &mdash;
+        <a href="{{ url_for('documents.figures', fy_id=fy.id, note=_code) }}">
+          Go to Figures &rarr;
+        </a>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+
 {# ---- tables ---- #}
 {% for table in payload.tables %}
   {% set t_idx = loop.index0 %}

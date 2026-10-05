@@ -558,6 +558,10 @@ def section_checks_panel(section_id):
 
     is_incomplete = bool(payload.get("incomplete"))
 
+    # Question / figure counts for this note (powers the "Go to Questions" link).
+    note_open = _note_open_items(financial_year, [section])
+    open_items = note_open.get(section.section_key)  # (code, q_count, f_count) or None
+
     return render_template(
         "reports/_checks_panel.html",
         section=section,
@@ -569,6 +573,7 @@ def section_checks_panel(section_id):
         next_section=next_section,
         next_incomplete=next_incomplete,
         is_incomplete=is_incomplete,
+        open_items=open_items,
     )
 
 
