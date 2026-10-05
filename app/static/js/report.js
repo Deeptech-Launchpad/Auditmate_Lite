@@ -265,7 +265,15 @@
     const previewEl = sectionKey ? report.querySelector(`#sec-${sectionKey}`) : null;
     if (previewEl) {
       previewEl.classList.add('is-note-selected');
-      previewEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const liveReport = document.getElementById('live-report');
+      if (liveReport) {
+        const rptRect = liveReport.getBoundingClientRect();
+        const elRect = previewEl.getBoundingClientRect();
+        const contentTop = elRect.top - rptRect.top + liveReport.scrollTop;
+        liveReport.scrollTo({ top: Math.max(0, contentTop - 14), behavior: 'smooth' });
+      } else {
+        previewEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
 
     // Checks panel: load content for this section
