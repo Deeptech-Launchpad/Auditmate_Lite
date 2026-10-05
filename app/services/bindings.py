@@ -309,7 +309,7 @@ class Figures:
                 reason = ("Last year's signed accounts give this line in "
                           "total, and it is not split into notes categories")
                 for code in options:
-                    result["held"][code] = Held(reason)
+                    result["held"][code] = Held(reason, blocking=False)
                     result["totals"].pop(code, None)
                     result["ids"].pop(code, None)
 
@@ -1255,7 +1255,8 @@ def build_table(spec, financial_year, statements=None):
                             "Last year is known only in total, so it cannot "
                             "be split by account"
                             + (" (" + figures.split_disagreement(code) + ")"
-                               if figures.split_disagreement(code) else ""))
+                               if figures.split_disagreement(code) else ""),
+                            blocking=False)
                 else:
                     row["previous"] = last_year.get(
                         " ".join(name.split()).lower(), ZERO)
@@ -1339,11 +1340,12 @@ def build_table(spec, financial_year, statements=None):
         for column in ("current", "previous"):
             if _is_held(row[column]):
                 held = row[column]
-                row[f"held_{column}"] = held.reason
-                row[f"held_{column}_edit"] = (
-                    {"token": held.token, "field": held.field,
-                     "scope": held.scope, "member": held.member}
-                    if held.editable else None)
+                if held.blocking:
+                    row[f"held_{column}"] = held.reason
+                    row[f"held_{column}_edit"] = (
+                        {"token": held.token, "field": held.field,
+                         "scope": held.scope, "member": held.member}
+                        if held.editable else None)
                 row[column] = None
         # Kept, not dropped: the Preparer checks page asks where else in
         # the draft the same line code prints, and a rendered row is the
