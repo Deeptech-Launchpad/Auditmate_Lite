@@ -1465,9 +1465,16 @@ def _optional_gap(row):
 
 def _nil(row):
     """A figure row with nothing in either year - suppressed, per the library."""
+    current, previous = row["current"], row["previous"]
+    # MANUAL/MEMO bindings are not in FIGURE_PREFIXES so _is_figure returns
+    # False for them — check them first before that guard fires.
+    # These rows have no TB source; suppress when neither year has a real value.
+    # Once the preparer enters something _make_answerable stores a Decimal and
+    # the row reappears automatically.
+    if row["binding"] in PERSON_TOKENS:
+        return not any(isinstance(v, Decimal) for v in (current, previous))
     if not _is_figure(row["binding"]):
         return False
-    current, previous = row["current"], row["previous"]
     # No real current-year data (None, zero, or a held/unanswered figure) AND
     # prior year is unknown in its entirety (whole_year hold or absent):
     # nothing to show for this row. Only rows where at least one year carries
@@ -1477,14 +1484,6 @@ def _nil(row):
                                or (_is_held(previous) and previous.whole_year))
     if not current_real and previous_wholly_unknown:
         return True
-    # MANUAL/MEMO rows have no TB source — the preparer must supply the figure.
-    # If neither year has a real value yet (nothing entered, nothing from prior
-    # year FS), hide the row rather than show it as perpetually Incomplete.
-    # Once the preparer enters a value _make_answerable turns it into a Decimal
-    # and the row reappears automatically.
-    if row["binding"] in ("MANUAL", "MEMO"):
-        if not any(isinstance(v, Decimal) for v in (current, previous)):
-            return True
     if _is_held(current) or _is_held(previous):
         return False
     return not any((current, previous))
